@@ -168,3 +168,105 @@ model SystemSetting {
   notifySystemErrorWeb           Boolean  @default(true)
   notifySystemErrorRoleIds       String[]
 }
+
+// Content hierarchy — Automation Magazine Dashboard
+enum CategoryStatus {
+  active
+  archived
+}
+
+enum TopicStatus {
+  active
+  archived
+}
+
+/// Pipeline stage (single article status)
+enum ArticleStatus {
+  planning
+  research
+  writing
+  assets
+  review
+  approval
+  scheduling
+  publishing
+  post_publish
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+}
+
+model Category {
+  id          String         @id @default(uuid())
+  name        String
+  description String?
+  status      CategoryStatus @default(active)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  topics      Topic[]
+  articles    Article[]
+
+  @@index([status])
+}
+
+model Topic {
+  id            String      @id @default(uuid())
+  name          String
+  description   String?
+  categoryId    String
+  targetKeyword String?
+  status        TopicStatus @default(active)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  category      Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  articles      Article[]
+
+  @@index([categoryId])
+  @@index([status])
+}
+
+model Article {
+  id                 String        @id @default(uuid())
+  title              String
+  topicId            String
+  categoryId         String
+  status             ArticleStatus @default(planning)
+  publishDate        DateTime?
+  readinessDeadline  DateTime?
+  seoScore           Int?
+  wordpressPostId    Int?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  topic              Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  category           Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@index([categoryId])
+  @@index([status])
+}
+
+/// Content-operation events (separate from SystemLog user-activity)
+model ContentLog {
+  id         String   @id @default(uuid())
+  type       String
+  message    String
+  entityType String?
+  entityId   String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Approval {
+  id          String         @id @default(uuid())
+  type        String
+  status      ApprovalStatus @default(pending)
+  requestedBy String
+  createdAt   DateTime       @default(now())
+
+  @@index([status])
+}

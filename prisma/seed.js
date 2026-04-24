@@ -5,6 +5,7 @@ const bcrypt = require('bcrypt');
 const rolesData = require('./data/roles');
 const usersData = require('./data/users');
 const permissionsData = require('./data/permissions');
+const magazineContent = require('./data/magazine-content');
 
 const prisma = new PrismaClient();
 
@@ -234,6 +235,71 @@ async function main() {
         },
       });
       console.log('Settings seeded.');
+
+      for (const c of magazineContent.categories) {
+        await tx.category.upsert({
+          where: { id: c.id },
+          update: {
+            name: c.name,
+            description: c.description,
+            status: c.status,
+          },
+          create: c,
+        });
+      }
+      for (const t of magazineContent.topics) {
+        await tx.topic.upsert({
+          where: { id: t.id },
+          update: {
+            name: t.name,
+            description: t.description,
+            categoryId: t.categoryId,
+            targetKeyword: t.targetKeyword,
+            status: t.status,
+          },
+          create: t,
+        });
+      }
+      for (const a of magazineContent.articles) {
+        await tx.article.upsert({
+          where: { id: a.id },
+          update: {
+            title: a.title,
+            topicId: a.topicId,
+            categoryId: a.categoryId,
+            status: a.status,
+            publishDate: a.publishDate,
+            readinessDeadline: a.readinessDeadline,
+            seoScore: a.seoScore,
+            wordpressPostId: a.wordpressPostId,
+          },
+          create: a,
+        });
+      }
+      for (const l of magazineContent.contentLogs) {
+        await tx.contentLog.upsert({
+          where: { id: l.id },
+          update: {
+            type: l.type,
+            message: l.message,
+            entityType: l.entityType,
+            entityId: l.entityId,
+          },
+          create: l,
+        });
+      }
+      for (const ap of magazineContent.getApprovals(ownerUser.id)) {
+        await tx.approval.upsert({
+          where: { id: ap.id },
+          update: {
+            type: ap.type,
+            status: ap.status,
+            requestedBy: ap.requestedBy,
+          },
+          create: ap,
+        });
+      }
+      console.log('Magazine content (categories, topics, articles, logs, approvals) seeded.');
 
       console.log('Database seeding completed!');
     },

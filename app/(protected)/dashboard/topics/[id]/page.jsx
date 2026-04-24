@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { format, parseISO } from 'date-fns';
 import { PageHeader } from '@/components/custom/page-header';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,29 +18,39 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/custom/status-badge';
 import { Container } from '@/components/common/container';
 import { MilestoneNote } from '@/components/custom/milestone-note';
-import { getTopicById, getArticlesByTopicId } from '@/app/(protected)/dashboard/_mock';
+import { getTopicById } from '@/services/topic.service';
+import { PipelineStageBadge } from '@/components/custom/pipeline-stage-badge';
+import { Badge } from '@/components/ui/badge';
 
 export const metadata = { title: 'Topic' };
 
+function fmt(d) {
+  if (!d) return '—';
+  try {
+    return format(d instanceof Date ? d : parseISO(String(d)), 'PP');
+  } catch {
+    return '—';
+  }
+}
+
 export default async function TopicDetailPage({ params }) {
   const { id } = await params;
-  const topic = getTopicById(id);
+  const topic = await getTopicById(id);
   if (!topic) notFound();
-  const articles = getArticlesByTopicId(id);
+  const articles = topic.articles;
 
   return (
     <>
       <PageHeader
-        title={topic.title}
+        title={topic.name}
         description="Topic detail — keywords, articles, and links"
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Topics', href: '/dashboard/topics' },
-          { label: topic.title, href: `/dashboard/topics/${id}` },
+          { label: topic.name, href: `/dashboard/topics/${id}` },
         ]}
         actions={
           <Button variant="outline" asChild>
@@ -55,10 +66,10 @@ export default async function TopicDetailPage({ params }) {
               <CardTitle>Summary</CardTitle>
             </CardHeader>
             <CardContent className="text-sm space-y-2">
-              <p>{topic.description}</p>
+              <p>{topic.description || '—'}</p>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-muted-foreground">Category</span>
-                <Badge variant="secondary">{topic.categoryName}</Badge>
+                <Badge variant="secondary">{topic.category.name}</Badge>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Status</span>
@@ -70,19 +81,13 @@ export default async function TopicDetailPage({ params }) {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Target keywords & tags</CardTitle>
+              <CardTitle>Target keyword</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm font-mono text-foreground/90 mb-2">
-                {topic.targetKeyword}
+                {topic.targetKeyword || '—'}
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                {topic.tags.map((t) => (
-                  <Badge key={t} variant="outline">
-                    {t}
-                  </Badge>
-                ))}
-              </div>
+              <p className="text-xs text-muted-foreground">Tags — Milestone 3+</p>
             </CardContent>
           </Card>
         </div>
@@ -110,14 +115,16 @@ export default async function TopicDetailPage({ params }) {
                         {a.title}
                       </Link>
                     </TableCell>
-                    <TableCell className="capitalize">{a.stage}</TableCell>
-                    <TableCell>{a.publishDate}</TableCell>
+                    <TableCell>
+                      <PipelineStageBadge stage={a.status} />
+                    </TableCell>
+                    <TableCell>{fmt(a.publishDate)}</TableCell>
                   </TableRow>
                 ))}
                 {articles.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="text-muted-foreground text-sm">
-                      None (mock)
+                      No articles for this topic yet
                     </TableCell>
                   </TableRow>
                 )}

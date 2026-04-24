@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -9,42 +9,93 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table';
+import { format, parseISO } from 'date-fns';
 import { Card, CardFooter, CardTable } from '@/components/ui/card';
 import { DataGrid } from '@/components/ui/data-grid';
 import { DataGridColumnHeader } from '@/components/ui/data-grid-column-header';
 import { DataGridPagination } from '@/components/ui/data-grid-pagination';
 import { DataGridTable } from '@/components/ui/data-grid-table';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { MockTableToolbar } from '@/app/(protected)/dashboard/components/mock-table-toolbar';
-import { MOCK_ARTICLES, MOCK_CATEGORIES, PIPELINE_STAGES } from '@/app/(protected)/dashboard/_mock';
 import { Container } from '@/components/common/container';
 import { MilestoneNote } from '@/components/custom/milestone-note';
-import { ReadinessBadge } from '@/components/custom/readiness-badge';
 import { PipelineStageBadge } from '@/components/custom/pipeline-stage-badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { ChevronRight } from 'lucide-react';
+import { AlertCircle, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { PIPELINE_STAGES } from '@/app/(protected)/dashboard/_mock';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+function formatDate(v) {
+  if (!v) return '—';
+  try {
+    return format(typeof v === 'string' ? parseISO(v) : v, 'PP');
+  } catch {
+    return '—';
+  }
+}
 
 export function ArticlesTable() {
   const router = useRouter();
+  const [rows, setRows] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState('');
   const [stage, setStage] = useState('all');
   const [categoryId, setCategoryId] = useState('all');
   const [readiness, setReadiness] = useState('all');
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
 
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const qs = new URLSearchParams();
+      if (categoryId && categoryId !== 'all') qs.set('categoryId', categoryId);
+      if (stage && stage !== 'all') qs.set('status', stage);
+      const [artRes, catRes] = await Promise.all([
+        fetch(`/api/articles?${qs.toString()}`),
+        fetch('/api/categories'),
+      ]);
+      if (!artRes.ok) {
+        const j = await artRes.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to load articles');
+      }
+      if (!catRes.ok) {
+        const j = await catRes.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to load categories');
+      }
+      const [artJson, catJson] = await Promise.all([
+        artRes.json(),
+        catRes.json(),
+      ]);
+      setRows(artJson.data ?? []);
+      setCategories(catJson.data ?? []);
+    } catch (e) {
+      setLoadError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [categoryId, stage]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
   const data = useMemo(() => {
     const q = search.toLowerCase();
-    return MOCK_ARTICLES.filter((a) => {
+    return rows.filter((a) => {
       if (q && !a.title.toLowerCase().includes(q)) return false;
-      if (stage !== 'all' && a.stage !== stage) return false;
-      if (categoryId !== 'all' && a.categoryId !== categoryId) return false;
-      if (readiness !== 'all' && a.readiness !== readiness) return false;
+      if (readiness !== 'all') {
+        // Readiness is computed in Milestone 6; filter does not apply yet
+        return true;
+      }
       return true;
     });
-  }, [search, stage, categoryId, readiness]);
+  }, [search, rows, readiness]);
 
   const columns = useMemo(
     () => [
@@ -65,7 +116,7 @@ export function ArticlesTable() {
         size: 240,
       },
       {
-        accessorKey: 'topicTitle',
+        accessorKey: 'topicName',
         id: 'topic',
         header: 'Topic',
         size: 140,
@@ -78,56 +129,60 @@ export function ArticlesTable() {
         size: 100,
       },
       {
-        accessorKey: 'stage',
+        accessorKey: 'status',
         id: 'stage',
         header: 'Stage',
         cell: ({ getValue }) => <PipelineStageBadge stage={getValue()} />,
         size: 120,
       },
       {
-        accessorKey: 'publishDate',
         id: 'publish',
         header: 'Publish',
+        cell: ({ row }) => formatDate(row.original.publishDate),
         size: 100,
       },
       {
-        accessorKey: 'readinessDeadline',
         id: 'readyBy',
         header: 'Ready by',
+        cell: ({ row }) => formatDate(row.original.readinessDeadline),
         size: 100,
       },
       {
-        accessorKey: 'readiness',
         id: 'readiness',
         header: 'Readiness',
-        cell: ({ getValue }) => <ReadinessBadge readiness={getValue()} />,
+        cell: () => (
+          <span className="text-xs text-muted-foreground">M6</span>
+        ),
         size: 120,
       },
       {
         id: 'assignee',
         header: 'Assignee',
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <Avatar className="size-7">
-              <AvatarFallback className="text-xs">
-                {row.original.assignee?.initials}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-sm">{row.original.assignee?.name}</span>
-          </div>
+        cell: () => (
+          <span className="text-sm text-muted-foreground">—</span>
         ),
         size: 160,
       },
       {
-        accessorKey: 'seoScore',
         id: 'seo',
         header: 'SEO',
+        cell: ({ row }) => (
+          <span>
+            {row.original.seoScore != null ? row.original.seoScore : '—'}
+          </span>
+        ),
         size: 64,
       },
       {
-        accessorKey: 'wordpressStatus',
         id: 'wp',
         header: 'WordPress',
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {row.original.wordpressPostId != null
+              ? `WP #${row.original.wordpressPostId}`
+              : '—'}
+          </span>
+        ),
         size: 120,
       },
       {
@@ -155,6 +210,13 @@ export function ArticlesTable() {
     <Container>
       <MilestoneNote milestone={4}>Full article engine in Milestone 4</MilestoneNote>
       <div className="mt-4 space-y-3">
+        {loadError && (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertTitle>Could not load articles</AlertTitle>
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <Label className="text-xs">Stage</Label>
@@ -180,7 +242,7 @@ export function ArticlesTable() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                {MOCK_CATEGORIES.map((c) => (
+                {categories.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
                   </SelectItem>
@@ -190,7 +252,7 @@ export function ArticlesTable() {
           </div>
           <div>
             <Label className="text-xs">Readiness</Label>
-            <Select value={readiness} onValueChange={setReadiness}>
+            <Select value={readiness} onValueChange={setReadiness} disabled>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -201,6 +263,7 @@ export function ArticlesTable() {
                 <SelectItem value="overdue">Overdue</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Milestone 6</p>
           </div>
         </div>
         <MockTableToolbar
@@ -210,23 +273,39 @@ export function ArticlesTable() {
           onAction={() => {}}
           placeholder="Search title…"
         />
-        <Card>
-          <DataGrid
-            table={table}
-            recordCount={data.length}
-            onRowClick={(row) => router.push(`/dashboard/articles/${row.id}`)}
-          >
-            <CardTable>
-              <ScrollArea>
-                <DataGridTable table={table} />
-                <ScrollBar orientation="horizontal" />
-              </ScrollArea>
-            </CardTable>
-            <CardFooter>
-              <DataGridPagination className="py-0" />
-            </CardFooter>
-          </DataGrid>
-        </Card>
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : !loadError && rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded-md">
+            No articles yet. Add topics and articles in upcoming milestones.
+          </p>
+        ) : !loadError && data.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded-md">
+            No articles match this filter.
+          </p>
+        ) : !loadError ? (
+          <Card>
+            <DataGrid
+              table={table}
+              recordCount={data.length}
+              onRowClick={(row) => router.push(`/dashboard/articles/${row.id}`)}
+            >
+              <CardTable>
+                <ScrollArea>
+                  <DataGridTable table={table} />
+                  <ScrollBar orientation="horizontal" />
+                </ScrollArea>
+              </CardTable>
+              <CardFooter>
+                <DataGridPagination className="py-0" />
+              </CardFooter>
+            </DataGrid>
+          </Card>
+        ) : null}
       </div>
     </Container>
   );

@@ -3,12 +3,14 @@
   "version": "9.4.10",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start -p 4000",
     "build:staging": "cp .env.staging .env.local && next build",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "seed": "prisma db seed"
   },
   "prisma": {
     "seed": "node prisma/seed.js",

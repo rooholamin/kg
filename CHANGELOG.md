@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.0] — Milestone 2 Backend Foundation — 2026-04-24
+
+### Added
+
+- **Prisma models** — `Category`, `Topic`, `Article` (pipeline `ArticleStatus` enum), `ContentLog`, `Approval`; indexes on common foreign keys. Schema applied to Supabase with `npx prisma db push` (existing DB had migration history drift; avoid `migrate reset` on shared DBs).
+- **Service layer** — `services/category.service.js`, `services/topic.service.js`, `services/article.service.js` (all DB access via these; `lib/prisma` unchanged).
+- **Read-only API** (session-guarded `GET` only) — `/api/categories`, `/api/categories/[id]`, `/api/topics`, `/api/topics/[id]`, `/api/articles`, `/api/articles/[id]`.
+- **Magazine seed data** — `prisma/data/magazine-content.js` + `prisma/seed.js` upserts categories, topics, articles, `ContentLog`, and `Approval` (fixed UUIDs, idempotent). Run `npm run seed` or `npx prisma db seed`.
+- **Dashboard data** — categories, topics, and articles list pages fetch from API with loading, error, and empty states. Detail pages for category/topic/article load from services; article detail falls back to mock for legacy `art-*` ids.
+
+### Unchanged (still mock-backed)
+
+- Main dashboard, AI, calendar, SEO, logs, project progress, approvals; `PIPELINE_STAGES` import on articles list for filter labels.
+
+### Next (Milestone 3)
+
+- Real CRUD for categories and topics.
+
 ## [0.1.0] — Milestone 1 UI Shell — 2026-04-24
 
 ### Added

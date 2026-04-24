@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -18,7 +18,6 @@ import { DataGridTable } from '@/components/ui/data-grid-table';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/custom/status-badge';
 import { MockTableToolbar } from '@/app/(protected)/dashboard/components/mock-table-toolbar';
-import { MOCK_CATEGORIES } from '@/app/(protected)/dashboard/_mock';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -26,23 +25,52 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Container } from '@/components/common/container';
 import { MilestoneNote } from '@/components/custom/milestone-note';
-import { ChevronRight } from 'lucide-react';
+import { AlertCircle, ChevronRight } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export function CategoriesTable() {
   const router = useRouter();
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await fetch('/api/categories');
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.message || 'Failed to load categories');
+        }
+        const json = await res.json();
+        if (!cancelled) setRows(json.data ?? []);
+      } catch (e) {
+        if (!cancelled) setLoadError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const data = useMemo(() => {
     const q = search.toLowerCase();
-    return MOCK_CATEGORIES.filter(
+    return rows.filter(
       (c) =>
         !q ||
         c.name.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q),
+        (c.description ?? '').toLowerCase().includes(q),
     );
-  }, [search]);
+  }, [search, rows]);
 
   const columns = useMemo(
     () => [
@@ -70,7 +98,7 @@ export function CategoriesTable() {
         ),
         cell: ({ getValue }) => (
           <span className="text-muted-foreground line-clamp-2 max-w-md">
-            {getValue()}
+            {getValue() ?? '—'}
           </span>
         ),
       },
@@ -139,6 +167,13 @@ export function CategoriesTable() {
     <Container>
       <MilestoneNote milestone={3}>Real CRUD for categories in Milestone 3.</MilestoneNote>
       <div className="mt-4">
+        {loadError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="size-4" />
+            <AlertTitle>Could not load categories</AlertTitle>
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        )}
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetContent>
             <SheetHeader>
@@ -167,11 +202,21 @@ export function CategoriesTable() {
           onAction={() => setOpen(true)}
           placeholder="Filter categories"
         />
-        {data.length === 0 ? (
+        {loading ? (
+          <div className="space-y-2 py-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : !loadError && rows.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded-md">
-            No categories match. TODO(M2): empty state with seed action
+            No categories yet. Create your first one in Milestone 3.
           </p>
-        ) : (
+        ) : !loadError && data.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded-md">
+            No categories match this filter.
+          </p>
+        ) : !loadError ? (
           <Card>
             <DataGrid
               table={table}
@@ -191,7 +236,7 @@ export function CategoriesTable() {
               </CardFooter>
             </DataGrid>
           </Card>
-        )}
+        ) : null}
       </div>
     </Container>
   );

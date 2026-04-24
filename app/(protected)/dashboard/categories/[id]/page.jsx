@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { format, parseISO } from 'date-fns';
 import { PageHeader } from '@/components/custom/page-header';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,30 +21,37 @@ import {
 import { StatusBadge } from '@/components/custom/status-badge';
 import { Container } from '@/components/common/container';
 import { MilestoneNote } from '@/components/custom/milestone-note';
-import {
-  getCategoryById,
-  getTopicsByCategoryId,
-  getArticlesByCategoryId,
-} from '@/app/(protected)/dashboard/_mock';
+import { getCategoryById } from '@/services/category.service';
+import { getArticles } from '@/services/article.service';
+import { PipelineStageBadge } from '@/components/custom/pipeline-stage-badge';
 
 export const metadata = {
   title: 'Category',
   description: 'Category detail and related content',
 };
 
+function fmt(d) {
+  if (!d) return '—';
+  try {
+    return format(d instanceof Date ? d : parseISO(String(d)), 'PP');
+  } catch {
+    return '—';
+  }
+}
+
 export default async function CategoryDetailPage({ params }) {
   const { id } = await params;
-  const category = getCategoryById(id);
+  const category = await getCategoryById(id);
   if (!category) notFound();
 
-  const topics = getTopicsByCategoryId(id);
-  const articles = getArticlesByCategoryId(id);
+  const articles = await getArticles({ categoryId: id });
+  const topics = category.topics;
 
   return (
     <>
       <PageHeader
         title={category.name}
-        description={category.description}
+        description={category.description ?? ''}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Categories', href: '/dashboard/categories' },
@@ -76,18 +84,16 @@ export default async function CategoryDetailPage({ params }) {
                 </StatusBadge>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Slug</span>
-                <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                  {category.slug}
-                </code>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-muted-foreground">Topics</span>
-                <span>{category.topicCount}</span>
+                <span>{category._count.topics}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Articles</span>
-                <span>{category.articleCount}</span>
+                <span>{category._count.articles}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Updated</span>
+                <span>{fmt(category.updatedAt)}</span>
               </div>
             </CardContent>
           </Card>
@@ -97,7 +103,7 @@ export default async function CategoryDetailPage({ params }) {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-foreground/90 leading-relaxed">
-                {category.description}
+                {category.description || '—'}
               </p>
             </CardContent>
           </Card>
@@ -111,12 +117,12 @@ export default async function CategoryDetailPage({ params }) {
             </CardHeader>
             <CardContent>
               {topics.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No topics (mock)</p>
+                <p className="text-sm text-muted-foreground">No topics yet</p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Title</TableHead>
+                      <TableHead>Name</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -128,7 +134,7 @@ export default async function CategoryDetailPage({ params }) {
                             className="text-primary font-medium hover:underline"
                             href={`/dashboard/topics/${t.id}`}
                           >
-                            {t.title}
+                            {t.name}
                           </Link>
                         </TableCell>
                         <TableCell>
@@ -173,8 +179,8 @@ export default async function CategoryDetailPage({ params }) {
                             {a.title}
                           </Link>
                         </TableCell>
-                        <TableCell className="capitalize text-muted-foreground">
-                          {a.stage}
+                        <TableCell>
+                          <PipelineStageBadge stage={a.status} />
                         </TableCell>
                       </TableRow>
                     ))}
