@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -10,6 +11,8 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
+import { Pencil, Trash2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { Card, CardFooter, CardTable } from '@/components/ui/card';
 import { DataGrid } from '@/components/ui/data-grid';
 import { DataGridColumnHeader } from '@/components/ui/data-grid-column-header';
@@ -18,51 +21,41 @@ import { DataGridTable } from '@/components/ui/data-grid-table';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/custom/status-badge';
 import { MockTableToolbar } from '@/app/(protected)/dashboard/components/mock-table-toolbar';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Container } from '@/components/common/container';
-import { MilestoneNote } from '@/components/custom/milestone-note';
 import { AlertCircle, ChevronRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { CategoryFormDialog } from './category-form-dialog';
+import { CategoryArchiveDialog } from './category-archive-dialog';
+import { cn } from '@/lib/utils';
+
+async function fetchCategories() {
+  const res = await apiFetch('/api/categories');
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.message || 'Failed to load categories');
+  }
+  return res.json();
+}
 
 export function CategoriesTable() {
   const router = useRouter();
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState('');
-  const [open, setOpen] = useState(false);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
+  const [formOpen, setFormOpen] = useState(false);
+  const [formCategory, setFormCategory] = useState(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveCategory, setArchiveCategory] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const res = await fetch('/api/categories');
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j.message || 'Failed to load categories');
-        }
-        const json = await res.json();
-        if (!cancelled) setRows(json.data ?? []);
-      } catch (e) {
-        if (!cancelled) setLoadError(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['categories'],
+    queryFn: fetchCategories,
+  });
 
-  const data = useMemo(() => {
+  const rows = data?.data ?? [];
+
+  const dataFiltered = useMemo(() => {
     const q = search.toLowerCase();
     return rows.filter(
       (c) =>
@@ -84,6 +77,7 @@ export function CategoriesTable() {
           <Link
             className="font-medium text-primary hover:underline"
             href={`/dashboard/categories/${row.original.id}`}
+            onClick={(e) => e.stopPropagation()}
           >
             {row.original.name}
           </Link>
@@ -108,13 +102,19 @@ export function CategoriesTable() {
         header: ({ column }) => (
           <DataGridColumnHeader title="Status" column={column} />
         ),
-        cell: ({ getValue }) => (
-          <StatusBadge
-            variant={getValue() === 'active' ? 'active' : 'archived'}
-          >
-            {getValue()}
-          </StatusBadge>
-        ),
+        cell: ({ getValue }) => {
+          const v = getValue();
+          return (
+            <StatusBadge
+              variant={v === 'active' ? 'active' : 'archived'}
+              className={cn(
+                v === 'archived' && 'opacity-80',
+              )}
+            >
+              {v}
+            </StatusBadge>
+          );
+        },
         size: 100,
       },
       {
@@ -143,6 +143,47 @@ export function CategoriesTable() {
         size: 120,
       },
       {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div
+              className="flex items-center justify-end gap-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label="Edit"
+                onClick={() => {
+                  setFormCategory(r);
+                  setFormOpen(true);
+                }}
+              >
+                <Pencil className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 text-destructive hover:text-destructive"
+                aria-label="Archive or delete"
+                onClick={() => {
+                  setArchiveCategory(r);
+                  setArchiveOpen(true);
+                }}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          );
+        },
+        size: 100,
+      },
+      {
         id: 'go',
         header: '',
         cell: () => <ChevronRight className="size-4 text-muted-foreground" />,
@@ -153,7 +194,7 @@ export function CategoriesTable() {
   );
 
   const table = useReactTable({
-    data,
+    data: dataFiltered,
     columns,
     state: { pagination },
     onPaginationChange: setPagination,
@@ -163,46 +204,63 @@ export function CategoriesTable() {
     getRowId: (r) => r.id,
   });
 
+  const loadError = isError ? error?.message : null;
+  const showSkeleton = isLoading;
+  const showTable = !loadError && !isLoading;
+
   return (
     <Container>
-      <MilestoneNote milestone={3}>Real CRUD for categories in Milestone 3.</MilestoneNote>
       <div className="mt-4">
         {loadError && (
           <Alert variant="destructive" className="mb-4">
             <AlertCircle className="size-4" />
             <AlertTitle>Could not load categories</AlertTitle>
-            <AlertDescription>{loadError}</AlertDescription>
+            <AlertDescription className="flex flex-wrap items-center gap-2">
+              {loadError}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => refetch()}
+              >
+                Retry
+              </Button>
+            </AlertDescription>
           </Alert>
         )}
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent>
-            <SheetHeader>
-              <SheetTitle>Create category</SheetTitle>
-              <SheetDescription>Form is non-persistent. TODO(M3)</SheetDescription>
-            </SheetHeader>
-            <div className="mt-6 space-y-3">
-              <div>
-                <Label>Name</Label>
-                <Input placeholder="e.g. Finance" disabled />
-              </div>
-              <div>
-                <Label>Description</Label>
-                <Textarea rows={3} disabled placeholder="Short summary…" />
-              </div>
-              <Button disabled className="w-full">
-                Save (inactive)
-              </Button>
-            </div>
-          </SheetContent>
-        </Sheet>
+
+        <CategoryFormDialog
+          open={formOpen}
+          onOpenChange={(o) => {
+            setFormOpen(o);
+            if (!o) setFormCategory(null);
+          }}
+          category={formCategory}
+        />
+        <CategoryArchiveDialog
+          open={archiveOpen}
+          onOpenChange={(o) => {
+            setArchiveOpen(o);
+            if (!o) setArchiveCategory(null);
+          }}
+          category={archiveCategory}
+        />
+
         <MockTableToolbar
           search={search}
           onSearchChange={setSearch}
-          actionLabel="Create (opens sheet)"
-          onAction={() => setOpen(true)}
+          actionLabel="Create category"
+          onAction={() => {
+            setFormCategory(null);
+            setFormOpen(true);
+          }}
           placeholder="Filter categories"
         />
-        {loading ? (
+        {isFetching && !isLoading && (
+          <p className="text-xs text-muted-foreground mb-2">Refreshing…</p>
+        )}
+
+        {showSkeleton ? (
           <div className="space-y-2 py-2">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
@@ -210,20 +268,29 @@ export function CategoriesTable() {
           </div>
         ) : !loadError && rows.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded-md">
-            No categories yet. Create your first one in Milestone 3.
+            No categories yet.{' '}
+            <button
+              type="button"
+              className="text-primary underline font-medium"
+              onClick={() => {
+                setFormCategory(null);
+                setFormOpen(true);
+              }}
+            >
+              Create your first category
+            </button>
+            .
           </p>
-        ) : !loadError && data.length === 0 ? (
+        ) : !loadError && dataFiltered.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded-md">
             No categories match this filter.
           </p>
-        ) : !loadError ? (
+        ) : showTable ? (
           <Card>
             <DataGrid
               table={table}
-              recordCount={data.length}
-              onRowClick={(row) =>
-                router.push(`/dashboard/categories/${row.id}`)
-              }
+              recordCount={dataFiltered.length}
+              onRowClick={(row) => router.push(`/dashboard/categories/${row.id}`)}
             >
               <CardTable>
                 <ScrollArea>

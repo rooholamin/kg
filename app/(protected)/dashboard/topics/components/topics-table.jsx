@@ -1,14 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table';
+import { Pencil, Trash2, AlertCircle, ChevronRight } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { Card, CardFooter, CardTable } from '@/components/ui/card';
 import { DataGrid } from '@/components/ui/data-grid';
 import { DataGridColumnHeader } from '@/components/ui/data-grid-column-header';
@@ -18,68 +21,65 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/custom/status-badge';
 import { MockTableToolbar } from '@/app/(protected)/dashboard/components/mock-table-toolbar';
 import { Container } from '@/components/common/container';
-import { MilestoneNote } from '@/components/custom/milestone-note';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { AlertCircle, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { TopicFormDialog } from './topic-form-dialog';
+import { TopicArchiveDialog } from './topic-archive-dialog';
+import { cn } from '@/lib/utils';
+
+async function fetchTopics() {
+  const res = await apiFetch('/api/topics');
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.message || 'Failed to load topics');
+  }
+  return res.json();
+}
+
+async function fetchCategories() {
+  const res = await apiFetch('/api/categories');
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.message || 'Failed to load categories');
+  }
+  return res.json();
+}
 
 export function TopicsTable() {
   const router = useRouter();
-  const [rows, setRows] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
+  const [formOpen, setFormOpen] = useState(false);
+  const [formTopic, setFormTopic] = useState(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveTopic, setArchiveTopic] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const [topicsRes, catRes] = await Promise.all([
-          fetch('/api/topics'),
-          fetch('/api/categories'),
-        ]);
-        if (!topicsRes.ok) {
-          const j = await topicsRes.json().catch(() => ({}));
-          throw new Error(j.message || 'Failed to load topics');
-        }
-        if (!catRes.ok) {
-          const j = await catRes.json().catch(() => ({}));
-          throw new Error(j.message || 'Failed to load categories');
-        }
-        const [topicsJson, catJson] = await Promise.all([
-          topicsRes.json(),
-          catRes.json(),
-        ]);
-        if (!cancelled) {
-          setRows(topicsJson.data ?? []);
-          setCategories(catJson.data ?? []);
-        }
-      } catch (e) {
-        if (!cancelled) setLoadError(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['topics'],
+    queryFn: fetchTopics,
+  });
 
-  const data = useMemo(() => {
+  const { data: catData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: fetchCategories,
+  });
+
+  const rows = data?.data ?? [];
+  const categories = catData?.data ?? [];
+
+  const dataFiltered = useMemo(() => {
     const q = search.toLowerCase();
     return rows.filter((t) => {
       const matchQ =
         !q ||
         t.name.toLowerCase().includes(q) ||
-        (t.targetKeyword ?? '').toLowerCase().includes(q);
+        (t.targetKeyword ?? '').toLowerCase().includes(q) ||
+        (t.description ?? '').toLowerCase().includes(q);
       const matchC = catFilter === 'all' || t.categoryId === catFilter;
       return matchQ && matchC;
     });
@@ -97,6 +97,7 @@ export function TopicsTable() {
           <Link
             className="font-medium text-primary hover:underline"
             href={`/dashboard/topics/${row.original.id}`}
+            onClick={(e) => e.stopPropagation()}
           >
             {row.original.name}
           </Link>
@@ -109,7 +110,9 @@ export function TopicsTable() {
         header: ({ column }) => (
           <DataGridColumnHeader title="Category" column={column} />
         ),
-        cell: ({ row }) => <Badge variant="secondary">{row.original.categoryName}</Badge>,
+        cell: ({ row }) => (
+          <Badge variant="secondary">{row.original.categoryName}</Badge>
+        ),
         size: 120,
       },
       {
@@ -144,7 +147,10 @@ export function TopicsTable() {
         cell: ({ getValue }) => {
           const v = getValue();
           return (
-            <StatusBadge variant={v === 'active' ? 'active' : 'draft'}>
+            <StatusBadge
+              variant={v === 'active' ? 'active' : 'archived'}
+              className={cn(v === 'archived' && 'opacity-80')}
+            >
               {v}
             </StatusBadge>
           );
@@ -166,6 +172,47 @@ export function TopicsTable() {
         size: 160,
       },
       {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div
+              className="flex items-center justify-end gap-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label="Edit"
+                onClick={() => {
+                  setFormTopic(r);
+                  setFormOpen(true);
+                }}
+              >
+                <Pencil className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 text-destructive hover:text-destructive"
+                aria-label="Archive or delete"
+                onClick={() => {
+                  setArchiveTopic(r);
+                  setArchiveOpen(true);
+                }}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          );
+        },
+        size: 100,
+      },
+      {
         id: 'go',
         header: '',
         cell: () => <ChevronRight className="size-4 text-muted-foreground" />,
@@ -176,7 +223,7 @@ export function TopicsTable() {
   );
 
   const table = useReactTable({
-    data,
+    data: dataFiltered,
     columns,
     state: { pagination },
     onPaginationChange: setPagination,
@@ -186,17 +233,48 @@ export function TopicsTable() {
     getRowId: (r) => r.id,
   });
 
+  const loadError = isError ? error?.message : null;
+  const showSkeleton = isLoading;
+  const showTable = !loadError && !isLoading;
+
   return (
     <Container>
-      <MilestoneNote milestone={3}>Real topic CRUD in Milestone 3</MilestoneNote>
       <div className="mt-4 space-y-3">
         {loadError && (
           <Alert variant="destructive">
             <AlertCircle className="size-4" />
             <AlertTitle>Could not load topics</AlertTitle>
-            <AlertDescription>{loadError}</AlertDescription>
+            <AlertDescription className="flex flex-wrap items-center gap-2">
+              {loadError}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => refetch()}
+              >
+                Retry
+              </Button>
+            </AlertDescription>
           </Alert>
         )}
+
+        <TopicFormDialog
+          open={formOpen}
+          onOpenChange={(o) => {
+            setFormOpen(o);
+            if (!o) setFormTopic(null);
+          }}
+          topic={formTopic}
+        />
+        <TopicArchiveDialog
+          open={archiveOpen}
+          onOpenChange={(o) => {
+            setArchiveOpen(o);
+            if (!o) setArchiveTopic(null);
+          }}
+          topic={archiveTopic}
+        />
+
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="w-full sm:w-48">
             <Label className="text-xs text-muted-foreground">Category</Label>
@@ -218,10 +296,18 @@ export function TopicsTable() {
         <MockTableToolbar
           search={search}
           onSearchChange={setSearch}
-          actionLabel="New topic (M3)"
-          onAction={() => {}}
+          actionLabel="New topic"
+          onAction={() => {
+            setFormTopic(null);
+            setFormOpen(true);
+          }}
+          placeholder="Filter topics"
         />
-        {loading ? (
+        {isFetching && !isLoading && (
+          <p className="text-xs text-muted-foreground">Refreshing…</p>
+        )}
+
+        {showSkeleton ? (
           <div className="space-y-2">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
@@ -229,17 +315,28 @@ export function TopicsTable() {
           </div>
         ) : !loadError && rows.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded-md">
-            No topics yet. Create your first in Milestone 3.
+            No topics yet.{' '}
+            <button
+              type="button"
+              className="text-primary underline font-medium"
+              onClick={() => {
+                setFormTopic(null);
+                setFormOpen(true);
+              }}
+            >
+              Create your first topic
+            </button>
+            .
           </p>
-        ) : !loadError && data.length === 0 ? (
+        ) : !loadError && dataFiltered.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded-md">
             No topics match this filter.
           </p>
-        ) : !loadError ? (
+        ) : showTable ? (
           <Card>
             <DataGrid
               table={table}
-              recordCount={data.length}
+              recordCount={dataFiltered.length}
               onRowClick={(row) => router.push(`/dashboard/topics/${row.id}`)}
             >
               <CardTable>

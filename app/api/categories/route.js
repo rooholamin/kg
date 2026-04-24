@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
-import { getCategories } from '@/services/category.service';
+import { getCategories, createCategory } from '@/services/category.service';
+import { CategoryFormSchema } from '@/app/(protected)/dashboard/categories/forms/category-schema';
 
 export async function GET() {
   try {
@@ -30,6 +31,54 @@ export async function GET() {
     console.error('[api/categories]', e);
     return NextResponse.json(
       { message: 'Failed to load categories' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { message: 'Unauthorized request' },
+        { status: 401 },
+      );
+    }
+
+    const body = await request.json();
+    const parsed = CategoryFormSchema.safeParse(body);
+    if (!parsed.success) {
+      const first = parsed.error.errors[0];
+      return NextResponse.json(
+        { message: first?.message || 'Invalid input' },
+        { status: 400 },
+      );
+    }
+
+    const row = await createCategory(parsed.data);
+    return NextResponse.json({
+      data: {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        topicCount: 0,
+        articleCount: 0,
+      },
+    });
+  } catch (e) {
+    console.error('[api/categories POST]', e);
+    if (e?.code === 'DUPLICATE') {
+      return NextResponse.json({ message: e.message }, { status: 409 });
+    }
+    if (e?.code === 'VALIDATION') {
+      return NextResponse.json({ message: e.message }, { status: 400 });
+    }
+    return NextResponse.json(
+      { message: 'Failed to create category' },
       { status: 500 },
     );
   }

@@ -6,6 +6,7 @@ const rolesData = require('./data/roles');
 const usersData = require('./data/users');
 const permissionsData = require('./data/permissions');
 const magazineContent = require('./data/magazine-content');
+const kgContent = require('./data/kg-content');
 
 const prisma = new PrismaClient();
 
@@ -300,6 +301,32 @@ async function main() {
         });
       }
       console.log('Magazine content (categories, topics, articles, logs, approvals) seeded.');
+
+      for (const c of kgContent.categories) {
+        await tx.category.upsert({
+          where: { id: c.id },
+          update: {
+            name: c.name,
+            description: c.description,
+            status: c.status,
+          },
+          create: c,
+        });
+      }
+      for (const t of kgContent.topics) {
+        await tx.topic.upsert({
+          where: { id: t.id },
+          update: {
+            name: t.name,
+            description: t.description,
+            categoryId: t.categoryId,
+            targetKeyword: t.targetKeyword,
+            status: t.status,
+          },
+          create: t,
+        });
+      }
+      console.log('Kingsgate home-service content (categories, topics) seeded.');
 
       console.log('Database seeding completed!');
     },

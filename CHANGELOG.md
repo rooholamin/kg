@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0] — Milestone 3 Categories & Topics CRUD — 2026-04-24
+
+### Added
+
+- **Kingsgate seed data** — `prisma/data/kg-content.js` (6 home-service categories, 24 topics, fixed UUIDs, mix of `active` / `archived`); upserted in `prisma/seed.js` after magazine content. Idempotent: `npm run seed` or `npx prisma db seed`.
+- **`contentLog` service** — `services/content-log.service.js` for content-operation events (separate from `SystemLog`).
+- **Category & topic services** — create, update, archive-or-delete with relation checks (category: archive if any topics or articles, else hard delete; topic: archive if any articles, else hard delete), case-insensitive duplicate name checks, `ContentLog` on every change.
+- **CRUD API** (session-guarded) — `POST /api/categories`, `PUT` + `DELETE /api/categories/[id]`, `POST /api/topics`, `PUT` + `DELETE /api/topics/[id]`; Zod validation; clear 400/404/409 responses.
+- **Forms** — Zod schemas in `app/(protected)/dashboard/categories/forms/` and `.../topics/forms/`; Metronic `Dialog` + React Hook Form + TanStack Query mutations (aligned with user-management pattern).
+- **UI** — Create/edit and archive-or-delete (confirmation `AlertDialog`) on categories and topics list and detail pages; `useQuery` for lists; toasts, loading/error/empty states, `router.refresh()` after mutations.
+
+### Changed
+
+- Categories and topics list pages no longer use placeholder sheets or non-persistent create flows; detail pages use real actions instead of disabled “Save” placeholders.
+
+### Unchanged (still mock / future milestones)
+
+- Articles CRUD (M4+); main dashboard AI, calendar, SEO, project progress, approvals, logs content; topic **Readiness** column (M6); **Activity** cards on category/topic detail (M7); Kingsgate business links block (M10).
+
+### Next (Milestone 4)
+
+- Articles CRUD and pipeline integration.
+
 ## [0.2.0] — Milestone 2 Backend Foundation — 2026-04-24
 
 ### Added
@@ -13,10 +36,6 @@
 ### Unchanged (still mock-backed)
 
 - Main dashboard, AI, calendar, SEO, logs, project progress, approvals; `PIPELINE_STAGES` import on articles list for filter labels.
-
-### Next (Milestone 3)
-
-- Real CRUD for categories and topics.
 
 ## [0.1.0] — Milestone 1 UI Shell — 2026-04-24
 

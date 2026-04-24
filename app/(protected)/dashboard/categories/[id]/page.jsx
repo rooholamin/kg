@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { PageHeader } from '@/components/custom/page-header';
-import { Button } from '@/components/ui/button';
+import { CategoryDetailActions } from '../components/category-detail-actions';
 import {
   Card,
   CardContent,
@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/table';
 import { StatusBadge } from '@/components/custom/status-badge';
 import { Container } from '@/components/common/container';
-import { MilestoneNote } from '@/components/custom/milestone-note';
 import { getCategoryById } from '@/services/category.service';
 import { getArticles } from '@/services/article.service';
 import { PipelineStageBadge } from '@/components/custom/pipeline-stage-badge';
@@ -58,16 +57,19 @@ export default async function CategoryDetailPage({ params }) {
           { label: category.name, href: `/dashboard/categories/${id}` },
         ]}
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/categories">Back</Link>
-            </Button>
-            <Button disabled>Save changes (M3)</Button>
-          </div>
+          <CategoryDetailActions
+            category={{
+              id: category.id,
+              name: category.name,
+              description: category.description,
+              status: category.status,
+              topicCount: category._count.topics,
+              articleCount: category._count.articles,
+            }}
+          />
         }
       />
       <Container>
-        <MilestoneNote milestone={3}>Editing persists in Milestone 3</MilestoneNote>
         <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-3">
           <Card>
             <CardHeader>
@@ -140,7 +142,7 @@ export default async function CategoryDetailPage({ params }) {
                         <TableCell>
                           <StatusBadge
                             variant={
-                              t.status === 'active' ? 'active' : 'draft'
+                              t.status === 'active' ? 'active' : 'archived'
                             }
                           >
                             {t.status}

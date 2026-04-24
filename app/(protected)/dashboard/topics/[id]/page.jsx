@@ -20,10 +20,10 @@ import {
 } from '@/components/ui/table';
 import { StatusBadge } from '@/components/custom/status-badge';
 import { Container } from '@/components/common/container';
-import { MilestoneNote } from '@/components/custom/milestone-note';
 import { getTopicById } from '@/services/topic.service';
+import { TopicDetailActions } from '../components/topic-detail-actions';
 import { PipelineStageBadge } from '@/components/custom/pipeline-stage-badge';
-import { Badge } from '@/components/ui/badge';
+import { MilestoneNote } from '@/components/custom/milestone-note';
 
 export const metadata = { title: 'Topic' };
 
@@ -41,6 +41,7 @@ export default async function TopicDetailPage({ params }) {
   const topic = await getTopicById(id);
   if (!topic) notFound();
   const articles = topic.articles;
+  const articleCount = topic._count?.articles ?? articles.length;
 
   return (
     <>
@@ -53,13 +54,20 @@ export default async function TopicDetailPage({ params }) {
           { label: topic.name, href: `/dashboard/topics/${id}` },
         ]}
         actions={
-          <Button variant="outline" asChild>
-            <Link href="/dashboard/topics">Back</Link>
-          </Button>
+          <TopicDetailActions
+            topic={{
+              id: topic.id,
+              name: topic.name,
+              description: topic.description,
+              categoryId: topic.categoryId,
+              targetKeyword: topic.targetKeyword,
+              status: topic.status,
+              articleCount,
+            }}
+          />
         }
       />
       <Container>
-        <MilestoneNote milestone={3}>Topic edit/persist in Milestone 3</MilestoneNote>
         <div className="mt-4 grid gap-5 lg:grid-cols-2">
           <Card>
             <CardHeader>
@@ -69,11 +77,20 @@ export default async function TopicDetailPage({ params }) {
               <p>{topic.description || '—'}</p>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-muted-foreground">Category</span>
-                <Badge variant="secondary">{topic.category.name}</Badge>
+                <Button variant="secondary" size="sm" asChild>
+                  <Link
+                    className="font-medium"
+                    href={`/dashboard/categories/${topic.categoryId}`}
+                  >
+                    {topic.category.name}
+                  </Link>
+                </Button>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Status</span>
-                <StatusBadge variant={topic.status === 'active' ? 'active' : 'draft'}>
+                <StatusBadge
+                  variant={topic.status === 'active' ? 'active' : 'archived'}
+                >
                   {topic.status}
                 </StatusBadge>
               </div>

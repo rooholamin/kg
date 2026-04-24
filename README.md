@@ -14,6 +14,7 @@ Private internal dashboard for an AI-assisted content operations platform. Manag
 |---|---|
 | [`PRODUCT_OVERVIEW.md`](./PRODUCT_OVERVIEW.md) | Product context, system sections, milestone plan, key rules |
 | [`METRONIC_MASTER_ANALYSIS.md`](./METRONIC_MASTER_ANALYSIS.md) | Metronic structure, routing, components, theming, safe customization rules |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Version history and per-milestone deliverables |
 
 Both documents are required reading before starting any milestone.
 
@@ -23,7 +24,7 @@ Both documents are required reading before starting any milestone.
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15.3 (App Router) |
+| Framework | Next.js 16.2 (App Router) |
 | UI | Metronic v9.4.10 + Tailwind CSS v4 + shadcn/ui-style components |
 | Auth | NextAuth v4 (JWT, Credentials + Google) |
 | Database | PostgreSQL 17 via Prisma ORM |
@@ -67,7 +68,7 @@ Fill in required values:
 ```env
 DATABASE_URL=postgresql://...
 NEXTAUTH_SECRET=...
-NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL=http://localhost:4000
 
 # Optional: Google OAuth
 GOOGLE_CLIENT_ID=...
@@ -99,7 +100,14 @@ npx prisma db seed
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:4000](http://localhost:4000) (dev port is set in `package.json`).
+
+---
+
+## Features (shipped in milestones)
+
+- **Milestones 1–2** — Full dashboard UI shell, auth, and read-only Prisma-backed APIs for categories, topics, and articles. Magazine-style seed data.
+- **Milestone 3** — **Categories and topics**: full CRUD (create, edit, archive or delete with dependency rules), `ContentLog` entries on changes, Kingsgate home-service seed (`prisma/data/kg-content.js`, run `npx prisma db seed`). List and detail under `/dashboard/categories` and `/dashboard/topics`. Articles remain list/detail from DB without article CRUD until Milestone 4.
 
 ---
 
@@ -143,9 +151,9 @@ additional-concepts/ # Pre-built Metronic concept apps (reference only — do no
 | # | Milestone | Status |
 |---|---|---|
 | 0 | Metronic Master Analysis | ✅ Complete |
-| 1 | Full Dashboard UI (Non-Functional) | ⬜ Pending |
-| 2 | Backend Foundation + Auth | ⬜ Pending |
-| 3 | Categories & Topics | ⬜ Pending |
+| 1 | Full Dashboard UI (Non-Functional) | ✅ Complete |
+| 2 | Backend Foundation + Auth | ✅ Complete |
+| 3 | Categories & Topics (CRUD + seed) | ✅ Complete |
 | 4 | Articles + Pipeline | ⬜ Pending |
 | 5 | Tasks + Kanban System | ⬜ Pending |
 | 6 | Editorial Calendar + Readiness Rule | ⬜ Pending |
