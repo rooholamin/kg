@@ -1,16 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, Settings, Settings2, Shield, Users } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuPortal,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -25,21 +21,10 @@ import {
 } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Item1 from './notifications/item-1';
-import Item2 from './notifications/item-2';
 import Item3 from './notifications/item-3';
-import Item4 from './notifications/item-4';
 import Item5 from './notifications/item-5';
-import Item6 from './notifications/item-6';
-import Item10 from './notifications/item-10';
-import Item11 from './notifications/item-11';
-import Item13 from './notifications/item-13';
-import Item14 from './notifications/item-14';
-import Item15 from './notifications/item-15';
-import Item16 from './notifications/item-16';
-import Item17 from './notifications/item-17';
-import Item18 from './notifications/item-18';
-import Item19 from './notifications/item-19';
-import Item20 from './notifications/item-20';
+
+const Divider = () => <div className="border-b border-b-border" />;
 
 export function NotificationsSheet({ trigger }) {
   return (
@@ -63,55 +48,16 @@ export function NotificationsSheet({ trigger }) {
                 <div className="grow flex items-center justify-end">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        mode="icon"
-                        className="mb-1"
-                      >
+                      <Button variant="ghost" size="sm" mode="icon" className="mb-1">
                         <Settings className="size-4.5!" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      className="w-44"
-                      side="bottom"
-                      align="end"
-                    >
+                    <DropdownMenuContent className="w-48" side="bottom" align="end">
                       <DropdownMenuItem asChild>
-                        <Link href="/account/members/teams">
-                          <Users /> Invite Users
-                        </Link>
+                        <Link href="/dashboard/settings">Notification Preferences</Link>
                       </DropdownMenuItem>
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
-                          <Settings2 />
-                          <span>Team Settings</span>
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuPortal>
-                          <DropdownMenuSubContent className="w-44">
-                            <DropdownMenuItem asChild>
-                              <Link href="/account/members/import-members">
-                                <Shield />
-                                Find Members
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href="/account/members/import-members">
-                                <Calendar /> Meetings
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href="/account/members/import-members">
-                                <Shield /> Group Settings
-                              </Link>
-                            </DropdownMenuItem>
-                          </DropdownMenuSubContent>
-                        </DropdownMenuPortal>
-                      </DropdownMenuSub>
                       <DropdownMenuItem asChild>
-                        <Link href="/account/security/privacy-settings">
-                          <Shield /> Group Settings
-                        </Link>
+                        <Link href="/dashboard/users">Manage Team</Link>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -121,82 +67,108 @@ export function NotificationsSheet({ trigger }) {
               {/* All Tab */}
               <TabsContent value="all" className="mt-0">
                 <div className="flex flex-col gap-5">
-                  <Item1
-                    userName="Joe Lincoln"
-                    avatar="300-4.png"
-                    description="mentioned you in"
-                    link="Latest Trends"
-                    label="topic"
-                    time="18 mins ago"
-                    specialist="Web Design 2024"
-                    text="For an expert opinion, check out what Mike has to say on this topic!"
-                  />
-
-                  <div className="border-b border-b-border"></div>
-                  <Item2 />
-                  <div className="border-b border-b-border"></div>
-                  <Item3
-                    userName="Guy Hawkins"
-                    avatar="300-27.png"
-                    badgeColor="offline"
-                    description="requested access to"
-                    link="AirSpace"
-                    day="project"
-                    date="14 hours ago"
-                    info="Dev Team"
-                  />
-
-                  <div className="border-b border-b-border"></div>
-                  <Item4 />
-                  <div className="border-b border-b-border"></div>
                   <Item5
-                    userName="Raymond Pawell"
+                    userName="Sarah Chen"
+                    avatar="300-3.png"
+                    badgeColor="online"
+                    description="moved"
+                    link="5 Best AI Tools in 2026"
+                    day="to Review stage"
+                    date="18 mins ago"
+                    info="Technology"
+                  />
+                  <Divider />
+                  <Item3
+                    userName="Marcus Webb"
                     avatar="300-11.png"
                     badgeColor="online"
-                    description="posted a new article"
-                    link="2024 Roadmap"
+                    description="requested your approval for"
+                    link="Retirement Planning Basics"
                     day=""
                     date="1 hour ago"
-                    info="Roadmap"
+                    info="Finance"
                   />
-
-                  <div className="border-b border-b-border"></div>
-                  <Item6 />
+                  <Divider />
+                  <Item1
+                    userName="Alex Rivera"
+                    avatar="300-5.png"
+                    description="mentioned you in"
+                    link="AI Investment Guide"
+                    label="brief"
+                    time="2 hours ago"
+                    specialist="Technology"
+                    text="@You — can you review the keyword strategy section before this goes to assets?"
+                  />
+                  <Divider />
+                  <Item5
+                    userName="Jordan Lee"
+                    avatar="300-1.png"
+                    badgeColor="online"
+                    description="completed writing"
+                    link="Budgeting for Beginners"
+                    day=""
+                    date="4 hours ago"
+                    info="Finance"
+                  />
+                  <Divider />
+                  <Item5
+                    userName="AI System"
+                    avatar="300-34.png"
+                    badgeColor="offline"
+                    description="completed generation for"
+                    link="Climate Tech Investment Guide"
+                    day="— ready for review"
+                    date="6 hours ago"
+                    info="Automation"
+                  />
                 </div>
               </TabsContent>
 
               {/* Inbox Tab */}
               <TabsContent value="inbox" className="mt-0">
                 <div className="flex flex-col gap-5">
-                  <Item13 />
-                  <div className="border-b border-b-border"></div>
-                  <Item14 />
-                  <div className="border-b border-b-border"></div>
-                  <Item15 />
-                  <div className="border-b border-b-border"></div>
-                  <Item16 />
-                  <div className="border-b border-b-border"></div>
                   <Item3
-                    userName="Benjamin Harris"
-                    avatar="300-30.png"
-                    badgeColor="offline"
-                    description="requested to upgrade plan"
-                    link=""
-                    day=""
-                    date="4 days ago"
-                    info="Marketing"
-                  />
-
-                  <div className="border-b border-b-border"></div>
-                  <Item5
-                    userName="Isaac Morgan"
-                    avatar="300-24.png"
+                    userName="Marcus Webb"
+                    avatar="300-11.png"
                     badgeColor="online"
+                    description="needs your approval on"
+                    link="Blockchain Basics Explained"
+                    day=""
+                    date="30 mins ago"
+                    info="Finance"
+                  />
+                  <Divider />
+                  <Item5
+                    userName="Sarah Chen"
+                    avatar="300-3.png"
+                    badgeColor="online"
+                    description="assigned you"
+                    link="Passive Income Strategies"
+                    day="article"
+                    date="2 hours ago"
+                    info="Finance"
+                  />
+                  <Divider />
+                  <Item5
+                    userName="AI System"
+                    avatar="300-34.png"
+                    badgeColor="offline"
+                    description="generation failed for"
+                    link="Crypto Trading Basics"
+                    day="— retry needed"
+                    date="5 hours ago"
+                    info="Automation"
+                  />
+                  <Divider />
+                  <Item1
+                    userName="Jordan Lee"
+                    avatar="300-1.png"
                     description="mentioned you in"
-                    link="Data Transmission"
-                    day="topic"
-                    date="6 days ago"
-                    info="Dev Team"
+                    link="Pension Planning Guide"
+                    label="deadline note"
+                    time="1 day ago"
+                    specialist="Finance"
+                    text="@You — this one has a hard publish date next Monday, can you prioritise the review?"
                   />
                 </div>
               </TabsContent>
@@ -204,43 +176,48 @@ export function NotificationsSheet({ trigger }) {
               {/* Team Tab */}
               <TabsContent value="team" className="mt-0">
                 <div className="flex flex-col gap-5">
-                  <Item10 />
-                  <div className="border-b border-b-border"></div>
                   <Item5
-                    userName="Adrian Vale"
-                    avatar="300-6.png"
-                    badgeColor="offline"
-                    description="posted a new article"
-                    link="Marketing"
-                    day="to 13 May"
-                    date="2 days ago"
-                    info="Marketing"
-                  />
-
-                  <div className="border-b border-b-border"></div>
-                  <Item11 />
-                  <div className="border-b border-b-border"></div>
-                  <Item1
-                    userName="Selene Silverleaf"
-                    avatar="300-21.png"
-                    description="commented on"
-                    link="SiteSculpt"
-                    label=""
-                    time="4 days ago"
-                    specialist="Manager"
-                    text="This design is simply stunning! From layout to color, it's a work of art!"
-                  />
-
-                  <div className="border-b border-b-border"></div>
-                  <Item3
-                    userName="Thalia Fox"
-                    avatar="300-13.png"
+                    userName="Sarah Chen"
+                    avatar="300-3.png"
                     badgeColor="online"
-                    description="has invited you to join"
-                    link="Design Research"
+                    description="moved"
+                    link="Tax Planning Guide 2026"
+                    day="to Assets stage"
+                    date="45 mins ago"
+                    info="Finance"
+                  />
+                  <Divider />
+                  <Item5
+                    userName="Marcus Webb"
+                    avatar="300-11.png"
+                    badgeColor="online"
+                    description="submitted"
+                    link="Investment Strategy Basics"
+                    day="for approval"
+                    date="2 hours ago"
+                    info="Finance"
+                  />
+                  <Divider />
+                  <Item1
+                    userName="Alex Rivera"
+                    avatar="300-5.png"
+                    description="commented on"
+                    link="SEO Fundamentals for Writers"
+                    label="article"
+                    time="1 day ago"
+                    specialist="Technology"
+                    text="@You — added 3 internal linking suggestions and updated the meta description draft."
+                  />
+                  <Divider />
+                  <Item5
+                    userName="Priya Nair"
+                    avatar="300-2.png"
+                    badgeColor="online"
+                    description="started writing"
+                    link="Lifestyle Finance Basics"
                     day=""
-                    date="4 days ago"
-                    info="Dev Team"
+                    date="2 days ago"
+                    info="Finance"
                   />
                 </div>
               </TabsContent>
@@ -248,35 +225,48 @@ export function NotificationsSheet({ trigger }) {
               {/* Following Tab */}
               <TabsContent value="following" className="mt-0">
                 <div className="flex flex-col gap-5">
-                  <Item18 />
-                  <div className="border-b border-b-border"></div>
-                  <Item17 />
-                  <div className="border-b border-b-border"></div>
-                  <Item19 />
-                  <div className="border-b border-b-border"></div>
                   <Item5
-                    userName="Chloe Morgan"
+                    userName="Content System"
                     avatar="300-34.png"
-                    badgeColor="online"
-                    description="posted a new article"
-                    link="User Experience"
-                    day=""
-                    date="1 day ago"
-                    info="Nexus"
-                  />
-
-                  <div className="border-b border-b-border"></div>
-                  <Item20 />
-                  <div className="border-b border-b-border"></div>
-                  <Item3
-                    userName="Thalia Fox"
-                    avatar="300-13.png"
                     badgeColor="offline"
-                    description="has invited you to join"
-                    link="Design Research"
-                    day=""
-                    date="4 days ago"
-                    info="Dev Team"
+                    description='"Personal Finance" topic'
+                    link="reached 10 published articles"
+                    day="— milestone hit"
+                    date="1 hour ago"
+                    info="Finance"
+                  />
+                  <Divider />
+                  <Item5
+                    userName="AI System"
+                    avatar="300-34.png"
+                    badgeColor="offline"
+                    description="AI Command Center ran"
+                    link="15 generations today"
+                    day="— all successful"
+                    date="3 hours ago"
+                    info="Automation"
+                  />
+                  <Divider />
+                  <Item5
+                    userName="Sarah Chen"
+                    avatar="300-3.png"
+                    badgeColor="online"
+                    description='"Retirement Planning" series is'
+                    link="90% complete"
+                    day="— 1 article remaining"
+                    date="1 day ago"
+                    info="Finance"
+                  />
+                  <Divider />
+                  <Item5
+                    userName="Alex Rivera"
+                    avatar="300-5.png"
+                    badgeColor="online"
+                    description='"Technology" category approval rate'
+                    link="reached 94%"
+                    day="this month"
+                    date="2 days ago"
+                    info="Technology"
                   />
                 </div>
               </TabsContent>

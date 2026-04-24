@@ -19,10 +19,13 @@ import { Badge } from '@/components/ui/badge';
 export function SidebarMenu() {
   const pathname = usePathname();
 
-  // Memoize matchPath to prevent unnecessary re-renders
   const matchPath = useCallback(
-    (path) =>
-      path === pathname || (path.length > 1 && pathname.startsWith(path)),
+    (path) => {
+      if (path === pathname) return true;
+      // Use exact match for the root dashboard to avoid it matching all sub-routes
+      if (path === '/dashboard') return false;
+      return path.length > 1 && pathname.startsWith(path);
+    },
     [pathname],
   );
 
@@ -82,7 +85,7 @@ export function SidebarMenu() {
         >
           <Link
             href={item.path || '#'}
-            className="flex items-center justify-between grow gap-2"
+            className="flex items-center justify-start grow gap-2"
           >
             {item.icon && <item.icon data-slot="accordion-menu-icon" />}
             <span data-slot="accordion-menu-title">{item.title}</span>

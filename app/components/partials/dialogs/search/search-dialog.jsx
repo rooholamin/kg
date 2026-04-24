@@ -1,20 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { DropdownMenu4 } from '@/partials/dropdown-menu/dropdown-menu-4';
+import Link from 'next/link';
 import {
-  Badge,
-  Bolt,
-  Captions,
-  CircleUserRound,
-  Home,
-  IdCard,
+  Bot,
+  Calendar,
+  CheckSquare,
+  FileText,
+  LayoutDashboard,
+  Link2,
   Search,
   Settings,
-  SquareCode,
-  UserRoundPen,
-  UserRoundPlus,
+  Tag,
+  Users,
 } from 'lucide-react';
+import { toAbsoluteUrl } from '@/lib/helpers';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -29,213 +29,44 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  SearchDocs,
-  SearchEmpty,
-  SearchIntegrations,
-  SearchMixed,
-  SearchNoResults,
-  SearchSettings,
-  SearchUsers,
-} from './';
+  AccordionMenu,
+  AccordionMenuGroup,
+  AccordionMenuItem,
+} from '@/components/ui/accordion-menu';
+import { Badge, BadgeDot } from '@/components/ui/badge';
+import { EllipsisVertical } from 'lucide-react';
+
+const quickActions = [
+  { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
+  { icon: FileText, label: 'All Articles', href: '/dashboard/articles' },
+  { icon: Bot, label: 'AI Command Center', href: '/dashboard/ai' },
+  { icon: Calendar, label: 'Editorial Calendar', href: '/dashboard/calendar' },
+  { icon: CheckSquare, label: 'Approvals', href: '/dashboard/approvals' },
+  { icon: Link2, label: 'SEO & Linking', href: '/dashboard/seo' },
+  { icon: Tag, label: 'Categories', href: '/dashboard/categories' },
+  { icon: Users, label: 'Users & Roles', href: '/dashboard/users' },
+  { icon: Settings, label: 'Settings', href: '/dashboard/settings' },
+];
+
+const recentArticles = [
+  { title: '5 Best AI Tools in 2026', meta: 'Writing · Technology · Updated 1 hour ago', href: '/dashboard/articles/art-1' },
+  { title: 'Retirement Planning Basics', meta: 'Review · Finance · Updated 3 hours ago', href: '/dashboard/articles/art-2' },
+  { title: 'Budgeting for Beginners', meta: 'Planning · Finance · Updated yesterday', href: '/dashboard/articles/art-3' },
+  { title: 'Climate Tech Investment Guide', meta: 'Research · Technology · Updated 2 days ago', href: '/dashboard/articles/art-4' },
+  { title: 'Passive Income Strategies', meta: 'Approval · Finance · Updated 3 days ago', href: '/dashboard/articles/art-5' },
+  { title: 'SEO Fundamentals for Writers', meta: 'Published · Technology · Updated 4 days ago', href: '/dashboard/articles/art-6' },
+];
+
+const teamMembers = [
+  { avatar: '300-3.png', name: 'Sarah Chen', role: 'Editor', label: 'Active', color: 'success' },
+  { avatar: '300-11.png', name: 'Marcus Webb', role: 'Writer', label: 'Active', color: 'success' },
+  { avatar: '300-5.png', name: 'Alex Rivera', role: 'SEO Lead', label: 'Active', color: 'success' },
+  { avatar: '300-1.png', name: 'Jordan Lee', role: 'Writer', label: 'On Leave', color: 'destructive' },
+  { avatar: '300-2.png', name: 'Priya Nair', role: 'Content Strategist', label: 'Active', color: 'success' },
+];
 
 export function SearchDialog({ trigger }) {
   const [searchInput, setSearchInput] = useState('');
-
-  const mixedSettingsItems = [
-    { icon: IdCard, info: 'Public Profile' },
-    { icon: Settings, info: 'My Account' },
-    { icon: SquareCode, info: 'Devs Forum' },
-  ];
-
-  const mixedUsersItems = [
-    {
-      avatar: '300-3.png',
-      name: 'Tyler Hero',
-      email: 'tyler.hero@gmail.com',
-      label: 'In Office',
-      color: 'success',
-    },
-    {
-      avatar: '300-1.png',
-      name: 'Esther Howard',
-      email: 'esther.howard@gmail.com',
-      label: 'On Leave',
-      color: 'destructive',
-    },
-  ];
-
-  const mixedIntegrationsItems = [
-    {
-      logo: 'jira.svg',
-      name: 'Jira',
-      description: 'Project management',
-      team: [
-        { filename: '300-4.png', variant: 'size-6' },
-        { filename: '300-1.png', variant: 'size-6' },
-        { filename: '300-2.png', variant: 'size-6' },
-        {
-          fallback: '+3',
-          variant:
-            'text-white rounded-full size-6 ring-background bg-green-500',
-        },
-      ],
-    },
-    {
-      logo: 'inferno.svg',
-      name: 'Inferno',
-      description: 'Real-time photo sharing app',
-      team: [
-        { filename: '300-14.png', variant: 'size-6' },
-        { filename: '300-12.png', variant: 'size-6' },
-        { filename: '300-9.png', variant: 'size-6' },
-      ],
-    },
-  ];
-
-  const docsItems = [
-    {
-      image: 'pdf.svg',
-      desc: 'Project-pitch.pdf',
-      date: '4.7 MB 26 Sep 2024 3:20 PM',
-    },
-    {
-      image: 'doc.svg',
-      desc: 'Report-v1.docx',
-      date: '2.3 MB 1 Oct 2024 12:00 PM',
-    },
-    {
-      image: 'javascript.svg',
-      desc: 'Framework-App.js',
-      date: '0.8 MB 17 Oct 2024 6:46 PM',
-    },
-    {
-      image: 'ai.svg',
-      desc: 'Framework-App.js',
-      date: '0.8 MB 17 Oct 2024 6:46 PM',
-    },
-    {
-      image: 'php.svg',
-      desc: 'appController.js',
-      date: '0.1 MB 21 Nov 2024 3:20 PM',
-    },
-  ];
-
-  const settingsItems = [
-    {
-      title: 'Shortcuts',
-      children: [
-        { icon: Home, info: 'Go to Dashboard' },
-        { icon: Badge, info: 'Public Profile' },
-        { icon: CircleUserRound, info: 'My Profile' },
-        { icon: Settings, info: 'My Account' },
-        { icon: SquareCode, info: 'Devs Forum' },
-      ],
-    },
-    {
-      title: 'Actions',
-      children: [
-        { icon: UserRoundPlus, info: 'Create User' },
-        { icon: UserRoundPen, info: 'Create Team' },
-        { icon: Captions, info: 'Change Plan' },
-        { icon: Bolt, info: 'Setup Branding' },
-      ],
-    },
-  ];
-
-  const integrationsItems = [
-    {
-      logo: 'jira.svg',
-      name: 'Jira',
-      description: 'Project management',
-      team: [
-        { filename: '300-4.png', variant: 'size-6' },
-        { filename: '300-1.png', variant: 'size-6' },
-        { filename: '300-2.png', variant: 'size-6' },
-        {
-          fallback: '+3',
-          variant: 'text-white size-6 ring-background bg-green-500',
-        },
-      ],
-    },
-    {
-      logo: 'inferno.svg',
-      name: 'Inferno',
-      description: 'Real-time photo sharing app',
-      team: [
-        { filename: '300-14.png', variant: 'size-6' },
-        { filename: '300-12.png', variant: 'size-6' },
-        { filename: '300-9.png', variant: 'size-6' },
-      ],
-    },
-    {
-      logo: 'evernote.svg',
-      name: 'Evernote',
-      description: 'Notes management app',
-      team: [
-        { filename: '300-6.png', variant: 'size-6' },
-        { filename: '300-3.png', variant: 'size-6' },
-        { filename: '300-1.png', variant: 'size-6' },
-        { filename: '300-8.png', variant: 'size-6' },
-      ],
-    },
-    {
-      logo: 'gitlab.svg',
-      name: 'Gitlab',
-      description: 'Version control and CI/CD platform',
-      team: [
-        { filename: '300-18.png', variant: 'size-6' },
-        { filename: '300-17.png', variant: 'size-6' },
-      ],
-    },
-    {
-      logo: 'google-webdev.svg',
-      name: 'Google Webdev',
-      description: 'Building web experiences',
-      team: [
-        { filename: '300-14.png', variant: 'size-6' },
-        { filename: '300-20.png', variant: 'size-6' },
-        { filename: '300-21.png', variant: 'size-6' },
-      ],
-    },
-  ];
-
-  const usersItems = [
-    {
-      avatar: '300-3.png',
-      name: 'Tyler Hero',
-      email: 'tyler.hero@gmail.com',
-      label: 'In Office',
-      color: 'success',
-    },
-    {
-      avatar: '300-1.png',
-      name: 'Esther Howard',
-      email: 'esther.howard@gmail.com',
-      label: 'On Leave',
-      color: 'destructive',
-    },
-    {
-      avatar: '300-11.png',
-      name: 'Jacob Jones',
-      email: 'jacob.jones@gmail.com',
-      label: 'Remote',
-      color: 'primary',
-    },
-    {
-      avatar: '300-5.png',
-      name: 'Leslie Alexander',
-      email: 'leslie.alexander@gmail.com',
-      label: 'In Office',
-      color: 'success',
-    },
-    {
-      avatar: '300-2.png',
-      name: 'Cody Fisher',
-      email: 'cody.fisher@gmail.com',
-      label: 'Remote',
-      color: 'primary',
-    },
-  ];
 
   return (
     <Dialog>
@@ -252,66 +83,104 @@ export function SearchDialog({ trigger }) {
               value={searchInput}
               className="ps-6 outline-none! ring-0! shadow-none! border-0"
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search..."
+              placeholder="Search articles, topics, categories..."
             />
           </div>
         </DialogHeader>
         <DialogBody className="p-0 pb-5">
-          <Tabs defaultValue="1">
-            <TabsList className="justify-between px-5 mb-2.5" variant="line">
+          <Tabs defaultValue="all">
+            <TabsList className="justify-start px-5 mb-2.5" variant="line">
               <div className="flex items-center gap-5">
-                <TabsTrigger value="1">Mixed</TabsTrigger>
-                <TabsTrigger value="2">Settings</TabsTrigger>
-                <TabsTrigger value="3">Integrations</TabsTrigger>
-                <TabsTrigger value="4">Users</TabsTrigger>
-                <TabsTrigger value="5">Docs</TabsTrigger>
-                <TabsTrigger value="6">Empty</TabsTrigger>
-                <TabsTrigger value="7">No Results</TabsTrigger>
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="articles">Articles</TabsTrigger>
+                <TabsTrigger value="team">Team</TabsTrigger>
               </div>
-
-              <DropdownMenu4
-                trigger={
-                  <Button
-                    variant="ghost"
-                    mode="icon"
-                    size="sm"
-                    className="mb-1.5 -me-2"
-                  >
-                    <Settings />
-                  </Button>
-                }
-              />
             </TabsList>
             <ScrollArea className="h-[480px]">
-              <TabsContent value="1">
-                <SearchMixed
-                  settings={mixedSettingsItems}
-                  integrations={mixedIntegrationsItems}
-                  users={mixedUsersItems}
-                />
+              {/* All tab: quick actions + recent articles */}
+              <TabsContent value="all">
+                <div className="flex flex-col gap-2.5">
+                  <div className="pt-2.5 pb-1.5">
+                    <span className="ps-5 text-xs text-secondary-foreground font-medium">Quick Actions</span>
+                    <div className="pt-2">
+                      <AccordionMenu type="single" collapsible classNames={{ separator: '-mx-2 mb-2.5' }}>
+                        <AccordionMenuGroup>
+                          {quickActions.map((action) => (
+                            <AccordionMenuItem key={action.href} value={action.label} asChild>
+                              <Link href={action.href} className="flex items-center gap-2">
+                                <action.icon size={16} />
+                                <span>{action.label}</span>
+                              </Link>
+                            </AccordionMenuItem>
+                          ))}
+                        </AccordionMenuGroup>
+                      </AccordionMenu>
+                    </div>
+                  </div>
+                  <div className="border-b border-b-border" />
+                  <div className="pt-2.5 pb-1.5">
+                    <span className="ps-5 text-xs text-secondary-foreground font-medium">Recent Articles</span>
+                    <ArticleList items={recentArticles} />
+                  </div>
+                </div>
               </TabsContent>
-              <TabsContent value="2">
-                <SearchSettings items={settingsItems} />
+
+              {/* Articles tab */}
+              <TabsContent value="articles">
+                <div className="pt-2.5">
+                  <ArticleList items={recentArticles} />
+                </div>
               </TabsContent>
-              <TabsContent value="3">
-                <SearchIntegrations items={integrationsItems} more={true} />
-              </TabsContent>
-              <TabsContent value="4">
-                <SearchUsers items={usersItems} more={true} />
-              </TabsContent>
-              <TabsContent value="5">
-                <SearchDocs items={docsItems} />
-              </TabsContent>
-              <TabsContent value="6">
-                <SearchEmpty />
-              </TabsContent>
-              <TabsContent value="7">
-                <SearchNoResults />
+
+              {/* Team tab */}
+              <TabsContent value="team">
+                <div className="grid gap-2 m-2 mt-3">
+                  {teamMembers.map((member) => (
+                    <div key={member.name} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-muted/60 cursor-pointer">
+                      <div className="flex items-center gap-2.5">
+                        <img
+                          src={toAbsoluteUrl(`/media/avatars/${member.avatar}`)}
+                          className="rounded-full size-9 shrink-0"
+                          alt={member.name}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-mono hover:text-primary mb-px">{member.name}</span>
+                          <span className="text-xs text-muted-foreground">{member.role}</span>
+                        </div>
+                      </div>
+                      <Badge size="md" variant={member.color} appearance="light" shape="circle">
+                        <BadgeDot /> {member.label}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
               </TabsContent>
             </ScrollArea>
           </Tabs>
         </DialogBody>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ArticleList({ items }) {
+  return (
+    <div className="grid gap-1 px-3 pt-1">
+      {items.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-muted/60 group"
+        >
+          <div className="flex items-center justify-center size-8 rounded-md bg-primary/10 shrink-0">
+            <FileText className="size-4 text-primary" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-medium text-mono group-hover:text-primary truncate">{item.title}</span>
+            <span className="text-xs text-muted-foreground truncate">{item.meta}</span>
+          </div>
+        </Link>
+      ))}
+    </div>
   );
 }

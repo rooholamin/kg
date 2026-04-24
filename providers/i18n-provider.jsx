@@ -40,7 +40,7 @@ function I18nProvider({ children }) {
           },
 
           detection: {
-            order: ['localStorage', 'navigator', 'htmlTag'],
+            order: ['localStorage', 'htmlTag'],
             caches: ['localStorage'],
             lookupLocalStorage: 'language',
           },
