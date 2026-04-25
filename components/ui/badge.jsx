@@ -33,6 +33,9 @@ const badgeVariants = cva(
         md: 'rounded-md px-[0.45rem] h-6 min-w-6 gap-1.5 text-xs [&_svg]:size-3.5 ',
         sm: 'rounded-sm px-[0.325rem] h-5 min-w-5 gap-1 text-[0.6875rem] leading-[0.75rem] [&_svg]:size-3',
         xs: 'rounded-sm px-[0.25rem] h-4 min-w-4 gap-1 text-[0.625rem] leading-[0.5rem] [&_svg]:size-3',
+        /** Grows with wrapped text; use in table cells and long labels (not fixed height) */
+        fluid:
+          'rounded-md px-2.5 py-1 min-h-5 h-auto w-fit min-w-0 max-w-full gap-1.5 text-xs leading-snug [&_svg]:size-3.5 [overflow-wrap:anywhere] whitespace-normal',
       },
       shape: {
         default: '',

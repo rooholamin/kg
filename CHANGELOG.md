@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0] — Milestone 4 Articles System — 2026-04-24
+
+### Added
+
+- **Prisma `Article` fields** — `summary`, `content` (TipTap JSON), `featuredImage`, `galleryImages` (string array), `videoUrl`, `isEditorsChoice`, `views`, `likes`, `commentsCount`; index on `isEditorsChoice`. Migration SQL: `prisma/migrations/20260424190000_article_rich_content/migration.sql`. Schema synced with `npx prisma db push` as needed.
+- **TipTap** — `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-image`, `@tiptap/extension-link`, `@tiptap/extension-youtube`, `@tiptap/extension-placeholder`.
+- **Image upload** — `POST /api/uploads` (session, mime/size caps, `directory` allow-list) using `lib/s3-upload.js` → DigitalOcean Spaces (`STORAGE_*`). UI: `components/custom/image-upload-input.jsx`, `gallery-upload-input.jsx`.
+- **Editor & renderer** — `components/custom/rich-text-editor.jsx` (toolbar, image + YouTube), `content-renderer.jsx` (read-only).
+- **Article service** — `createArticle`, `updateArticle`, `archiveOrDeleteArticle` (topic/category relation check, 7-day readiness from publish date, `contentLog`); `getArticleContentLogs`.
+- **API** — `POST /api/articles`, `PUT` + `DELETE /api/articles/[id]`; expanded `GET` payloads.
+- **Forms & UI** — `article-schema.js`, `article-form-dialog.jsx`, `article-archive-dialog.jsx`, `article-detail-actions.jsx`; `articles-table.jsx` (`useQuery`, thumbs, editor’s choice, stats, edit/delete, readiness filter, create).
+- **Article detail** — Hero, six tabs (Overview, Content, Pipeline, Social, SEO, Activity with real `ContentLog`); `toYoutubeEmbedUrl` in `lib/utils.js`.
+- **Seeds** — 12 Kingsgate articles in `prisma/data/kg-articles.js` + `seed.js` upsert; four magazine articles enriched with body/summary/stats. `next.config.mjs` `images.remotePatterns` for `picsum.photos`.
+
 ## [0.3.0] — Milestone 3 Categories & Topics CRUD — 2026-04-24
 
 ### Added

@@ -23,8 +23,10 @@ export function ReadinessBadge({ readiness, className }) {
   return (
     <Badge
       variant="outline"
+      size="fluid"
       className={cn(
         readinessVariants({ readiness: readiness || 'on_track' }),
+        'max-w-full',
         className,
       )}
     >

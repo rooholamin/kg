@@ -11,7 +11,7 @@ export default function ArticlesPage() {
     <>
       <PageHeader
         title="Articles"
-        description="List, filter, and open article records. Real persistence in Milestone 4."
+        description="Create, edit, and manage full article content, media, and pipeline stages."
       />
       <ArticlesTable />
     </>

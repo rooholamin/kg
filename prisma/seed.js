@@ -7,6 +7,7 @@ const usersData = require('./data/users');
 const permissionsData = require('./data/permissions');
 const magazineContent = require('./data/magazine-content');
 const kgContent = require('./data/kg-content');
+const kgArticles = require('./data/kg-articles');
 
 const prisma = new PrismaClient();
 
@@ -266,6 +267,15 @@ async function main() {
           where: { id: a.id },
           update: {
             title: a.title,
+            summary: a.summary,
+            content: a.content,
+            featuredImage: a.featuredImage,
+            galleryImages: a.galleryImages,
+            videoUrl: a.videoUrl,
+            isEditorsChoice: a.isEditorsChoice,
+            views: a.views,
+            likes: a.likes,
+            commentsCount: a.commentsCount,
             topicId: a.topicId,
             categoryId: a.categoryId,
             status: a.status,
@@ -326,7 +336,34 @@ async function main() {
           create: t,
         });
       }
-      console.log('Kingsgate home-service content (categories, topics) seeded.');
+      for (const a of kgArticles.articles) {
+        await tx.article.upsert({
+          where: { id: a.id },
+          update: {
+            title: a.title,
+            summary: a.summary,
+            content: a.content,
+            featuredImage: a.featuredImage,
+            galleryImages: a.galleryImages,
+            videoUrl: a.videoUrl,
+            isEditorsChoice: a.isEditorsChoice,
+            views: a.views,
+            likes: a.likes,
+            commentsCount: a.commentsCount,
+            topicId: a.topicId,
+            categoryId: a.categoryId,
+            status: a.status,
+            publishDate: a.publishDate,
+            readinessDeadline: a.readinessDeadline,
+            seoScore: a.seoScore,
+            wordpressPostId: a.wordpressPostId,
+          },
+          create: a,
+        });
+      }
+      console.log(
+        'Kingsgate home-service content (categories, topics, articles) seeded.',
+      );
 
       console.log('Database seeding completed!');
     },

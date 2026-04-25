@@ -231,6 +231,16 @@ model Topic {
 model Article {
   id                 String        @id @default(uuid())
   title              String
+  /// TipTap / ProseMirror doc: { type: "doc", content: [...] }
+  summary            String?
+  content            Json?
+  featuredImage      String?
+  galleryImages      String[]      @default([])
+  videoUrl           String?
+  isEditorsChoice    Boolean       @default(false)
+  views              Int           @default(0)
+  likes              Int           @default(0)
+  commentsCount      Int           @default(0)
   topicId            String
   categoryId         String
   status             ArticleStatus @default(planning)
@@ -246,6 +256,7 @@ model Article {
   @@index([topicId])
   @@index([categoryId])
   @@index([status])
+  @@index([isEditorsChoice])
 }
 
 /// Content-operation events (separate from SystemLog user-activity)

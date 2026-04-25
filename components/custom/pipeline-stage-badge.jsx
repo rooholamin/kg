@@ -28,7 +28,11 @@ const pretty = {
 export function PipelineStageBadge({ stage, className }) {
   const cls = stageToClass[stage] ?? 'bg-muted text-muted-foreground';
   return (
-    <Badge variant="outline" className={cn('border-transparent', cls, className)}>
+    <Badge
+      variant="outline"
+      size="fluid"
+      className={cn('border-transparent', cls, 'w-fit max-w-full', className)}
+    >
       {pretty[stage] ?? stage}
     </Badge>
   );

@@ -1,83 +1,72 @@
 import { notFound } from 'next/navigation';
-import { format, parseISO } from 'date-fns';
 import { PageHeader } from '@/components/custom/page-header';
-import { Button } from '@/components/ui/button';
-import Link from 'next/link';
-import { getArticleById } from '@/services/article.service';
-import { getArticleById as getMockArticle } from '@/app/(protected)/dashboard/_mock';
+import {
+  getArticleById,
+  getArticleContentLogs,
+} from '@/services/article.service';
 import { ArticleDetailContent } from './components/article-detail-content';
+import { ArticleDetailActions } from '../components/article-detail-actions';
 
 export const metadata = { title: 'Article' };
 
-function buildViewModelFromDb(row) {
+function toArticleView(row) {
+  if (!row) return null;
   return {
     id: row.id,
     title: row.title,
+    summary: row.summary,
+    content: row.content,
     topicId: row.topicId,
     categoryId: row.categoryId,
-    stage: row.status,
-    topicTitle: row.topic.name,
+    status: row.status,
+    topicName: row.topic.name,
     categoryName: row.category.name,
-    publishDate: row.publishDate
-      ? format(
-          row.publishDate instanceof Date
-            ? row.publishDate
-            : parseISO(String(row.publishDate)),
-          'PP',
-        )
-      : '—',
-    readinessDeadline: row.readinessDeadline
-      ? format(
-          row.readinessDeadline instanceof Date
-            ? row.readinessDeadline
-            : parseISO(String(row.readinessDeadline)),
-          'PP',
-        )
-      : '—',
-    readiness: 'on_track',
-    assignee: null,
-    targetKeyword: '—',
-    brief: 'No brief yet. Editorial briefs activate in Milestone 4.',
-    risk: null,
-    seoScore: row.seoScore != null ? String(row.seoScore) : '—',
-    wordpressStatus:
-      row.wordpressPostId != null
-        ? `Synced as WP #${row.wordpressPostId}`
-        : 'Not synced',
-    social: [],
+    targetKeyword: row.topic.targetKeyword,
+    publishDate: row.publishDate,
+    readinessDeadline: row.readinessDeadline,
+    seoScore: row.seoScore,
+    wordpressPostId: row.wordpressPostId,
+    featuredImage: row.featuredImage,
+    galleryImages: row.galleryImages,
+    videoUrl: row.videoUrl,
+    isEditorsChoice: row.isEditorsChoice,
+    views: row.views,
+    likes: row.likes,
+    commentsCount: row.commentsCount,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
 export default async function ArticleDetailPage({ params }) {
   const { id } = await params;
   const row = await getArticleById(id);
-  let article;
+  if (!row) notFound();
 
-  if (row) {
-    article = buildViewModelFromDb(row);
-  } else {
-    const mock = getMockArticle(id);
-    if (!mock) notFound();
-    article = mock;
-  }
+  const article = toArticleView(row);
+  const activityLogs = await getArticleContentLogs(id);
 
   return (
     <>
       <PageHeader
         title="Article"
-        description={row ? 'Loaded from database' : 'Mock record (legacy id)'}
+        description="Readiness, content, and pipeline in one place."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Articles', href: '/dashboard/articles' },
           { label: article.title, href: `/dashboard/articles/${id}` },
         ]}
-        actions={
-          <Button variant="outline" asChild>
-            <Link href="/dashboard/articles">Back to list</Link>
-          </Button>
-        }
+        actions={<ArticleDetailActions article={article} />}
       />
-      <ArticleDetailContent article={article} />
+      <ArticleDetailContent
+        article={article}
+        activityLogs={activityLogs.map((l) => ({
+          id: l.id,
+          type: l.type,
+          message: l.message,
+          createdAt: l.createdAt,
+        }))}
+      />
     </>
   );
 }

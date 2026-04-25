@@ -16,3 +16,18 @@ export async function contentLog(data, tx) {
     },
   });
 }
+
+/**
+ * Activity feed for a single content entity.
+ * @param {string} entityType
+ * @param {string} entityId
+ * @param {import('@prisma/client').Prisma.TransactionClient} [tx]
+ */
+export async function getContentLogsByEntity(entityType, entityId, tx) {
+  const connection = tx ?? prisma;
+  return connection.contentLog.findMany({
+    where: { entityType, entityId },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+}

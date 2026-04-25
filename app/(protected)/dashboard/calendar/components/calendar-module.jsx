@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { format, isSameDay, parseISO } from 'date-fns';
 import { EventCalendar } from '@/components/custom/calendar/event-calendar';
 import { Calendar } from '@/components/ui/calendar';
@@ -9,6 +10,11 @@ import { Container } from '@/components/common/container';
 import { MilestoneNote } from '@/components/custom/milestone-note';
 import { Separator } from '@/components/ui/separator';
 import { MOCK_CALENDAR_EVENTS } from '@/app/(protected)/dashboard/_mock';
+import {
+  articleRowsToCalendarEvents,
+  calendarMockExcludingArticlePlan,
+} from '@/lib/calendar-article-events';
+import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
   CalendarIcon,
@@ -42,34 +48,60 @@ const menuItems = [
   { id: 'newsletter', label: 'Newsletter', icon: <Mail className="w-4 h-4" />, color: 'text-orange-400' },
 ];
 
+async function fetchAllArticles() {
+  const r = await apiFetch('/api/articles');
+  if (!r.ok) throw new Error('Failed to load articles');
+  const j = await r.json();
+  return j.data ?? [];
+}
+
 export function CalendarModule() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [source, setSource] = useState('all');
 
-  const events = useMemo(() => {
-    if (source === 'all') return MOCK_CALENDAR_EVENTS;
-    return MOCK_CALENDAR_EVENTS.filter((e) => e.source === source);
-  }, [source]);
+  const { data: articleRows = [] } = useQuery({
+    queryKey: ['articles', 'calendar'],
+    queryFn: fetchAllArticles,
+  });
 
-  const selectedDayEvents = useMemo(() => {
-    return MOCK_CALENDAR_EVENTS.filter((e) =>
-      isSameDay(parseISO(e.start), selectedDate),
-    );
-  }, [selectedDate]);
+  const nonArticleMock = useMemo(
+    () => calendarMockExcludingArticlePlan(MOCK_CALENDAR_EVENTS),
+    [],
+  );
+  const articleEvents = useMemo(
+    () => articleRowsToCalendarEvents(articleRows),
+    [articleRows],
+  );
+
+  const allEvents = useMemo(
+    () => [...articleEvents, ...nonArticleMock],
+    [articleEvents, nonArticleMock],
+  );
+
+  const events = useMemo(() => {
+    if (source === 'all') return allEvents;
+    return allEvents.filter((e) => e.source === source);
+  }, [source, allEvents]);
+
+  const selectedDayEvents = useMemo(
+    () =>
+      events.filter((e) => isSameDay(parseISO(e.start), selectedDate)),
+    [events, selectedDate],
+  );
 
   const counts = useMemo(() => {
-    const c = { all: MOCK_CALENDAR_EVENTS.length };
-    MOCK_CALENDAR_EVENTS.forEach((e) => {
+    const c = { all: allEvents.length };
+    allEvents.forEach((e) => {
       c[e.source] = (c[e.source] || 0) + 1;
     });
     return c;
-  }, []);
+  }, [allEvents]);
 
   return (
     <Container>
       <MilestoneNote milestone={6}>
-        7-day readiness rule enforcement and live calendar data in Milestone 6. Drag/save is
-        visual only here.
+        Article publish and readiness dates load from the articles API. Other sources remain mock
+        until Milestone 6. Drag/save is visual only.
       </MilestoneNote>
 
       <div className="mt-4 flex flex-col xl:flex-row gap-5 min-h-0">

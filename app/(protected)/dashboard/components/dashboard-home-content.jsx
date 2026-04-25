@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -51,6 +53,11 @@ import {
   PIPELINE_STAGES,
 } from '@/app/(protected)/dashboard/_mock';
 import { cn } from '@/lib/utils';
+import {
+  articleRowsToCalendarEvents,
+  calendarMockExcludingArticlePlan,
+} from '@/lib/calendar-article-events';
+import { apiFetch } from '@/lib/api';
 
 // ─── Mock trend data for the area chart ────────────────────────────────────
 const ACTIVITY_TREND = [
@@ -167,16 +174,50 @@ function AreaTooltip({ active, payload, label }) {
   );
 }
 
+async function fetchAllArticles() {
+  const r = await apiFetch('/api/articles');
+  if (!r.ok) return [];
+  const j = await r.json();
+  return j.data ?? [];
+}
+
 export function DashboardHomeContent() {
-  const upcoming = [...MOCK_CALENDAR_EVENTS]
-    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
-    .slice(0, 5);
+  const { data: articleRows, isPending: articlesPending } = useQuery({
+    queryKey: ['articles', 'home-schedule'],
+    queryFn: fetchAllArticles,
+  });
+  const articleList = articleRows ?? [];
+
+  const nonArticleMock = useMemo(
+    () => calendarMockExcludingArticlePlan(MOCK_CALENDAR_EVENTS),
+    [],
+  );
+  const articleEvents = useMemo(
+    () => articleRowsToCalendarEvents(articleList),
+    [articleList],
+  );
+  const scheduleEvents = useMemo(
+    () => [...articleEvents, ...nonArticleMock],
+    [articleEvents, nonArticleMock],
+  );
+
+  const upcoming = useMemo(
+    () =>
+      [...scheduleEvents]
+        .sort(
+          (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+        )
+        .slice(0, 5),
+    [scheduleEvents],
+  );
 
   const pipelineDonutData = PIPELINE_STAGES
     .map((s) => ({ name: s.label, value: PIPELINE_COUNTS[s.id] ?? 0, id: s.id }))
     .filter((d) => d.value > 0);
 
-  const totalArticles = MOCK_ARTICLES.length;
+  const totalArticles = articlesPending
+    ? MOCK_ARTICLES.length
+    : articleList.length;
 
   return (
     <Container>
