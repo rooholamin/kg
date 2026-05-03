@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0] — Milestone 6 Editorial Calendar + Readiness — 2026-05-02
+
+### Added
+
+- **`computeReadiness` + `getCalendarArticles`** in [`services/article.service.js`](./services/article.service.js) — derives `ok | warning | risk | null` from pipeline status and `readinessDeadline` (7-day rule vs publish date).
+- **`GET /api/calendar`** — [`app/api/calendar/route.js`](./app/api/calendar/route.js); session-protected; optional `topicId`, `categoryId`, `status` query params; returns articles with `readinessStatus`, `topic`, and `category` for the calendar UI.
+- **`EventCalendar` `onEventClick`** — [`components/custom/calendar/event-calendar.jsx`](./components/custom/calendar/event-calendar.jsx); when set and the event has `articleId`, invokes the callback instead of opening the edit dialog.
+
+### Changed
+
+- **[`lib/calendar-article-events.js`](./lib/calendar-article-events.js)** — Publish events use readiness-based colors (`emerald` / `amber` / `rose` / `violet`); readiness deadline events use `sky`, title prefix `⚑ Deadline:`, and `eventKind` / `readinessStatus` on events for filtering.
+- **[`/dashboard/calendar`](./app/(protected)/dashboard/calendar/components/calendar-module.jsx)** — Loads `/api/calendar`; **At risk** summary card with count; quick filters (risk / warning); sources **All** / **Content** / **Social** (social remains mock); **Upcoming (14 days)** sidebar list with readiness dots; article navigation from calendar and sidebar; Milestone 10 callout for social placeholders.
+- **[`prisma/data/project-progress.js`](./prisma/data/project-progress.js)** — Build track: **Project Progress** and **Calendar** milestones at 100%; calendar-related blocker resolved; new progress report `RP(2)` for M6 snapshot. Re-apply with `npm run seed` (or your usual seed command) to refresh DB fixtures.
+
 ## [0.5.0] — Milestone 5 Project Progress — 2026-04-25
 
 ### Added

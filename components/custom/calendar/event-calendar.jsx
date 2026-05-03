@@ -48,6 +48,8 @@ export function EventCalendar({
   onEventAdd,
   onEventUpdate,
   onEventDelete,
+  /** When set and the event has `articleId`, navigate instead of opening the edit dialog */
+  onEventClick,
   className,
   initialView = 'month',
   showNewEvent = true,
@@ -125,6 +127,10 @@ export function EventCalendar({
   };
 
   const handleEventSelect = (event) => {
+    if (onEventClick && event?.articleId) {
+      onEventClick(event);
+      return;
+    }
     setSelectedEvent(event);
     setIsEventDialogOpen(true);
   };

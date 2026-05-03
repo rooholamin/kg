@@ -134,7 +134,7 @@ const buildMilestoneTitles = [
   'AI integration',
 ];
 
-const buildMilestoneProgress = [100, 100, 100, 100, 100, 80, 20, 10, 0, 0];
+const buildMilestoneProgress = [100, 100, 100, 100, 100, 100, 100, 10, 0, 0];
 
 const milestones = [
   ...buildMilestoneTitles.map((title, index) => {
@@ -290,9 +290,9 @@ const blockers = [
     description:
       'Readiness edge cases around timezone boundaries still need implementation.',
     severity: 'medium',
-    status: 'open',
+    status: 'resolved',
     createdAt: addDays(buildStart, 6),
-    resolvedAt: null,
+    resolvedAt: addDays(buildEnd, 0),
   },
 ];
 
@@ -308,6 +308,18 @@ const reports = [
     blockersSummary:
       'Main risks are n8n credential provisioning and image calibration drift.',
     createdAt: addDays(buildEnd, 0),
+  },
+  {
+    id: RP(2),
+    title: 'Milestone 6 editorial calendar snapshot',
+    summary:
+      'Calendar module uses GET /api/calendar with readiness (ok / warning / risk), publish + deadline events, at-risk summary, and article deep links. Social slots remain mock until Milestone 10.',
+    buildProgress: 81,
+    automationProgress: 5,
+    keyFocus: 'Logs + activity tracking (Milestone 7)',
+    blockersSummary:
+      'n8n credentials and image calibration remain open; calendar blocker MS(7) cleared.',
+    createdAt: addDays(buildEnd, 1),
   },
 ];
 

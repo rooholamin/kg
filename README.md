@@ -107,7 +107,10 @@ Open [http://localhost:4000](http://localhost:4000) (dev port is set in `package
 ## Features (shipped in milestones)
 
 - **Milestones 1–2** — Full dashboard UI shell, auth, and read-only Prisma-backed APIs for categories, topics, and articles. Magazine-style seed data.
-- **Milestone 3** — **Categories and topics**: full CRUD (create, edit, archive or delete with dependency rules), `ContentLog` entries on changes, Kingsgate home-service seed (`prisma/data/kg-content.js`, run `npx prisma db seed`). List and detail under `/dashboard/categories` and `/dashboard/topics`. Articles remain list/detail from DB without article CRUD until Milestone 4.
+- **Milestone 3** — **Categories and topics**: full CRUD (create, edit, archive or delete with dependency rules), `ContentLog` entries on changes, Kingsgate home-service seed (`prisma/data/kg-content.js`, run `npx prisma db seed`). List and detail under `/dashboard/categories` and `/dashboard/topics`.
+- **Milestone 4** — **Articles**: rich content (TipTap), uploads, full CRUD APIs, article detail tabs, pipeline `ArticleStatus`, publish date with auto `readinessDeadline` (publish minus 7 days). See [`CHANGELOG.md`](./CHANGELOG.md) `[0.4.0]`.
+- **Milestone 5 (release track)** — **Project progress**: Prisma models, admin-gated writes, `/api/project-progress/*`, `/dashboard/project-progress` with phases, workstreams, milestones, blockers, and reports. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.5.0]`. *(Product doc “Milestone 5” is tasks + Kanban — that track is still pending.)*
+- **Milestone 6** — **Editorial calendar + readiness**: `GET /api/calendar`, readiness states on the calendar, at-risk summary, filters, upcoming list, navigation to `/dashboard/articles/[id]`; social calendar remains mock until Milestone 10. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.6.0]`.
 
 ---
 
@@ -154,9 +157,9 @@ additional-concepts/ # Pre-built Metronic concept apps (reference only — do no
 | 1 | Full Dashboard UI (Non-Functional) | ✅ Complete |
 | 2 | Backend Foundation + Auth | ✅ Complete |
 | 3 | Categories & Topics (CRUD + seed) | ✅ Complete |
-| 4 | Articles + Pipeline | ⬜ Pending |
+| 4 | Articles + Pipeline | ✅ Complete |
 | 5 | Tasks + Kanban System | ⬜ Pending |
-| 6 | Editorial Calendar + Readiness Rule | ⬜ Pending |
+| 6 | Editorial Calendar + Readiness Rule | ✅ Complete |
 | 7 | Logs, Versions, Activity Tracking | ⬜ Pending |
 | 8 | WordPress Integration | ⬜ Pending |
 | 9 | AI Chat Integration (Real) | ⬜ Pending |

@@ -18,6 +18,70 @@ const ARTICLE_STATUS = new Set([
 
 const MS_PER_DAY = 86400000;
 
+/** Pipeline stages treated as "ready" for the 7-day rule */
+const READINESS_OK_STATUSES = new Set([
+  'approval',
+  'scheduling',
+  'publishing',
+  'post_publish',
+]);
+
+/**
+ * @typedef {'ok' | 'warning' | 'risk' | null} ReadinessStatus
+ */
+
+/**
+ * Derive readiness for calendar / enforcement (7-day rule).
+ * @param {{
+ *   status: string;
+ *   readinessDeadline?: Date | string | null;
+ *   publishDate?: Date | string | null;
+ * }} article
+ * @param {Date} [today] — defaults to now (for tests)
+ * @returns {ReadinessStatus}
+ */
+export function computeReadiness(article, today = new Date()) {
+  if (!article?.status) return null;
+  if (READINESS_OK_STATUSES.has(article.status)) return 'ok';
+
+  const raw = article.readinessDeadline;
+  if (raw == null) return null;
+
+  const deadline = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(deadline.getTime())) return null;
+
+  const t0 = new Date(today);
+  t0.setHours(0, 0, 0, 0);
+  const d0 = new Date(deadline);
+  d0.setHours(0, 0, 0, 0);
+
+  if (t0.getTime() >= d0.getTime()) return 'risk';
+
+  const warnFrom = new Date(d0);
+  warnFrom.setDate(warnFrom.getDate() - 2);
+  if (t0.getTime() >= warnFrom.getTime()) return 'warning';
+
+  return null;
+}
+
+/**
+ * Articles for the editorial calendar with readinessStatus attached.
+ * @param {{ topicId?: string | null; categoryId?: string | null; status?: string | null }} [filters]
+ */
+export async function getCalendarArticles(filters = {}) {
+  const rows = await getArticles(filters);
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    publishDate: row.publishDate,
+    readinessDeadline: row.readinessDeadline,
+    readinessStatus: computeReadiness(row),
+    status: row.status,
+    topic: { id: row.topic.id, name: row.topic.name },
+    category: { id: row.category.id, name: row.category.name },
+  }));
+}
+
 /**
  * @param {string} [dateStr] yyyy-MM-dd
  * @returns {Date | null}
