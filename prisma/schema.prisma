@@ -281,3 +281,123 @@ model Approval {
 
   @@index([status])
 }
+
+enum ProjectPhaseSlug {
+  build
+  automation
+}
+
+enum WorkstreamStatus {
+  not_started
+  in_progress
+  completed
+  blocked
+}
+
+enum MilestoneStatus {
+  not_started
+  in_progress
+  completed
+  blocked
+}
+
+enum MilestoneType {
+  build
+  automation
+}
+
+enum BlockerSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum BlockerStatus {
+  open
+  resolved
+}
+
+model ProjectPhase {
+  id              String              @id @default(uuid())
+  slug            ProjectPhaseSlug    @unique
+  title           String
+  description     String?
+  startDate       DateTime?
+  endDate         DateTime?
+  progressPercent Int                 @default(0)
+  sortOrder       Int                 @default(0)
+  workstreams     ProjectWorkstream[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([sortOrder])
+}
+
+model ProjectWorkstream {
+  id              String             @id @default(uuid())
+  phaseId         String
+  name            String
+  description     String?
+  status          WorkstreamStatus   @default(not_started)
+  progressPercent Int                @default(0)
+  sortOrder       Int                @default(0)
+  phase           ProjectPhase       @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  milestones      ProjectMilestone[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([phaseId])
+  @@index([status])
+  @@index([sortOrder])
+}
+
+model ProjectMilestone {
+  id              String            @id @default(uuid())
+  workstreamId    String
+  title           String
+  description     String?
+  status          MilestoneStatus   @default(not_started)
+  type            MilestoneType
+  startDate       DateTime?
+  endDate         DateTime?
+  progressPercent Int               @default(0)
+  sortOrder       Int               @default(0)
+  workstream      ProjectWorkstream @relation(fields: [workstreamId], references: [id], onDelete: Cascade)
+  blockers        ProjectBlocker[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([workstreamId])
+  @@index([type])
+  @@index([status])
+  @@index([sortOrder])
+}
+
+model ProjectBlocker {
+  id          String            @id @default(uuid())
+  milestoneId String?
+  title       String
+  description String?
+  severity    BlockerSeverity   @default(medium)
+  status      BlockerStatus     @default(open)
+  createdAt   DateTime          @default(now())
+  resolvedAt  DateTime?
+  updatedAt   DateTime          @updatedAt
+  milestone   ProjectMilestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+
+  @@index([milestoneId])
+  @@index([status])
+  @@index([severity])
+}
+
+model ProjectProgressReport {
+  id                 String   @id @default(uuid())
+  title              String
+  summary            String
+  buildProgress      Int
+  automationProgress Int
+  keyFocus           String?
+  blockersSummary    String?
+  createdAt          DateTime @default(now())
+}

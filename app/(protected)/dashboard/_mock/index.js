@@ -420,52 +420,6 @@ export const MOCK_INTEGRATIONS = [
   },
 ];
 
-export const MOCK_PROJECT_MILESTONES = Array.from({ length: 11 }, (_, i) => {
-  const labels = [
-    'Metronic analysis',
-    'Dashboard UI shell',
-    'Backend + auth',
-    'Categories & topics',
-    'Articles + pipeline',
-    'Tasks + kanban',
-    'Calendar + readiness',
-    'Logs + versions',
-    'WordPress',
-    'Real AI',
-    'n8n + SEO + social',
-  ];
-  return {
-    id: `ms-${i}`,
-    index: i,
-    title: `M${i}: ${labels[i]}`,
-    status: i < 1 ? 'done' : i === 1 ? 'current' : 'upcoming',
-    progress: i < 1 ? 100 : i === 1 ? 35 : 0,
-  };
-});
-
-export const MOCK_WORKSTREAMS = [
-  { id: 'ws-1', name: 'WordPress / public site', owner: 'Team A', progress: 20 },
-  { id: 'ws-2', name: 'Dashboard (Metronic)', owner: 'Team B', progress: 45 },
-  { id: 'ws-3', name: 'Content system', owner: 'Team B', progress: 30 },
-  { id: 'ws-4', name: 'AI integration', owner: 'Team C', progress: 5 },
-  { id: 'ws-5', name: 'Automation / n8n', owner: 'Team C', progress: 0 },
-  { id: 'ws-6', name: 'SEO / social systems', owner: 'Team D', progress: 10 },
-  { id: 'ws-7', name: 'Deployment / testing', owner: 'Team A', progress: 15 },
-];
-
-export const MOCK_BLOCKERS = [
-  {
-    id: 'bl-1',
-    title: 'Staging WordPress API credentials not provisioned',
-    impact: 'Blocks Milestone 8 dry runs',
-  },
-  {
-    id: 'bl-2',
-    title: 'n8n workspace naming convention TBD',
-    impact: 'Low — planning only',
-  },
-];
-
 function startOfDay(d) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);

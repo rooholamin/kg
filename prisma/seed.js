@@ -8,6 +8,7 @@ const permissionsData = require('./data/permissions');
 const magazineContent = require('./data/magazine-content');
 const kgContent = require('./data/kg-content');
 const kgArticles = require('./data/kg-articles');
+const projectProgress = require('./data/project-progress');
 
 const prisma = new PrismaClient();
 
@@ -363,6 +364,140 @@ async function main() {
       }
       console.log(
         'Kingsgate home-service content (categories, topics, articles) seeded.',
+      );
+
+      for (const p of projectProgress.phases) {
+        await tx.projectPhase.upsert({
+          where: { id: p.id },
+          update: {
+            slug: p.slug,
+            title: p.title,
+            description: p.description,
+            startDate: p.startDate,
+            endDate: p.endDate,
+            progressPercent: p.progressPercent,
+            sortOrder: p.sortOrder,
+          },
+          create: p,
+        });
+      }
+      for (const ws of projectProgress.workstreams) {
+        await tx.projectWorkstream.upsert({
+          where: { id: ws.id },
+          update: {
+            phaseId: ws.phaseId,
+            name: ws.name,
+            description: ws.description,
+            status: ws.status,
+            progressPercent: ws.progressPercent,
+            sortOrder: ws.sortOrder,
+          },
+          create: ws,
+        });
+      }
+      for (const ms of projectProgress.milestones) {
+        await tx.projectMilestone.upsert({
+          where: { id: ms.id },
+          update: {
+            workstreamId: ms.workstreamId,
+            title: ms.title,
+            description: ms.description,
+            status: ms.status,
+            type: ms.type,
+            startDate: ms.startDate,
+            endDate: ms.endDate,
+            progressPercent: ms.progressPercent,
+            sortOrder: ms.sortOrder,
+          },
+          create: ms,
+        });
+      }
+      for (const bl of projectProgress.blockers) {
+        await tx.projectBlocker.upsert({
+          where: { id: bl.id },
+          update: {
+            milestoneId: bl.milestoneId,
+            title: bl.title,
+            description: bl.description,
+            severity: bl.severity,
+            status: bl.status,
+            createdAt: bl.createdAt,
+            resolvedAt: bl.resolvedAt,
+          },
+          create: bl,
+        });
+      }
+      for (const report of projectProgress.reports) {
+        await tx.projectProgressReport.upsert({
+          where: { id: report.id },
+          update: {
+            title: report.title,
+            summary: report.summary,
+            buildProgress: report.buildProgress,
+            automationProgress: report.automationProgress,
+            keyFocus: report.keyFocus,
+            blockersSummary: report.blockersSummary,
+            createdAt: report.createdAt,
+          },
+          create: report,
+        });
+      }
+
+      const workstreams = await tx.projectWorkstream.findMany({
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          milestones: true,
+        },
+      });
+
+      for (const ws of workstreams) {
+        const total = ws.milestones.length || 1;
+        const progressPercent = Math.round(
+          ws.milestones.reduce((sum, m) => sum + m.progressPercent, 0) / total,
+        );
+
+        let status = 'not_started';
+        if (ws.milestones.some((m) => m.status === 'blocked')) status = 'blocked';
+        else if (
+          ws.milestones.length > 0 &&
+          ws.milestones.every((m) => m.status === 'completed')
+        ) {
+          status = 'completed';
+        } else if (
+          ws.milestones.some(
+            (m) => m.status === 'in_progress' || m.status === 'completed',
+          )
+        ) {
+          status = 'in_progress';
+        }
+
+        await tx.projectWorkstream.update({
+          where: { id: ws.id },
+          data: { progressPercent, status },
+        });
+      }
+
+      const phases = await tx.projectPhase.findMany({
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          workstreams: true,
+        },
+      });
+
+      for (const phase of phases) {
+        const total = phase.workstreams.length || 1;
+        const progressPercent = Math.round(
+          phase.workstreams.reduce((sum, ws) => sum + ws.progressPercent, 0) /
+            total,
+        );
+        await tx.projectPhase.update({
+          where: { id: phase.id },
+          data: { progressPercent },
+        });
+      }
+
+      console.log(
+        'Project progress (phases, workstreams, milestones, blockers, reports) seeded.',
       );
 
       console.log('Database seeding completed!');

@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.5.0] — Milestone 5 Project Progress — 2026-04-25
+
+### Added
+
+- **Project-progress Prisma models** — `ProjectPhase`, `ProjectWorkstream`, `ProjectMilestone`, `ProjectBlocker`, and `ProjectProgressReport` plus enums for phase slug, workstream/milestone status, milestone type, blocker severity/status. Applied via `prisma db push` because migration shadow DB drifted (same drift pattern from earlier milestones).
+- **Project-progress seed data** — `prisma/data/project-progress.js` with 2 explicit phases (Build + Automation), a single Build workstream with 10 milestones, 6 detailed Automation workstreams (design → implement in n8n → test → calibrate → stabilize), blockers, and baseline progress reports.
+- **Admin authorization helper** — `lib/require-admin.js` blocks write operations unless role is `Administrator` or `Owner`.
+- **Service layer** — `services/project-progress.service.js` with full read/write coverage (phases, workstreams, milestones, blockers, reports), auto-rollup recalculation from milestone → workstream → phase, and `ContentLog` writes for all mutations.
+- **Validation schemas** — new project-progress Zod schemas under `app/(protected)/dashboard/project-progress/forms/`.
+- **API routes** — new `/api/project-progress/*` surface:
+  - `GET /api/project-progress` (tree payload for UI)
+  - `POST /api/project-progress/phases`, `PUT/DELETE /api/project-progress/phases/[id]`
+  - `POST /api/project-progress/workstreams`, `PUT/DELETE /api/project-progress/workstreams/[id]`
+  - `POST /api/project-progress/milestones`, `PUT/DELETE /api/project-progress/milestones/[id]`
+  - `GET/POST /api/project-progress/blockers`, `PUT/DELETE /api/project-progress/blockers/[id]`
+  - `GET/POST /api/project-progress/reports`, `DELETE /api/project-progress/reports/[id]`
+  - All writes: session + admin gate; reads: session-protected.
+
+### Changed
+
+- **`/dashboard/project-progress`** now uses real database data and a split-phase UI:
+  - Build vs Automation cards with separate progress bars.
+  - Phase timeline/Gantt-style chart where Automation visibly extends longer than Build.
+  - Workstreams grouped by phase with detailed Automation focus.
+  - Milestone table with status/progress editing for admins and type badges (`build` / `automation`).
+  - Blockers panel that clearly highlights automation blockers.
+  - Reports panel showing build progress, automation progress, and current calibration/testing focus.
+- **Role behavior**
+  - Admin: create/update/delete milestones, workstreams, blockers, reports.
+  - Non-admin users: read-only visibility for the full project-progress dashboard.
+
+### Removed
+
+- Project-progress mock exports (`MOCK_PROJECT_MILESTONES`, `MOCK_WORKSTREAMS`, `MOCK_BLOCKERS`) from `app/(protected)/dashboard/_mock/index.js`, since this module is now fully backend-backed.
+
 ## [0.4.0] — Milestone 4 Articles System — 2026-04-24
 
 ### Added
