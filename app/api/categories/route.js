@@ -20,6 +20,8 @@ export async function GET() {
       name: c.name,
       description: c.description,
       status: c.status,
+      sectionId: c.sectionId,
+      section: c.section ?? null,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
       topicCount: c._count.topics,
@@ -56,13 +58,17 @@ export async function POST(request) {
       );
     }
 
-    const row = await createCategory(parsed.data);
+    const row = await createCategory(parsed.data, {
+      createdBy: session.user?.id ?? null,
+    });
     return NextResponse.json({
       data: {
         id: row.id,
         name: row.name,
         description: row.description,
         status: row.status,
+        sectionId: row.sectionId,
+        section: null,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         topicCount: 0,

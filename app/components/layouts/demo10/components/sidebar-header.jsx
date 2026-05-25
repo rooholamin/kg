@@ -41,7 +41,7 @@ export function SidebarHeader() {
 
         <DropdownMenu>
           <DropdownMenuTrigger className="cursor-pointer text-mono font-medium flex items-center justify-between gap-2 w-[190px]">
-            Metronic
+            KGHub
             <ChevronsUpDown className="size-3.5! me-1" />
           </DropdownMenuTrigger>
           <DropdownMenuContent

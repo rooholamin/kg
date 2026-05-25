@@ -53,8 +53,9 @@ async function findDuplicateTopicNameInCategory(name, categoryId, excludeId) {
 
 /**
  * @param {{ name: string; description?: string | null; categoryId: string; targetKeyword?: string | null; status: 'active' | 'archived' }} data
+ * @param {{ createdBy?: string | null }} [opts]
  */
-export async function createTopic(data) {
+export async function createTopic(data, opts = {}) {
   const trimmed = data.name?.trim();
   if (!trimmed) {
     const err = new Error('Name is required');
@@ -100,10 +101,12 @@ export async function createTopic(data) {
     });
     await contentLog(
       {
-        type: 'content',
-        message: `Topic created: ${row.name}`,
+        type: 'topic',
+        action: 'create',
+        message: `Topic “${row.name}” created`,
         entityType: 'topic',
         entityId: row.id,
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );
@@ -114,8 +117,9 @@ export async function createTopic(data) {
 /**
  * @param {string} id
  * @param {{ name: string; description?: string | null; categoryId: string; targetKeyword?: string | null; status: 'active' | 'archived' }} data
+ * @param {{ createdBy?: string | null }} [opts]
  */
-export async function updateTopic(id, data) {
+export async function updateTopic(id, data, opts = {}) {
   const existing = await prisma.topic.findUnique({ where: { id } });
   if (!existing) {
     const err = new Error('Topic not found');
@@ -169,10 +173,12 @@ export async function updateTopic(id, data) {
     });
     await contentLog(
       {
-        type: 'content',
-        message: `Topic updated: ${row.name}`,
+        type: 'topic',
+        action: 'update',
+        message: `Topic “${row.name}” updated`,
         entityType: 'topic',
         entityId: row.id,
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );
@@ -183,9 +189,10 @@ export async function updateTopic(id, data) {
 /**
  * Archives when the topic has articles; otherwise hard-deletes.
  * @param {string} id
+ * @param {{ createdBy?: string | null }} [opts]
  * @returns {Promise<{ result: 'archived' | 'deleted'; id: string; alreadyArchived?: boolean }>}
  */
-export async function archiveOrDeleteTopic(id) {
+export async function archiveOrDeleteTopic(id, opts = {}) {
   return prisma.$transaction(async (tx) => {
     const row = await tx.topic.findUnique({
       where: { id },
@@ -206,10 +213,12 @@ export async function archiveOrDeleteTopic(id) {
       });
       await contentLog(
         {
-          type: 'content',
-          message: `Topic archived: ${row.name} (has related articles)`,
+          type: 'topic',
+          action: 'archive',
+          message: `Topic “${row.name}” archived (has related articles)`,
           entityType: 'topic',
           entityId: id,
+          createdBy: opts.createdBy ?? null,
         },
         tx,
       );
@@ -217,10 +226,12 @@ export async function archiveOrDeleteTopic(id) {
     }
     await contentLog(
       {
-        type: 'content',
-        message: `Topic deleted: ${row.name}`,
+        type: 'topic',
+        action: 'delete',
+        message: `Topic “${row.name}” deleted`,
         entityType: 'topic',
         entityId: id,
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );

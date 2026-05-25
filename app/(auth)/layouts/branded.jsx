@@ -42,7 +42,7 @@ export function BrandedLayout({ children }) {
                 <span className="text-mono font-semibold">
                   efficient user access
                 </span>
-                &nbsp;to the Metronic
+                &nbsp;to the KGHub
                 <br /> Dashboard interface.
               </div>
             </div>

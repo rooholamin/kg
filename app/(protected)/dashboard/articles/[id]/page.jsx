@@ -1,8 +1,10 @@
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/custom/page-header';
+import prisma from '@/lib/prisma';
 import {
   getArticleById,
   getArticleContentLogs,
+  getArticleVersions,
 } from '@/services/article.service';
 import { ArticleDetailContent } from './components/article-detail-content';
 import { ArticleDetailActions } from '../components/article-detail-actions';
@@ -44,7 +46,39 @@ export default async function ArticleDetailPage({ params }) {
   if (!row) notFound();
 
   const article = toArticleView(row);
-  const activityLogs = await getArticleContentLogs(id);
+  const [activityLogs, versionRows] = await Promise.all([
+    getArticleContentLogs(id),
+    getArticleVersions(id),
+  ]);
+
+  const versionUserIds = [
+    ...new Set(versionRows.map((v) => v.createdBy).filter(Boolean)),
+  ];
+  const activityUserIds = [
+    ...new Set(activityLogs.map((l) => l.createdBy).filter(Boolean)),
+  ];
+  const allUserIds = [...new Set([...versionUserIds, ...activityUserIds])];
+  let userLabelMap = {};
+  if (allUserIds.length) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: allUserIds } },
+      select: { id: true, name: true, email: true },
+    });
+    userLabelMap = Object.fromEntries(
+      users.map((u) => [u.id, u.name?.trim() || u.email || u.id]),
+    );
+  }
+
+  const versions = versionRows.map((v) => ({
+    id: v.id,
+    title: v.title,
+    summary: v.summary,
+    content: v.content,
+    versionLabel: v.versionLabel,
+    createdAt: v.createdAt,
+    createdBy: v.createdBy,
+    createdByLabel: v.createdBy ? userLabelMap[v.createdBy] ?? null : null,
+  }));
 
   return (
     <>
@@ -60,11 +94,15 @@ export default async function ArticleDetailPage({ params }) {
       />
       <ArticleDetailContent
         article={article}
+        versions={versions}
         activityLogs={activityLogs.map((l) => ({
           id: l.id,
           type: l.type,
+          action: l.action,
           message: l.message,
           createdAt: l.createdAt,
+          createdBy: l.createdBy,
+          userLabel: l.createdBy ? userLabelMap[l.createdBy] ?? null : null,
         }))}
       />
     </>

@@ -162,8 +162,8 @@ html {
   @apply mx-auto w-full px-4 lg:px-5;
 }
 
-/* Metronic Configs */
-@import './config.metronic.css';
+/* KGHub Configs */
+@import './config.KGHub.css';
 
 /* Store Inventory Layout */
 @import './demos/demo1.css';

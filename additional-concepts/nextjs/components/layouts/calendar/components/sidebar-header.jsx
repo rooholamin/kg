@@ -29,7 +29,7 @@ export function SidebarHeader() {
               />
             </div>
             <span className="text-white text-lg font-semibold hidden lg:block">
-              Metronic
+              KGHub
             </span>
           </Link>
 

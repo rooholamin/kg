@@ -27,7 +27,7 @@ export function OrderReceipt() {
             <div className="flex flex-col items-center gap-3 mb-5 lg:mb-9">
               <Link href="#" className="dark:hidden">
                 <img
-                  src={toAbsoluteUrl('/media/app/default-logo.svg')}
+                  src={toAbsoluteUrl('/media/app/kglogo.png')}
                   className="default-logo h-[22px]"
                   alt="image"
                 />

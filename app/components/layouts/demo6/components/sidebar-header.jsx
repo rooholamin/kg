@@ -48,7 +48,7 @@ export function SidebarHeader() {
 
         <DropdownMenu>
           <DropdownMenuTrigger className="cursor-pointer text-mono font-medium flex items-center justify-between gap-2 w-[150px]">
-            Metronic Cloud
+            KGHub Cloud
             <ChevronDown className="size-3.5! text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent sideOffset={10} side="bottom" align="start">

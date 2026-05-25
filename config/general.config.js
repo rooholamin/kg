@@ -3,8 +3,8 @@ const generalSettings = {
   docsLink: '',
   licenseLink: '',
   devsLink: 'https://devs.keenthemes.com',
-  faqLink: 'https://keenthemes.com/metronic',
-  aboutLink: 'https://keenthemes.com/metronic',
+  faqLink: 'https://keenthemes.com/KGHub',
+  aboutLink: 'https://keenthemes.com/KGHub',
 };
 
 export { generalSettings };

@@ -169,7 +169,12 @@ model SystemSetting {
   notifySystemErrorRoleIds       String[]
 }
 
-// Content hierarchy — Automation Magazine Dashboard
+// Content hierarchy — Section → Category → Topic → Article
+enum SectionStatus {
+  active
+  archived
+}
+
 enum CategoryStatus {
   active
   archived
@@ -199,17 +204,40 @@ enum ApprovalStatus {
   rejected
 }
 
+model Section {
+  id                 String        @id @default(uuid())
+  name               String
+  slug               String        @unique
+  description        String?
+  summary            String?
+  icon               String?
+  status             SectionStatus @default(active)
+  characterName      String?
+  characterBiography String?
+  characterPersona   String?
+  characterImage     String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  categories         Category[]
+
+  @@index([status])
+  @@index([slug])
+}
+
 model Category {
   id          String         @id @default(uuid())
   name        String
   description String?
   status      CategoryStatus @default(active)
+  sectionId   String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  section     Section?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   topics      Topic[]
   articles    Article[]
 
   @@index([status])
+  @@index([sectionId])
 }
 
 model Topic {
@@ -229,29 +257,30 @@ model Topic {
 }
 
 model Article {
-  id                 String        @id @default(uuid())
+  id                 String           @id @default(uuid())
   title              String
   /// TipTap / ProseMirror doc: { type: "doc", content: [...] }
   summary            String?
   content            Json?
   featuredImage      String?
-  galleryImages      String[]      @default([])
+  galleryImages      String[]         @default([])
   videoUrl           String?
-  isEditorsChoice    Boolean       @default(false)
-  views              Int           @default(0)
-  likes              Int           @default(0)
-  commentsCount      Int           @default(0)
+  isEditorsChoice    Boolean          @default(false)
+  views              Int              @default(0)
+  likes              Int              @default(0)
+  commentsCount      Int              @default(0)
   topicId            String
   categoryId         String
-  status             ArticleStatus @default(planning)
+  status             ArticleStatus    @default(planning)
   publishDate        DateTime?
   readinessDeadline  DateTime?
   seoScore           Int?
   wordpressPostId    Int?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  topic              Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  category           Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  topic              Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  category           Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  versions           ArticleVersion[]
 
   @@index([topicId])
   @@index([categoryId])
@@ -259,17 +288,59 @@ model Article {
   @@index([isEditorsChoice])
 }
 
+/// Snapshot of article body before an update (important fields)
+model ArticleVersion {
+  id           String   @id @default(uuid())
+  articleId    String
+  title        String
+  summary      String?
+  content      Json?
+  versionLabel String?
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  article      Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@index([createdAt])
+}
+
+enum AIAttemptStatus {
+  success
+  failed
+}
+
+/// AI generation attempts (populated from Milestone 9)
+model AIAttempt {
+  id        String          @id @default(uuid())
+  articleId String?
+  prompt    String          @db.Text
+  result    String          @db.Text
+  model     String
+  status    AIAttemptStatus @default(success)
+  createdAt DateTime        @default(now())
+
+  @@index([articleId])
+  @@index([status])
+  @@index([createdAt])
+}
+
 /// Content-operation events (separate from SystemLog user-activity)
 model ContentLog {
   id         String   @id @default(uuid())
+  /// category | topic | article | project | system
   type       String
+  /// create | update | delete | archive | status_change
+  action     String?
   message    String
   entityType String?
   entityId   String?
+  metadata   Json?
+  createdBy  String?
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([type])
 }
 
 model Approval {
@@ -316,6 +387,20 @@ enum BlockerSeverity {
 enum BlockerStatus {
   open
   resolved
+}
+
+enum IdeaPriority {
+  low
+  medium
+  high
+}
+
+enum IdeaStatus {
+  new
+  under_consideration
+  accepted
+  rejected
+  parked
 }
 
 model ProjectPhase {
@@ -400,4 +485,19 @@ model ProjectProgressReport {
   keyFocus           String?
   blockersSummary    String?
   createdAt          DateTime @default(now())
+}
+
+model IdeaBacklog {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  priority    IdeaPriority @default(medium)
+  status      IdeaStatus   @default(new)
+  tags        String[]     @default([])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([priority])
+  @@index([status])
+  @@index([createdAt])
 }

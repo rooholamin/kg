@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   FileText,
   FolderOpen,
+  LayoutGrid,
   Layers,
   Plug,
   Search,
@@ -181,12 +182,25 @@ async function fetchAllArticles() {
   return j.data ?? [];
 }
 
+async function fetchSectionsForDashboard() {
+  const r = await apiFetch('/api/sections');
+  if (!r.ok) return [];
+  const j = await r.json();
+  return j.data ?? [];
+}
+
 export function DashboardHomeContent() {
   const { data: articleRows, isPending: articlesPending } = useQuery({
     queryKey: ['articles', 'home-schedule'],
     queryFn: fetchAllArticles,
   });
   const articleList = articleRows ?? [];
+
+  const { data: sectionRows } = useQuery({
+    queryKey: ['sections'],
+    queryFn: fetchSectionsForDashboard,
+  });
+  const sectionList = sectionRows ?? [];
 
   const nonArticleMock = useMemo(
     () => calendarMockExcludingArticlePlan(MOCK_CALENDAR_EVENTS),
@@ -248,7 +262,14 @@ export function DashboardHomeContent() {
         </MilestoneNote>
 
         {/* ── KPI cards ── */}
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+          <StatCard
+            icon={LayoutGrid}
+            label="Sections"
+            value={sectionList.length > 0 ? sectionList.filter(s => s.status === 'active').length : 7}
+            sub="Active KG verticals"
+            iconClass="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+          />
           <StatCard
             icon={FolderOpen}
             label="Categories"
@@ -391,6 +412,52 @@ export function DashboardHomeContent() {
             </CardContent>
           </Card>
         </div>
+
+        {/* ── Sections distribution ── */}
+        {sectionList.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <LayoutGrid className="size-4 text-primary" />
+                KG Sections
+              </CardTitle>
+              <CardDescription>
+                {sectionList.filter(s => s.status === 'active').length} active verticals — categories per section
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+                {sectionList.map((s) => (
+                  <Link
+                    key={s.id}
+                    href={`/dashboard/sections/${s.id}`}
+                    className="flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-center hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="size-8 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-foreground">
+                      {s.characterName ? s.characterName[0] : s.name[0]}
+                    </div>
+                    <p className="text-xs font-medium text-foreground leading-tight line-clamp-1">
+                      {s.name}
+                    </p>
+                    {s.characterName && (
+                      <p className="text-[10px] text-muted-foreground leading-tight">
+                        {s.characterName}
+                      </p>
+                    )}
+                    <span className={cn(
+                      'text-[10px] font-medium rounded-full px-1.5 py-0.5',
+                      s.status === 'active'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : 'bg-muted text-muted-foreground'
+                    )}>
+                      {s.categoryCount} {s.categoryCount === 1 ? 'cat' : 'cats'}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Articles at risk + Pending approvals ── */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

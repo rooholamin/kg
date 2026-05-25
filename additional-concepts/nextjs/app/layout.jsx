@@ -10,8 +10,8 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
   title: {
-    template: '%s | Metronic',
-    default: 'Metronic', // a default is required when creating a template
+    template: '%s | KGHub',
+    default: 'KGHub', // a default is required when creating a template
   },
 };
 

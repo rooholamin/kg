@@ -3,7 +3,7 @@
 Private internal dashboard for an AI-assisted content operations platform. Manages the full lifecycle of magazine content — from planning through publishing — using AI, automation, and structured workflows.
 
 > **Public website:** WordPress (separate — not managed from this dashboard)  
-> **UI foundation:** Metronic Next.js v9.4.10  
+> **UI foundation:** KGHub Next.js v9.4.10  
 > **Delivery:** Milestones 0–10 — see [`PRODUCT_OVERVIEW.md`](./PRODUCT_OVERVIEW.md)
 
 ---
@@ -13,7 +13,7 @@ Private internal dashboard for an AI-assisted content operations platform. Manag
 | Document | Purpose |
 |---|---|
 | [`PRODUCT_OVERVIEW.md`](./PRODUCT_OVERVIEW.md) | Product context, system sections, milestone plan, key rules |
-| [`METRONIC_MASTER_ANALYSIS.md`](./METRONIC_MASTER_ANALYSIS.md) | Metronic structure, routing, components, theming, safe customization rules |
+| [`KGHub_MASTER_ANALYSIS.md`](./KGHub_MASTER_ANALYSIS.md) | KGHub structure, routing, components, theming, safe customization rules |
 | [`CHANGELOG.md`](./CHANGELOG.md) | Version history and per-milestone deliverables |
 
 Both documents are required reading before starting any milestone.
@@ -25,7 +25,7 @@ Both documents are required reading before starting any milestone.
 | Layer | Technology |
 |---|---|
 | Framework | Next.js 16.2 (App Router) |
-| UI | Metronic v9.4.10 + Tailwind CSS v4 + shadcn/ui-style components |
+| UI | KGHub v9.4.10 + Tailwind CSS v4 + shadcn/ui-style components |
 | Auth | NextAuth v4 (JWT, Credentials + Google) |
 | Database | PostgreSQL 17 via Prisma ORM |
 | Data fetching | TanStack Query v5 |
@@ -111,6 +111,8 @@ Open [http://localhost:4000](http://localhost:4000) (dev port is set in `package
 - **Milestone 4** — **Articles**: rich content (TipTap), uploads, full CRUD APIs, article detail tabs, pipeline `ArticleStatus`, publish date with auto `readinessDeadline` (publish minus 7 days). See [`CHANGELOG.md`](./CHANGELOG.md) `[0.4.0]`.
 - **Milestone 5 (release track)** — **Project progress**: Prisma models, admin-gated writes, `/api/project-progress/*`, `/dashboard/project-progress` with phases, workstreams, milestones, blockers, and reports. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.5.0]`. *(Product doc “Milestone 5” is tasks + Kanban — that track is still pending.)*
 - **Milestone 6** — **Editorial calendar + readiness**: `GET /api/calendar`, readiness states on the calendar, at-risk summary, filters, upcoming list, navigation to `/dashboard/articles/[id]`; social calendar remains mock until Milestone 10. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.6.0]`.
+- **Milestone 7** — **Logs, versions, AI attempts, sections, idea backlog**: `ArticleVersion` snapshots, `AIAttempt` tracking, enriched `ContentLog` (action, metadata, createdBy), `Section` model with character fields, sections CRUD at `/dashboard/sections`, `IdeaBacklog` model and UI at `/dashboard/idea-backlog`, real data in `/dashboard/logs` and `/dashboard/logs/attempts`. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.8.0]`.
+- **Content taxonomy rebuild** — all categories and topics replaced with 70 categories and 700 topics sourced from the KGHub Categories spreadsheet (10 categories × 7 sections, 10 topics per category). Re-run `npx prisma db seed` to apply. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.9.0]`.
 
 ---
 
@@ -120,8 +122,8 @@ Open [http://localhost:4000](http://localhost:4000) (dev port is set in `package
 app/
 ├── (auth)/          # Sign in, sign up, password reset
 ├── (protected)/     # All dashboard pages (auth-guarded, Demo1Layout)
-│   ├── account/     # My account (built-in Metronic)
-│   ├── user-management/  # Users, roles, permissions (built-in Metronic)
+│   ├── account/     # My account (built-in KGHub)
+│   ├── user-management/  # Users, roles, permissions (built-in KGHub)
 │   └── [modules]/   # Custom dashboard modules (added per milestone)
 ├── api/             # Route handlers
 └── components/      # Layout shell + partials
@@ -144,7 +146,7 @@ css/
 prisma/
 └── schema.prisma    # Database schema
 
-additional-concepts/ # Pre-built Metronic concept apps (reference only — do not import directly)
+additional-concepts/ # Pre-built KGHub concept apps (reference only — do not import directly)
 ```
 
 ---
@@ -153,7 +155,7 @@ additional-concepts/ # Pre-built Metronic concept apps (reference only — do no
 
 | # | Milestone | Status |
 |---|---|---|
-| 0 | Metronic Master Analysis | ✅ Complete |
+| 0 | KGHub Master Analysis | ✅ Complete |
 | 1 | Full Dashboard UI (Non-Functional) | ✅ Complete |
 | 2 | Backend Foundation + Auth | ✅ Complete |
 | 3 | Categories & Topics (CRUD + seed) | ✅ Complete |
@@ -177,4 +179,4 @@ additional-concepts/ # Pre-built Metronic concept apps (reference only — do no
 - Every custom API route must include a `getServerSession()` auth check
 - Use token-based Tailwind classes (`bg-background`, `text-primary`, etc.) — never hardcode colors
 
-See [`METRONIC_MASTER_ANALYSIS.md`](./METRONIC_MASTER_ANALYSIS.md) for the full safe customization rules.
+See [`KGHub_MASTER_ANALYSIS.md`](./KGHub_MASTER_ANALYSIS.md) for the full safe customization rules.

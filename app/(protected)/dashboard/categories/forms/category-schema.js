@@ -9,4 +9,5 @@ export const CategoryFormSchema = z.object({
   status: z.enum(['active', 'archived'], {
     required_error: 'Status is required.',
   }),
+  sectionId: z.string().min(1, { message: 'Section is required.' }).nullable().optional(),
 });

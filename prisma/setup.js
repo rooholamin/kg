@@ -69,7 +69,7 @@ async function main() {
       // Settings
       tx.setting.create({
         data: {
-          name: 'Metronic',
+          name: 'KGHub',
         },
       });
 

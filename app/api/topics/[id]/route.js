@@ -70,7 +70,9 @@ export async function PUT(request, { params }) {
       );
     }
 
-    const row = await updateTopic(id, parsed.data);
+    const row = await updateTopic(id, parsed.data, {
+      createdBy: session.user?.id ?? null,
+    });
     return NextResponse.json({
       data: {
         id: row.id,
@@ -114,7 +116,9 @@ export async function DELETE(_request, { params }) {
     }
 
     const { id } = await params;
-    const result = await archiveOrDeleteTopic(id);
+    const result = await archiveOrDeleteTopic(id, {
+      createdBy: session.user?.id ?? null,
+    });
     return NextResponse.json({
       data: {
         id: result.id,

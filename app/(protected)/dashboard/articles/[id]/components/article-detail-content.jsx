@@ -1,11 +1,19 @@
 'use client';
 
+import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Container } from '@/components/common/container';
 import { MilestoneNote } from '@/components/custom/milestone-note';
 import { ReadinessBadge } from '@/components/custom/readiness-badge';
@@ -13,7 +21,7 @@ import { PipelineStageBadge } from '@/components/custom/pipeline-stage-badge';
 import { PIPELINE_STAGES } from '@/app/(protected)/dashboard/_mock';
 import { ContentRenderer } from '@/components/custom/content-renderer';
 import { cn, toYoutubeEmbedUrl } from '@/lib/utils';
-import { Star } from 'lucide-react';
+import { History, Star } from 'lucide-react';
 
 /**
  * 9 equal columns: circle and label in the same cell so text centers under the dot.
@@ -175,9 +183,32 @@ function readinessForArticle(article) {
 /**
  * @param {object} props
  * @param {object} props.article
- * @param {{ id: string; type: string; message: string; createdAt: Date | string }[]} props.activityLogs
+ * @param {{
+ *   id: string;
+ *   title: string;
+ *   summary: string | null;
+ *   content: unknown;
+ *   versionLabel: string | null;
+ *   createdAt: Date | string;
+ *   createdBy: string | null;
+ *   createdByLabel: string | null;
+ * }[]} [props.versions]
+ * @param {{
+ *   id: string;
+ *   type: string;
+ *   action?: string | null;
+ *   message: string;
+ *   createdAt: Date | string;
+ *   createdBy?: string | null;
+ *   userLabel?: string | null;
+ * }[]} props.activityLogs
  */
-export function ArticleDetailContent({ article, activityLogs = [] }) {
+export function ArticleDetailContent({
+  article,
+  versions = [],
+  activityLogs = [],
+}) {
+  const [previewVersion, setPreviewVersion] = useState(null);
   const current = article.status;
   const readiness = readinessForArticle(article);
   const embed = toYoutubeEmbedUrl(article.videoUrl);
@@ -259,6 +290,7 @@ export function ArticleDetailContent({ article, activityLogs = [] }) {
             ['pipeline', 'Pipeline'],
             ['social', 'Social'],
             ['seo', 'SEO'],
+            ['versions', 'Versions'],
             ['activity', 'Activity'],
           ].map(([id, label]) => (
             <TabsTrigger key={id} value={id} className="text-xs sm:text-sm">
@@ -403,8 +435,8 @@ export function ArticleDetailContent({ article, activityLogs = [] }) {
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
               <p>
-                Per-stage entry and exit times, blockers, and owner assignments are planned
-                for Milestone 7 (activity & versions).
+                Stage changes are recorded in Activity; content snapshots before edits live
+                under Versions.
               </p>
             </CardContent>
           </Card>
@@ -454,6 +486,55 @@ export function ArticleDetailContent({ article, activityLogs = [] }) {
           </MilestoneNote>
         </TabsContent>
 
+        <TabsContent value="versions" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="size-4" aria-hidden />
+                Version history
+              </CardTitle>
+              <CardDescription>
+                Snapshots taken before title, summary, or body changes. Open a preview to
+                compare with the current article.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {versions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No saved versions yet. Edit the article to create the first snapshot.
+                </p>
+              ) : (
+                <ul className="divide-y rounded-md border">
+                  {versions.map((v) => (
+                    <li
+                      key={v.id}
+                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">
+                          {v.versionLabel || v.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDateTime(v.createdAt)}
+                          {v.createdByLabel ? ` · ${v.createdByLabel}` : ''}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewVersion(v)}
+                      >
+                        Preview
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="activity" className="mt-4">
           <Card>
             <CardHeader>
@@ -470,7 +551,10 @@ export function ArticleDetailContent({ article, activityLogs = [] }) {
                   <div key={a.id}>
                     <p className="text-sm font-medium text-foreground">{a.message}</p>
                     <p className="text-xs text-muted-foreground">
-                      {a.type} · {formatDateTime(a.createdAt)}
+                      {[a.action, a.type].filter(Boolean).join(' · ') || a.type}
+                      {' · '}
+                      {formatDateTime(a.createdAt)}
+                      {a.userLabel ? ` · ${a.userLabel}` : ''}
                     </p>
                     <Separator className="mt-3" />
                   </div>
@@ -480,6 +564,33 @@ export function ArticleDetailContent({ article, activityLogs = [] }) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!previewVersion} onOpenChange={(o) => !o && setPreviewVersion(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          {previewVersion ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{previewVersion.title}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <p className="text-xs text-muted-foreground">
+                  {formatDateTime(previewVersion.createdAt)}
+                  {previewVersion.createdByLabel
+                    ? ` · ${previewVersion.createdByLabel}`
+                    : ''}
+                </p>
+                {previewVersion.summary ? (
+                  <p className="leading-relaxed text-foreground/90">{previewVersion.summary}</p>
+                ) : (
+                  <p className="text-muted-foreground italic">No summary in this version.</p>
+                )}
+                <Separator />
+                <ContentRenderer content={previewVersion.content} />
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </Container>
   );
 }

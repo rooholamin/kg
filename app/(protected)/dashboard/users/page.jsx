@@ -91,7 +91,7 @@ export default function DashboardUsersPage() {
     <>
       <PageHeader
         title="Users &amp; roles"
-        description="Team access (shell). The Metronic user module remains at /user-management for full CRUD."
+        description="Team access (shell). The KGHub user module remains at /user-management for full CRUD."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button disabled>
@@ -99,10 +99,10 @@ export default function DashboardUsersPage() {
               Invite user (M2+)
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/user-management/users">Metronic: Users</Link>
+              <Link href="/user-management/users">KGHub: Users</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/user-management/roles">Metronic: Roles</Link>
+              <Link href="/user-management/roles">KGHub: Roles</Link>
             </Button>
           </div>
         }

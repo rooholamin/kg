@@ -9,6 +9,7 @@ const magazineContent = require('./data/magazine-content');
 const kgContent = require('./data/kg-content');
 const kgArticles = require('./data/kg-articles');
 const projectProgress = require('./data/project-progress');
+const kgSectionsContent = require('./data/kg-sections-content');
 
 const prisma = new PrismaClient();
 
@@ -234,136 +235,162 @@ async function main() {
       // Seed Settings
       await tx.systemSetting.create({
         data: {
-          name: 'Metronic',
+          name: 'KGHub',
         },
       });
       console.log('Settings seeded.');
 
-      for (const c of magazineContent.categories) {
-        await tx.category.upsert({
-          where: { id: c.id },
-          update: {
-            name: c.name,
-            description: c.description,
-            status: c.status,
-          },
-          create: c,
-        });
-      }
-      for (const t of magazineContent.topics) {
-        await tx.topic.upsert({
-          where: { id: t.id },
-          update: {
-            name: t.name,
-            description: t.description,
-            categoryId: t.categoryId,
-            targetKeyword: t.targetKeyword,
-            status: t.status,
-          },
-          create: t,
-        });
-      }
-      for (const a of magazineContent.articles) {
-        await tx.article.upsert({
-          where: { id: a.id },
-          update: {
-            title: a.title,
-            summary: a.summary,
-            content: a.content,
-            featuredImage: a.featuredImage,
-            galleryImages: a.galleryImages,
-            videoUrl: a.videoUrl,
-            isEditorsChoice: a.isEditorsChoice,
-            views: a.views,
-            likes: a.likes,
-            commentsCount: a.commentsCount,
-            topicId: a.topicId,
-            categoryId: a.categoryId,
-            status: a.status,
-            publishDate: a.publishDate,
-            readinessDeadline: a.readinessDeadline,
-            seoScore: a.seoScore,
-            wordpressPostId: a.wordpressPostId,
-          },
-          create: a,
-        });
-      }
-      for (const l of magazineContent.contentLogs) {
-        await tx.contentLog.upsert({
-          where: { id: l.id },
-          update: {
-            type: l.type,
-            message: l.message,
-            entityType: l.entityType,
-            entityId: l.entityId,
-          },
-          create: l,
-        });
-      }
-      for (const ap of magazineContent.getApprovals(ownerUser.id)) {
-        await tx.approval.upsert({
-          where: { id: ap.id },
-          update: {
-            type: ap.type,
-            status: ap.status,
-            requestedBy: ap.requestedBy,
-          },
-          create: ap,
-        });
-      }
-      console.log('Magazine content (categories, topics, articles, logs, approvals) seeded.');
+      // ── Sections ────────────────────────────────────────────────────────────
+      const SEC_LIVING  = '10000000-0000-4000-8000-000000000001';
+      const SEC_BUILD   = '10000000-0000-4000-8000-000000000002';
+      const SEC_INVEST  = '10000000-0000-4000-8000-000000000003';
+      const SEC_DATA    = '10000000-0000-4000-8000-000000000004';
+      const SEC_DESIGN  = '10000000-0000-4000-8000-000000000005';
+      const SEC_ECO     = '10000000-0000-4000-8000-000000000006';
+      const SEC_DEVELOP = '10000000-0000-4000-8000-000000000007';
 
-      for (const c of kgContent.categories) {
-        await tx.category.upsert({
-          where: { id: c.id },
+      const sections = [
+        {
+          id: SEC_LIVING,
+          name: 'KG Living',
+          slug: 'kg-living',
+          description: 'Home care, lifestyle, and everyday living guides for homeowners and renters alike.',
+          summary: 'Practical advice for maintaining, improving, and enjoying your home.',
+          icon: 'Home',
+          status: 'active',
+          characterName: 'Lyra',
+          characterBiography: 'Lyra is a seasoned home lifestyle expert with 15 years of hands-on experience in residential maintenance and interior wellness. She grew up in a family of contractors and translates complex home systems into approachable, actionable guides.',
+          characterPersona: 'Warm, practical, and encouraging. Lyra speaks directly to homeowners with empathy and clarity — never condescending, always solution-focused. She believes every home has a story and every maintenance task is an investment in that story.',
+          characterImage: '/media/characters/lyra.png',
+        },
+        {
+          id: SEC_BUILD,
+          name: 'KG Build',
+          slug: 'kg-build',
+          description: 'Construction, renovation, and skilled trades content for homeowners and professionals.',
+          summary: 'From HVAC to plumbing and electrical — expert guidance on building systems.',
+          icon: 'Hammer',
+          status: 'active',
+          characterName: 'Rex',
+          characterBiography: 'Rex is a licensed general contractor with 20+ years of field experience across residential and commercial projects. He has led builds ranging from basement renovations to full new-construction homes and brings a no-nonsense, safety-first approach to every topic.',
+          characterPersona: 'Authoritative, precise, and safety-conscious. Rex breaks down complex trade topics into clear, step-by-step guidance. He respects both the DIY homeowner and the seasoned professional, and he never skips the safety warnings.',
+          characterImage: '/media/characters/rex.png',
+        },
+        {
+          id: SEC_INVEST,
+          name: 'KG Invest',
+          slug: 'kg-invest',
+          description: 'Real estate investment, personal finance, and wealth-building strategies.',
+          summary: 'Smart investment decisions for homeowners, landlords, and first-time investors.',
+          icon: 'TrendingUp',
+          status: 'active',
+          characterName: 'Vera',
+          characterBiography: 'Vera is a certified financial planner and real estate investor who began her career at a top-tier investment bank before pivoting to help everyday people build wealth through property. She has personally managed a portfolio of 12 rental properties and coached hundreds of first-time investors.',
+          characterPersona: 'Sharp, data-driven, and refreshingly candid. Vera cuts through financial jargon with clear numbers and real scenarios. She is optimistic but grounded — always balancing opportunity with honest risk assessment.',
+          characterImage: '/media/characters/vera.png',
+        },
+        {
+          id: SEC_DATA,
+          name: 'KG Data',
+          slug: 'kg-data',
+          description: 'Technology, data, automation, and smart systems for modern living and working.',
+          summary: 'Making sense of smart home tech, AI tools, and data-driven decisions.',
+          icon: 'Database',
+          status: 'active',
+          characterName: 'Atlas',
+          characterBiography: 'Atlas is a systems architect and tech educator who has spent a decade bridging the gap between enterprise technology and consumer applications. He has built smart home automation systems and written extensively about AI-assisted living.',
+          characterPersona: 'Intellectually curious, methodical, and jargon-aware. Atlas assumes intelligence in his readers but never assumes prior technical knowledge. He loves a good analogy and believes the best tech is the kind you stop noticing.',
+          characterImage: '/media/characters/atlas.png',
+        },
+        {
+          id: SEC_DESIGN,
+          name: 'KG Design',
+          slug: 'kg-design',
+          description: 'Interior design, architecture, aesthetics, and creative home transformation.',
+          summary: 'Inspiring spaces through thoughtful design, style, and creative problem-solving.',
+          icon: 'Palette',
+          status: 'active',
+          characterName: 'Nova',
+          characterBiography: 'Nova is an interior architect and design educator with a background in sustainable residential design. She has collaborated with homeowners across North America to transform spaces with both beauty and function in mind.',
+          characterPersona: 'Visionary, detail-oriented, and culturally aware. Nova has an eye for what makes a space feel alive and a talent for explaining design principles to non-designers. She celebrates individual taste while offering expert guidance.',
+          characterImage: '/media/characters/nova.png',
+        },
+        {
+          id: SEC_ECO,
+          name: 'KG Eco',
+          slug: 'kg-eco',
+          description: 'Sustainability, green living, eco-friendly home upgrades, and environmental responsibility.',
+          summary: 'Practical steps toward a lower-footprint, healthier, and more sustainable home life.',
+          icon: 'Leaf',
+          status: 'active',
+          characterName: 'Sage',
+          characterBiography: 'Sage is an environmental consultant and sustainable building advocate who has spent a decade helping homeowners reduce their carbon footprint. She holds certifications in LEED and passive house design and writes from direct field experience.',
+          characterPersona: 'Grounded, principled, and motivating. Sage never guilt-trips — she meets readers where they are and celebrates every step toward sustainability. She brings scientific rigour without the lecture, and always makes green choices feel achievable.',
+          characterImage: '/media/characters/sage.png',
+        },
+        {
+          id: SEC_DEVELOP,
+          name: 'KG Develop',
+          slug: 'kg-develop',
+          description: 'Software development, web technology, and digital tools for creators and professionals.',
+          summary: 'Code, tools, and workflows for developers building in the modern web ecosystem.',
+          icon: 'Code',
+          status: 'active',
+          characterName: 'Zane',
+          characterBiography: 'Zane is a full-stack software engineer and open-source contributor who has built products used by millions of people. He has worked at both early-stage startups and large engineering organisations and now focuses on developer education and tooling.',
+          characterPersona: 'Direct, opinionated, and collaborative. Zane writes for developers who want to ship great software efficiently. He is candid about tradeoffs, excited about emerging tools, and allergic to unnecessary complexity.',
+          characterImage: '/media/characters/zane.png',
+        },
+      ];
+
+      for (const s of sections) {
+        await tx.section.upsert({
+          where: { id: s.id },
           update: {
+            name: s.name,
+            slug: s.slug,
+            description: s.description,
+            summary: s.summary,
+            icon: s.icon,
+            status: s.status,
+            characterName: s.characterName,
+            characterBiography: s.characterBiography,
+            characterPersona: s.characterPersona,
+            characterImage: s.characterImage,
+          },
+          create: s,
+        });
+      }
+      console.log('Sections (7 KG verticals) seeded.');
+
+      // ── Clear all existing categories (cascades to topics and articles) ──────
+      await tx.topic.deleteMany({});
+      await tx.category.deleteMany({});
+      console.log('Existing categories and topics cleared.');
+
+      // ── Seed categories and topics from Excel ────────────────────────────────
+      for (const c of kgSectionsContent.categories) {
+        await tx.category.create({
+          data: {
+            id: c.id,
             name: c.name,
-            description: c.description,
             status: c.status,
+            sectionId: c.sectionId,
           },
-          create: c,
         });
       }
-      for (const t of kgContent.topics) {
-        await tx.topic.upsert({
-          where: { id: t.id },
-          update: {
+      for (const t of kgSectionsContent.topics) {
+        await tx.topic.create({
+          data: {
+            id: t.id,
             name: t.name,
-            description: t.description,
-            categoryId: t.categoryId,
-            targetKeyword: t.targetKeyword,
             status: t.status,
+            categoryId: t.categoryId,
           },
-          create: t,
-        });
-      }
-      for (const a of kgArticles.articles) {
-        await tx.article.upsert({
-          where: { id: a.id },
-          update: {
-            title: a.title,
-            summary: a.summary,
-            content: a.content,
-            featuredImage: a.featuredImage,
-            galleryImages: a.galleryImages,
-            videoUrl: a.videoUrl,
-            isEditorsChoice: a.isEditorsChoice,
-            views: a.views,
-            likes: a.likes,
-            commentsCount: a.commentsCount,
-            topicId: a.topicId,
-            categoryId: a.categoryId,
-            status: a.status,
-            publishDate: a.publishDate,
-            readinessDeadline: a.readinessDeadline,
-            seoScore: a.seoScore,
-            wordpressPostId: a.wordpressPostId,
-          },
-          create: a,
         });
       }
       console.log(
-        'Kingsgate home-service content (categories, topics, articles) seeded.',
+        'KG sections content seeded: ' + kgSectionsContent.categories.length + ' categories, ' + kgSectionsContent.topics.length + ' topics.',
       );
 
       for (const p of projectProgress.phases) {

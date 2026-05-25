@@ -59,6 +59,7 @@ import {
   Layers,
   LayoutDashboard,
   Link2,
+  Lightbulb,
   ListChecks,
 } from 'lucide-react';
 
@@ -76,6 +77,11 @@ export const MENU_SIDEBAR = [
     path: '/dashboard/ai',
   },
   { heading: 'Content' },
+  {
+    title: 'Sections',
+    icon: LayoutGrid,
+    path: '/dashboard/sections',
+  },
   {
     title: 'Categories',
     icon: Layers,
@@ -101,6 +107,11 @@ export const MENU_SIDEBAR = [
     title: 'Project Progress',
     icon: BarChart2,
     path: '/dashboard/project-progress',
+  },
+  {
+    title: 'Idea Backlog',
+    icon: Lightbulb,
+    path: '/dashboard/idea-backlog',
   },
   { heading: 'Intelligence' },
   {
@@ -1235,7 +1246,7 @@ export const MENU_HELP = [
   {
     title: 'Getting Started',
     icon: Coffee,
-    path: 'https://keenthemes.com/metronic/tailwind/docs/getting-started/installation',
+    path: 'https://keenthemes.com/KGHub/tailwind/docs/getting-started/installation',
   },
   {
     title: 'Support Forum',
@@ -1261,12 +1272,12 @@ export const MENU_HELP = [
   {
     title: 'Licenses & FAQ',
     icon: Captions,
-    path: 'https://keenthemes.com/metronic/tailwind/docs/getting-started/license',
+    path: 'https://keenthemes.com/KGHub/tailwind/docs/getting-started/license',
   },
   {
     title: 'Documentation',
     icon: FileQuestion,
-    path: 'https://keenthemes.com/metronic/tailwind/docs',
+    path: 'https://keenthemes.com/KGHub/tailwind/docs',
   },
   { separator: true },
   { title: 'Contact Us', icon: Share2, path: 'https://keenthemes.com/contact' },

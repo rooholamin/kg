@@ -38,7 +38,7 @@ export function HeaderLogo() {
 
   const teams = [
     {
-      title: 'MetronicTeam',
+      title: 'KGHubTeam',
       icon: UserCircle,
       urlPartial: '/public-profile/',
       path: '/public-profile/profiles/default',

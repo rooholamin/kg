@@ -262,7 +262,8 @@ export async function createPhase(data) {
     await contentLog(
       {
         type: 'project',
-        message: `Project phase created: ${phase.title}`,
+        action: 'create',
+        message: `Project phase “${phase.title}” created`,
         entityType: 'project_phase',
         entityId: phase.id,
       },
@@ -294,7 +295,8 @@ export async function updatePhase(id, data) {
     await contentLog(
       {
         type: 'project',
-        message: withChangeDetails(`Project phase updated: ${updated.title}`, changes),
+        action: 'update',
+        message: withChangeDetails(`Project phase “${updated.title}” updated`, changes),
         entityType: 'project_phase',
         entityId: updated.id,
       },
@@ -311,7 +313,8 @@ export async function deletePhase(id) {
     await contentLog(
       {
         type: 'project',
-        message: `Project phase deleted`,
+        action: 'delete',
+        message: 'Project phase deleted',
         entityType: 'project_phase',
         entityId: id,
       },
@@ -343,7 +346,8 @@ export async function createWorkstream(data) {
     await contentLog(
       {
         type: 'project',
-        message: `Workstream created: ${ws.name}`,
+        action: 'create',
+        message: `Workstream “${ws.name}” created`,
         entityType: 'project_workstream',
         entityId: ws.id,
       },
@@ -373,7 +377,8 @@ export async function updateWorkstream(id, data) {
     await contentLog(
       {
         type: 'project',
-        message: withChangeDetails(`Workstream updated: ${ws.name}`, changes),
+        action: 'update',
+        message: withChangeDetails(`Workstream “${ws.name}” updated`, changes),
         entityType: 'project_workstream',
         entityId: ws.id,
       },
@@ -391,6 +396,7 @@ export async function deleteWorkstream(id) {
     await contentLog(
       {
         type: 'project',
+        action: 'delete',
         message: 'Workstream deleted',
         entityType: 'project_workstream',
         entityId: id,
@@ -431,7 +437,8 @@ export async function createMilestone(data) {
     await contentLog(
       {
         type: 'project',
-        message: `Milestone created: ${ms.title}`,
+        action: 'create',
+        message: `Milestone “${ms.title}” created`,
         entityType: 'project_milestone',
         entityId: ms.id,
       },
@@ -476,12 +483,19 @@ export async function updateMilestone(id, data) {
       describeChange('start', existing.startDate, ms.startDate),
       describeChange('end', existing.endDate, ms.endDate),
     ];
+    const milestoneStatusChanged = existing.status !== ms.status;
     await contentLog(
       {
         type: 'project',
-        message: withChangeDetails(`Milestone updated: ${ms.title}`, changes),
+        action: milestoneStatusChanged ? 'status_change' : 'update',
+        message: milestoneStatusChanged
+          ? `Milestone “${ms.title}” marked ${String(ms.status).replace(/_/g, ' ')}`
+          : withChangeDetails(`Milestone “${ms.title}” updated`, changes),
         entityType: 'project_milestone',
         entityId: ms.id,
+        metadata: milestoneStatusChanged
+          ? { fromStatus: existing.status, toStatus: ms.status }
+          : undefined,
       },
       tx,
     );
@@ -497,6 +511,7 @@ export async function deleteMilestone(id) {
     await contentLog(
       {
         type: 'project',
+        action: 'delete',
         message: 'Milestone deleted',
         entityType: 'project_milestone',
         entityId: id,
@@ -530,7 +545,8 @@ export async function createBlocker(data) {
     await contentLog(
       {
         type: 'project',
-        message: `Blocker created: ${blocker.title}`,
+        action: 'create',
+        message: `Blocker “${blocker.title}” created`,
         entityType: 'project_blocker',
         entityId: blocker.id,
       },
@@ -571,10 +587,12 @@ export async function updateBlocker(id, data) {
       describeChange('severity', existing.severity, blocker.severity),
       describeChange('milestone', existing.milestoneId, blocker.milestoneId),
     ];
+    const blockerStatusChanged = existing.status !== blocker.status;
     await contentLog(
       {
         type: 'project',
-        message: withChangeDetails(`Blocker updated: ${blocker.title}`, changes),
+        action: blockerStatusChanged ? 'status_change' : 'update',
+        message: withChangeDetails(`Blocker “${blocker.title}” updated`, changes),
         entityType: 'project_blocker',
         entityId: blocker.id,
       },
@@ -597,6 +615,7 @@ export async function deleteBlocker(id) {
     await contentLog(
       {
         type: 'project',
+        action: 'delete',
         message: 'Blocker deleted',
         entityType: 'project_blocker',
         entityId: id,
@@ -647,7 +666,8 @@ export async function createReport(data) {
     await contentLog(
       {
         type: 'project',
-        message: `Progress report created: ${report.title}`,
+        action: 'create',
+        message: `Progress report “${report.title}” created`,
         entityType: 'project_report',
         entityId: report.id,
       },
@@ -670,6 +690,7 @@ export async function deleteReport(id) {
     await contentLog(
       {
         type: 'project',
+        action: 'delete',
         message: 'Progress report deleted',
         entityType: 'project_report',
         entityId: id,

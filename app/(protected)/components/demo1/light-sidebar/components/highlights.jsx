@@ -45,9 +45,9 @@ const Highlights = ({ limit }) => {
   ];
 
   const items = [
-    { badgeColor: 'bg-green-500', label: 'Metronic' },
+    { badgeColor: 'bg-green-500', label: 'KGHub' },
     { badgeColor: 'bg-destructive', label: 'Bundle' },
-    { badgeColor: 'bg-violet-500', label: 'MetronicNest' },
+    { badgeColor: 'bg-violet-500', label: 'KGHubNest' },
   ];
 
   const renderRow = (row, index) => {

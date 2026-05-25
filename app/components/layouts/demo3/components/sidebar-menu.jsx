@@ -72,7 +72,7 @@ export function SidebarMenu() {
     },
     {
       icon: HelpCircle,
-      path: 'https://docs.keenthemes.com/metronic-vite',
+      path: 'https://docs.keenthemes.com/KGHub-vite',
       title: 'Docs',
     },
   ];

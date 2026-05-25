@@ -61,7 +61,8 @@ export function CategoriesTable() {
       (c) =>
         !q ||
         c.name.toLowerCase().includes(q) ||
-        (c.description ?? '').toLowerCase().includes(q),
+        (c.description ?? '').toLowerCase().includes(q) ||
+        (c.section?.name ?? '').toLowerCase().includes(q),
     );
   }, [search, rows]);
 
@@ -83,6 +84,27 @@ export function CategoriesTable() {
           </Link>
         ),
         size: 200,
+      },
+      {
+        accessorKey: 'section',
+        id: 'section',
+        header: ({ column }) => (
+          <DataGridColumnHeader title="Section" column={column} />
+        ),
+        cell: ({ row }) => {
+          const s = row.original.section;
+          if (!s) return <span className="text-muted-foreground text-xs">—</span>;
+          return (
+            <Link
+              className="text-xs text-primary hover:underline"
+              href={`/dashboard/sections/${s.id}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {s.name}
+            </Link>
+          );
+        },
+        size: 140,
       },
       {
         accessorKey: 'description',

@@ -37,7 +37,7 @@ export default function Item6() {
           <span className="flex items-center text-xs font-medium text-muted-foreground">
             3 day ago
             <span className="rounded-full size-1 bg-mono/30 mx-1.5"></span>
-            Metronic Launcher mockups
+            KGHub Launcher mockups
           </span>
         </div>
 

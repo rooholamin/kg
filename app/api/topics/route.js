@@ -64,7 +64,9 @@ export async function POST(request) {
       );
     }
 
-    const row = await createTopic(parsed.data);
+    const row = await createTopic(parsed.data, {
+      createdBy: session.user?.id ?? null,
+    });
     return NextResponse.json({
       data: {
         id: row.id,

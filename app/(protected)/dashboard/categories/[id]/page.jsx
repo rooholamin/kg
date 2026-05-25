@@ -63,6 +63,7 @@ export default async function CategoryDetailPage({ params }) {
               name: category.name,
               description: category.description,
               status: category.status,
+              sectionId: category.sectionId,
               topicCount: category._count.topics,
               articleCount: category._count.articles,
             }}
@@ -77,6 +78,19 @@ export default async function CategoryDetailPage({ params }) {
               <CardDescription>Status and counts</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Section</span>
+                {category.section ? (
+                  <Link
+                    href={`/dashboard/sections/${category.section.id}`}
+                    className="text-primary hover:underline"
+                  >
+                    {category.section.name}
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status</span>
                 <StatusBadge

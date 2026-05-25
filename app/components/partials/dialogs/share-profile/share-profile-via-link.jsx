@@ -22,7 +22,7 @@ export function ShareProfileViaLink() {
           type="text"
           value={linkInput}
           onChange={(e) => setLinkInput(e.target.value)}
-          placeholder="https://metronic.com/profiles/x7g2vA3kZ5"
+          placeholder="https://KGHub.com/profiles/x7g2vA3kZ5"
         />
 
         <Button

@@ -1,7 +1,7 @@
 # Product Overview — Automation Magazine Dashboard
 
 > **Type:** Private internal dashboard  
-> **Stack:** Next.js (Metronic) — see `METRONIC_MASTER_ANALYSIS.md` for technical foundation  
+> **Stack:** Next.js (KGHub) — see `KGHub_MASTER_ANALYSIS.md` for technical foundation  
 > **Public site:** WordPress (separate — never managed from this dashboard)  
 > **Delivery:** 11 milestones (Milestone 0–10) — this document is the permanent product context for all of them
 
@@ -24,7 +24,7 @@ The public website (WordPress) is the output destination. This dashboard is the 
 | Admin | Full system control | Manage users, approve actions, configure automation, view all logs |
 | User | Scoped to assigned work | Create content, run pipelines, use AI, submit for approval |
 
-> More roles may be defined per milestone. Permissions are granular and role-based (Metronic `UserRole` + `UserPermission` system already exists).
+> More roles may be defined per milestone. Permissions are granular and role-based (KGHub `UserRole` + `UserPermission` system already exists).
 
 ---
 
@@ -235,7 +235,7 @@ Tasks have: title, description, priority, assignee, due date, linked article/sta
 
 ### 9. Users, Roles & Approvals
 
-Built on top of Metronic's existing `user-management/` module.
+Built on top of KGHub's existing `user-management/` module.
 
 **Users:** Invite, activate, deactivate, assign roles.
 
@@ -275,8 +275,8 @@ The system connects to external tools to execute and monitor workflows. **This l
 
 | # | Milestone | Scope | AI/Integrations |
 |---|---|---|---|
-| 0 | Metronic Master Analysis | Analyze Metronic; create `METRONIC_MASTER_ANALYSIS.md` as reusable technical reference | None |
-| 1 | Full Dashboard UI (Non-Functional) | Build all pages, layouts, navigation, and shells using Metronic. No real backend. Mock data only. | UI shell only — chat UI exists, responses are mocked |
+| 0 | KGHub Master Analysis | Analyze KGHub; create `KGHub_MASTER_ANALYSIS.md` as reusable technical reference | None |
+| 1 | Full Dashboard UI (Non-Functional) | Build all pages, layouts, navigation, and shells using KGHub. No real backend. Mock data only. | UI shell only — chat UI exists, responses are mocked |
 | 2 | Backend Foundation + Auth | Setup database schema, API routes, and authentication. Replace mock state with real data layer. | None |
 | 3 | Categories & Topics (Real System) | First fully working feature: Categories + Topics with real CRUD, API, and DB. | None |
 | 4 | Articles + Pipeline | Core content engine: article lifecycle, pipeline stages, stage transitions, task generation. | UI only — AI fields exist in data model, not wired |
@@ -287,15 +287,15 @@ The system connects to external tools to execute and monitor workflows. **This l
 | 9 | AI Chat Integration (Real) | Connect AI models, implement intent parsing, action system, confirmation flows, real AI responses. | **AI fully active** — chat executes real actions |
 | 10 | n8n Automation + SEO + Social | Automation layer: n8n workflows, SEO logic + link suggestions, social output generation, full integration wiring. | All integrations active |
 
-> Each milestone prompt must reference both this document and `METRONIC_MASTER_ANALYSIS.md`.  
-> Milestone 0 is complete. The artifact it produced is `METRONIC_MASTER_ANALYSIS.md`.
+> Each milestone prompt must reference both this document and `KGHub_MASTER_ANALYSIS.md`.  
+> Milestone 0 is complete. The artifact it produced is `KGHub_MASTER_ANALYSIS.md`.
 
 ---
 
 ## Key Rules for All Milestones
 
 1. **This document is the product source of truth.** All milestones must stay consistent with the structure, terminology, and behavior defined here.
-2. **Metronic is the UI foundation.** See `METRONIC_MASTER_ANALYSIS.md`. Do not re-analyze the theme.
+2. **KGHub is the UI foundation.** See `KGHub_MASTER_ANALYSIS.md`. Do not re-analyze the theme.
 3. **`additional-concepts/` is the component source.** Check it before building anything new.
 4. **Scope each milestone tightly.** Do not implement future milestone features early.
 5. **AI is visual/mocked until Milestone 9.** The chat UI is built in Milestone 1. Real AI intent, actions, and responses are wired in Milestone 9 only. Never connect AI behavior before Milestone 9 unless explicitly instructed.

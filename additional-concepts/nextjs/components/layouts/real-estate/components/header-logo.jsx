@@ -45,7 +45,7 @@ export function HeaderLogo() {
           />
         </div>
         <span className="text-mono text-lg font-semibold hidden lg:block">
-          Metronic
+          KGHub
         </span>
       </Link>
 

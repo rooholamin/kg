@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { RiCheckboxCircleFill, RiErrorWarningFill } from '@remixicon/react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircleIcon } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -38,16 +38,29 @@ import {
 } from '@/components/ui/select';
 import { CategoryFormSchema } from '../forms/category-schema';
 
+async function fetchSections() {
+  const res = await apiFetch('/api/sections');
+  if (!res.ok) return { data: [] };
+  return res.json();
+}
+
 /**
  * @param {object} props
  * @param {boolean} props.open
  * @param {() => void} props.onOpenChange
- * @param {null | { id: string; name: string; description?: string | null; status: string }} props.category
+ * @param {null | { id: string; name: string; description?: string | null; status: string; sectionId?: string | null }} props.category
  */
 export function CategoryFormDialog({ open, onOpenChange, category }) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const isEdit = Boolean(category?.id);
+
+  const { data: sectionsData } = useQuery({
+    queryKey: ['sections'],
+    queryFn: fetchSections,
+    enabled: open,
+  });
+  const sections = sectionsData?.data ?? [];
 
   const form = useForm({
     resolver: zodResolver(CategoryFormSchema),
@@ -55,6 +68,7 @@ export function CategoryFormDialog({ open, onOpenChange, category }) {
       name: '',
       description: '',
       status: 'active',
+      sectionId: '',
     },
     mode: 'onSubmit',
   });
@@ -66,12 +80,14 @@ export function CategoryFormDialog({ open, onOpenChange, category }) {
         name: category.name,
         description: category.description ?? '',
         status: category.status === 'archived' ? 'archived' : 'active',
+        sectionId: category.sectionId ?? '',
       });
     } else {
       form.reset({
         name: '',
         description: '',
         status: 'active',
+        sectionId: '',
       });
     }
   }, [open, isEdit, category, form]);
@@ -88,6 +104,7 @@ export function CategoryFormDialog({ open, onOpenChange, category }) {
           name: values.name,
           description: values.description || null,
           status: values.status,
+          sectionId: values.sectionId || null,
         }),
       });
       if (!response.ok) {
@@ -145,6 +162,33 @@ export function CategoryFormDialog({ open, onOpenChange, category }) {
             onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
           >
             <DialogBody className="pt-2.5 space-y-6">
+              <FormField
+                control={form.control}
+                name="sectionId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Section</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value ?? ''}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a section…" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {sections.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="name"

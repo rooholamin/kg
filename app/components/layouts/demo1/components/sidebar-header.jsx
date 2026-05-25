@@ -18,31 +18,31 @@ export function SidebarHeader() {
   };
 
   return (
-    <div className="sidebar-header hidden lg:flex items-center relative justify-between px-3 lg:px-6 shrink-0">
-      <Link href="/">
-        <div className="dark:hidden">
+    <div className="sidebar-header hidden lg:flex items-center relative justify-center px-3 lg:px-6 pt-8 shrink-0">
+      <Link href="/" className="flex w-full justify-center">
+        <div className="dark:hidden flex justify-center">
           <img
-            src={toAbsoluteUrl('/media/app/default-logo.svg')}
-            className="default-logo h-[22px] max-w-none"
+            src={toAbsoluteUrl('/media/app/kglogo.png')}
+            className="default-logo h-[64px] max-w-none object-contain"
             alt="Default Logo"
           />
 
           <img
             src={toAbsoluteUrl('/media/app/mini-logo.svg')}
-            className="small-logo h-[22px] max-w-none"
+            className="small-logo h-[48px] max-w-none object-contain"
             alt="Mini Logo"
           />
         </div>
         <div className="hidden dark:block">
           <img
             src={toAbsoluteUrl('/media/app/default-logo-dark.svg')}
-            className="default-logo h-[22px] max-w-none"
+            className="default-logo h-[64px] max-w-none object-contain"
             alt="Default Dark Logo"
           />
 
           <img
             src={toAbsoluteUrl('/media/app/mini-logo.svg')}
-            className="small-logo h-[22px] max-w-none"
+            className="small-logo h-[48px] max-w-none object-contain"
             alt="Mini Logo"
           />
         </div>

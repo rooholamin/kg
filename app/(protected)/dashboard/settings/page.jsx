@@ -67,7 +67,7 @@ export default function DashboardSettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Appearance</CardTitle>
-              <CardDescription>Theme follows Metronic (next-themes)</CardDescription>
+              <CardDescription>Theme follows KGHub (next-themes)</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">

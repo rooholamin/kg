@@ -5,6 +5,7 @@ export async function getCategories() {
   return prisma.category.findMany({
     orderBy: { name: 'asc' },
     include: {
+      section: { select: { id: true, name: true, slug: true } },
       _count: {
         select: { topics: true, articles: true },
       },
@@ -19,6 +20,7 @@ export async function getCategoryById(id) {
   return prisma.category.findUnique({
     where: { id },
     include: {
+      section: { select: { id: true, name: true, slug: true } },
       topics: { orderBy: { name: 'asc' } },
       _count: { select: { topics: true, articles: true } },
     },
@@ -39,9 +41,15 @@ async function findDuplicateCategoryName(name, excludeId) {
 }
 
 /**
- * @param {{ name: string; description?: string | null; status: 'active' | 'archived' }} data
+ * @param {{
+ *   name: string;
+ *   description?: string | null;
+ *   status: 'active' | 'archived';
+ *   sectionId?: string | null;
+ * }} data
+ * @param {{ createdBy?: string | null }} [opts]
  */
-export async function createCategory(data) {
+export async function createCategory(data, opts = {}) {
   const trimmed = data.name?.trim();
   if (!trimmed) {
     const err = new Error('Name is required');
@@ -61,14 +69,18 @@ export async function createCategory(data) {
         name: trimmed,
         description: data.description?.trim() || null,
         status: data.status,
+        sectionId: data.sectionId || null,
       },
     });
     await contentLog(
       {
-        type: 'content',
-        message: `Category created: ${row.name}`,
+        type: 'category',
+        action: 'create',
+        message: `Category "${row.name}" created`,
         entityType: 'category',
         entityId: row.id,
+        metadata: data.sectionId ? { sectionId: data.sectionId } : null,
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );
@@ -78,9 +90,15 @@ export async function createCategory(data) {
 
 /**
  * @param {string} id
- * @param {{ name: string; description?: string | null; status: 'active' | 'archived' }} data
+ * @param {{
+ *   name: string;
+ *   description?: string | null;
+ *   status: 'active' | 'archived';
+ *   sectionId?: string | null;
+ * }} data
+ * @param {{ createdBy?: string | null }} [opts]
  */
-export async function updateCategory(id, data) {
+export async function updateCategory(id, data, opts = {}) {
   const existing = await prisma.category.findUnique({ where: { id } });
   if (!existing) {
     const err = new Error('Category not found');
@@ -107,14 +125,18 @@ export async function updateCategory(id, data) {
         name: trimmed,
         description: data.description?.trim() || null,
         status: data.status,
+        sectionId: data.sectionId !== undefined ? (data.sectionId || null) : existing.sectionId,
       },
     });
     await contentLog(
       {
-        type: 'content',
-        message: `Category updated: ${row.name}`,
+        type: 'category',
+        action: 'update',
+        message: `Category "${row.name}" updated`,
         entityType: 'category',
         entityId: row.id,
+        metadata: { sectionId: row.sectionId },
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );
@@ -125,9 +147,10 @@ export async function updateCategory(id, data) {
 /**
  * Archives when the category has topics or articles; otherwise hard-deletes.
  * @param {string} id
+ * @param {{ createdBy?: string | null }} [opts]
  * @returns {Promise<{ result: 'archived' | 'deleted'; id: string; alreadyArchived?: boolean }>}
  */
-export async function archiveOrDeleteCategory(id) {
+export async function archiveOrDeleteCategory(id, opts = {}) {
   return prisma.$transaction(async (tx) => {
     const row = await tx.category.findUnique({
       where: { id },
@@ -150,10 +173,12 @@ export async function archiveOrDeleteCategory(id) {
       });
       await contentLog(
         {
-          type: 'content',
-          message: `Category archived: ${row.name} (has related topics or articles)`,
+          type: 'category',
+          action: 'archive',
+          message: `Category "${row.name}" archived (has related topics or articles)`,
           entityType: 'category',
           entityId: id,
+          createdBy: opts.createdBy ?? null,
         },
         tx,
       );
@@ -161,10 +186,12 @@ export async function archiveOrDeleteCategory(id) {
     }
     await contentLog(
       {
-        type: 'content',
-        message: `Category deleted: ${row.name}`,
+        type: 'category',
+        action: 'delete',
+        message: `Category "${row.name}" deleted`,
         entityType: 'category',
         entityId: id,
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );

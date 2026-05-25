@@ -11,7 +11,7 @@ export function NavbarLinks() {
       </a>
       <a
         className="hover:text-primary"
-        href="https://keenthemes.com/metronic/tailwind/docs/"
+        href="https://keenthemes.com/KGHub/tailwind/docs/"
       >
         User Guides
       </a>

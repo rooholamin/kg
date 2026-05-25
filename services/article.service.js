@@ -109,6 +109,64 @@ function normalizeContent(content) {
 }
 
 /**
+ * @param {import('@prisma/client').Prisma.JsonValue | null | undefined} content
+ */
+function contentFingerprint(content) {
+  if (content == null) return 'null';
+  try {
+    return JSON.stringify(content);
+  } catch {
+    return String(content);
+  }
+}
+
+/**
+ * @param {import('@prisma/client').Article} existing
+ * @param {object} data — same shape as updateArticle input (pre-normalize)
+ */
+function shouldSnapshotArticleBeforeUpdate(existing, data) {
+  const nextTitle = data.title.trim();
+  const nextSummary = data.summary?.trim() || null;
+  const nextContent = normalizeContent(data.content);
+  if (existing.title !== nextTitle) return true;
+  if ((existing.summary ?? null) !== nextSummary) return true;
+  return contentFingerprint(existing.content) !== contentFingerprint(nextContent);
+}
+
+function formatPipelineLabel(status) {
+  return String(status).replace(/_/g, ' ');
+}
+
+/**
+ * Persist a snapshot of the article before applying an update.
+ * @param {import('@prisma/client').Article} article
+ * @param {import('@prisma/client').Prisma.TransactionClient} tx
+ * @param {{ createdBy?: string | null }} [opts]
+ */
+export async function createArticleVersion(article, tx, opts = {}) {
+  await tx.articleVersion.create({
+    data: {
+      articleId: article.id,
+      title: article.title,
+      summary: article.summary,
+      content: article.content ?? null,
+      createdBy: opts.createdBy ?? null,
+    },
+  });
+}
+
+/**
+ * @param {string} articleId
+ */
+export async function getArticleVersions(articleId) {
+  return prisma.articleVersion.findMany({
+    where: { articleId },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+}
+
+/**
  * @param {{ topicId?: string | null; categoryId?: string | null; status?: string | null }} [filters]
  */
 export async function getArticles(filters = {}) {
@@ -185,8 +243,9 @@ async function assertTopicInCategory(topicId, categoryId) {
  *  seoScore?: number | null;
  *  wordpressPostId?: number | null;
  * }} data
+ * @param {{ createdBy?: string | null }} [opts]
  */
-export async function createArticle(data) {
+export async function createArticle(data, opts = {}) {
   if (!data.title?.trim()) {
     const err = new Error('Title is required');
     err.code = 'VALIDATION';
@@ -239,10 +298,12 @@ export async function createArticle(data) {
     });
     await contentLog(
       {
-        type: 'content',
-        message: `Article created: ${row.title}`,
+        type: 'article',
+        action: 'create',
+        message: `Article “${row.title}” created`,
         entityType: 'article',
         entityId: row.id,
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );
@@ -253,8 +314,9 @@ export async function createArticle(data) {
 /**
  * @param {string} id
  * @param {object} data
+ * @param {{ createdBy?: string | null }} [opts]
  */
-export async function updateArticle(id, data) {
+export async function updateArticle(id, data, opts = {}) {
   const existing = await prisma.article.findUnique({ where: { id } });
   if (!existing) {
     const err = new Error('Article not found');
@@ -287,7 +349,14 @@ export async function updateArticle(id, data) {
   const content = normalizeContent(data.content);
   const gallery = Array.isArray(data.galleryImages) ? data.galleryImages : [];
 
+  const statusChanged = existing.status !== data.status;
+  const snapshot = shouldSnapshotArticleBeforeUpdate(existing, data);
+
   return prisma.$transaction(async (tx) => {
+    if (snapshot) {
+      await createArticleVersion(existing, tx, { createdBy: opts.createdBy ?? null });
+    }
+
     const row = await tx.article.update({
       where: { id },
       data: {
@@ -315,12 +384,22 @@ export async function updateArticle(id, data) {
         category: { select: { id: true, name: true } },
       },
     });
+    const logAction = statusChanged ? 'status_change' : 'update';
+    const logMessage = statusChanged
+      ? `Article “${row.title}” moved from ${formatPipelineLabel(existing.status)} to ${formatPipelineLabel(row.status)}`
+      : `Article “${row.title}” updated`;
+
     await contentLog(
       {
-        type: 'content',
-        message: `Article updated: ${row.title}`,
+        type: 'article',
+        action: logAction,
+        message: logMessage,
         entityType: 'article',
         entityId: row.id,
+        metadata: statusChanged
+          ? { fromStatus: existing.status, toStatus: row.status }
+          : undefined,
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );
@@ -330,8 +409,9 @@ export async function updateArticle(id, data) {
 
 /**
  * @param {string} id
+ * @param {{ createdBy?: string | null }} [opts]
  */
-export async function archiveOrDeleteArticle(id) {
+export async function archiveOrDeleteArticle(id, opts = {}) {
   return prisma.$transaction(async (tx) => {
     const row = await tx.article.findUnique({ where: { id } });
     if (!row) {
@@ -341,10 +421,12 @@ export async function archiveOrDeleteArticle(id) {
     }
     await contentLog(
       {
-        type: 'content',
-        message: `Article deleted: ${row.title}`,
+        type: 'article',
+        action: 'delete',
+        message: `Article “${row.title}” deleted`,
         entityType: 'article',
         entityId: id,
+        createdBy: opts.createdBy ?? null,
       },
       tx,
     );

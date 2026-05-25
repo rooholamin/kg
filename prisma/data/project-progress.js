@@ -122,7 +122,7 @@ const workstreams = [
 ];
 
 const buildMilestoneTitles = [
-  'Metronic setup',
+  'KGHub setup',
   'Dashboard UI',
   'Backend',
   'Categories/Topics',

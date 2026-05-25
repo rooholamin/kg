@@ -85,7 +85,9 @@ export async function POST(request) {
       );
     }
 
-    const row = await createArticle(parsed.data);
+    const row = await createArticle(parsed.data, {
+      createdBy: session.user?.id ?? null,
+    });
     return NextResponse.json({ data: mapArticle(row) });
   } catch (e) {
     console.error('[api/articles POST]', e);

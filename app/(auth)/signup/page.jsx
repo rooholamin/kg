@@ -120,7 +120,7 @@ export default function Page() {
         <form onSubmit={handleSubmit} className="block w-full space-y-5">
           <div className="space-y-1.5 pb-3">
             <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Sign Up to Metronic
+              Sign Up to KGHub
             </h1>
           </div>
 

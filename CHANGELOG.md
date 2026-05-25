@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.9.0] — Content Taxonomy Rebuild (Excel Import) — 2026-05-25
+
+### Changed
+
+- **Full category + topic replacement** — all previous categories and topics removed from the database and replaced with 70 categories and 700 topics sourced from `KGHub Categories.xlsx`.
+- **`prisma/data/kg-sections-content.js`** — new auto-generated data file (do not hand-edit); 10 categories per section × 7 sections = 70 categories; 10 topics per category × 70 = 700 topics; all records carry stable deterministic UUIDs in the `30000000-*` and `40000000-*` ranges.
+- **`prisma/seed.js`** — seed now deletes all topics and categories before re-inserting from `kg-sections-content.js`, ensuring a clean slate on every run; old magazine-content and kg-content category/topic blocks removed.
+
+### Seed structure (per section)
+
+| Section | Categories |
+|---|---|
+| KG Living | Smart Home Living, Luxury Lifestyle, Wellness at Home, Comfort Engineering, Future Living, Home Entertainment, Family Living, Lifestyle Technology, Outdoor Living, Hospitality-Inspired Living |
+| KG Build | Construction Materials, Structural Systems, Building Methods, Construction Technology, Interior Construction, Exterior Construction, Mechanical & Electrical, Construction Management, Specialized Construction, Future Building Systems |
+| KG Data | Real Estate Analytics, Artificial Intelligence, Smart Property Data, PropTech, Visualization & Dashboards, Urban Intelligence, Construction Intelligence, Consumer & Lifestyle Data, Financial Intelligence, Future Intelligence Systems |
+| KG Design | Architecture Styles, Interior Design, Materials & Finishes, Lighting Design, Landscape Design, Furniture & Decor, Spatial Design, Design Innovation, Luxury Aesthetics, Visual Identity in Design |
+| KG Eco | Green Building, Renewable Energy, Water Sustainability, Sustainable Materials, Energy Efficiency, Sustainable Communities, Climate Resilience, Waste Reduction, Clean Technology, Future Sustainability |
+| KG Develop | Land Development, Urban Planning, Housing Development, Infrastructure Development, Project Strategy, Mega Developments, Development Economics, Regulations & Governance, Future Cities, Global Development Vision |
+| KG Invest | Investment Strategies, Market Analysis, ROI Optimization, Financing, Luxury Real Estate, Development Investments, Risk Management, Real Estate Economics, Investor Intelligence, Wealth & Lifestyle Investing |
+
+---
+
+## [0.8.0] — Milestone 7 Logs, Versions, Attempts + Sections + Idea Backlog — 2026-05-06
+
+### Added
+
+- **`ArticleVersion` model** — snapshot of article body before each update (`title`, `summary`, `content`, `versionLabel`, `createdBy`); cascades on article delete. Migration: `prisma/migrations/20260502120000_milestone_7_logs_versions_attempts/migration.sql`.
+- **`AIAttempt` model** — records every AI generation call (`articleId?`, `prompt`, `result`, `model`, `status: success | failed`); indexes on `articleId`, `status`, `createdAt`. Same migration as above.
+- **`ContentLog` columns** — `action` (create | update | delete | archive | status_change), `metadata` (JSON), `createdBy`; `type` index added. Same migration.
+- **`GET /api/articles/[id]/versions`** — lists all versions for an article; session-protected.
+- **`GET /api/ai-attempts`** + **`POST /api/ai-attempts`** — list and record AI generation attempts; session-protected.
+- **`GET /api/logs`** + **`GET /api/logs/[entityType]`** — filterable content-log queries; session-protected.
+- **`Section` model** — top-level content taxonomy node (`name`, `slug`, `description`, `summary`, `icon`, `status`, `characterName`, `characterBiography`, `characterPersona`, `characterImage`). Migration: `prisma/migrations/20260525120000_milestone_sections/migration.sql`. `Category.sectionId` FK added with `SET NULL` on delete.
+- **`services/section.service.js`** — `getSections`, `getSectionById`, `createSection`, `updateSection`, `archiveOrDeleteSection` (archive if has categories, hard delete otherwise), slug auto-generation, `ContentLog` on every mutation.
+- **`services/ai-attempt.service.js`** — `createAttempt`, `getAttempts` (filterable by `articleId`), `deleteAttempt`.
+- **Sections CRUD** — full UI at `/dashboard/sections`: `sections-table.jsx`, `section-form-dialog.jsx`, `section-archive-dialog.jsx`, `section-detail-actions.jsx`, detail page at `/dashboard/sections/[id]`.
+- **`/api/sections`** + **`/api/sections/[id]`** — `GET`, `POST`, `PUT`, `DELETE`; session-protected; admin gate on writes.
+- **`IdeaBacklog` model** — `title`, `description`, `priority (low | medium | high)`, `status (new | under_consideration | accepted | rejected | parked)`, `tags[]`. Migration: `prisma/migrations/20260506120000_idea_backlog/migration.sql`.
+- **`services/idea-backlog.service.js`** — `getIdeas`, `getIdeaById`, `createIdea`, `updateIdea`, `deleteIdea`; input normalisation, `ContentLog` on mutations.
+- **`/api/idea-backlog`** + **`/api/idea-backlog/[id]`** — `GET`, `POST`, `PUT`, `DELETE`; admin gate on writes.
+- **Idea backlog UI** — `/dashboard/idea-backlog` with `idea-backlog-content.jsx`.
+- **Row-level security** — enabled on all tables. Migration: `prisma/migrations/20260506180000_enable_row_level_security/migration.sql`.
+- **`/dashboard/logs/attempts`** — dedicated layout (`layout.jsx`) for the AI attempts log view; `page.jsx` updated to use real API data.
+
+### Changed
+
+- **`/dashboard/logs/page.jsx`** — now queries `/api/logs` for real `ContentLog` data with entity-type and date filters.
+- **`services/content-log.service.js`** — extended with `getLogs` (pagination, entity-type filter, date range) to support the logs API.
+
+---
+
 ## [0.6.0] — Milestone 6 Editorial Calendar + Readiness — 2026-05-02
 
 ### Added
@@ -71,7 +122,7 @@
 - **`contentLog` service** — `services/content-log.service.js` for content-operation events (separate from `SystemLog`).
 - **Category & topic services** — create, update, archive-or-delete with relation checks (category: archive if any topics or articles, else hard delete; topic: archive if any articles, else hard delete), case-insensitive duplicate name checks, `ContentLog` on every change.
 - **CRUD API** (session-guarded) — `POST /api/categories`, `PUT` + `DELETE /api/categories/[id]`, `POST /api/topics`, `PUT` + `DELETE /api/topics/[id]`; Zod validation; clear 400/404/409 responses.
-- **Forms** — Zod schemas in `app/(protected)/dashboard/categories/forms/` and `.../topics/forms/`; Metronic `Dialog` + React Hook Form + TanStack Query mutations (aligned with user-management pattern).
+- **Forms** — Zod schemas in `app/(protected)/dashboard/categories/forms/` and `.../topics/forms/`; KGHub `Dialog` + React Hook Form + TanStack Query mutations (aligned with user-management pattern).
 - **UI** — Create/edit and archive-or-delete (confirmation `AlertDialog`) on categories and topics list and detail pages; `useQuery` for lists; toasts, loading/error/empty states, `router.refresh()` after mutations.
 
 ### Changed
@@ -134,7 +185,7 @@
 ### Changed
 
 #### Navigation & Layout
-- **Sidebar menu** — completely replaced the Metronic demo navigation with a Kingsgate-specific structure grouped into five sections: **Overview**, **Command**, **Content**, **Planning**, and **Administration**; routes all point into `/dashboard/*`
+- **Sidebar menu** — completely replaced the KGHub demo navigation with a Kingsgate-specific structure grouped into five sections: **Overview**, **Command**, **Content**, **Planning**, and **Administration**; routes all point into `/dashboard/*`
 - **Sidebar active-state matching** — fixed over-eager matching where `/dashboard` was highlighted for every sub-route; the root dashboard path now requires an exact match
 - **Header** — simplified to search, notification bell, and user avatar; removed `ChatSheet`, `AppsDropdownMenu`, `MegaMenu`, `MegaMenuMobile`, and `Breadcrumb` components; mobile sheet now contains only the sidebar
 - **Footer** — replaced Keenthemes branding and links with "Kingsgate Dashboard © 2026 Glorist Smart Solutions"
@@ -157,4 +208,4 @@
 
 ### Archived
 
-- Metronic demo references moved to `_archive/metronic-demos/` with a README noting they are retained for UI pattern reference only and are not part of the Kingsgate product
+- KGHub demo references moved to `_archive/KGHub-demos/` with a README noting they are retained for UI pattern reference only and are not part of the Kingsgate product

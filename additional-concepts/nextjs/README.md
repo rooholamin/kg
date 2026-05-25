@@ -1,9 +1,9 @@
-# Metronic 9 | All-in-One Tailwind based HTML/React/Next.js Template for Modern Web Applications
+# KGHub 9 | All-in-One Tailwind based HTML/React/Next.js Template for Modern Web Applications
 
 ## Getting Started
 
-The official [Metronic Next.js Documentation](https://docs.keenthemes.com/metronic-nextjs) will be released soon,
-alongside the stable Metronic release, expected within the next week.
+The official [KGHub Next.js Documentation](https://docs.keenthemes.com/KGHub-nextjs) will be released soon,
+alongside the stable KGHub release, expected within the next week.
 
 ### Prerequisites
 
@@ -16,7 +16,7 @@ alongside the stable Metronic release, expected within the next week.
 
 ## ReUI Components
 
-Metronic now leverages [ReUI](https://v1.reui.io), our open-source React component library.
+KGHub now leverages [ReUI](https://v1.reui.io), our open-source React component library.
 
 Star the [ReUI on GitHub](https://github.com/keenthemes/reui) to help us grow the project and stay updated on new features!
 

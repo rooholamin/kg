@@ -30,6 +30,8 @@ export async function GET(_req, { params }) {
         name: row.name,
         description: row.description,
         status: row.status,
+        sectionId: row.sectionId,
+        section: row.section ?? null,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         topicCount: row._count.topics,
@@ -73,13 +75,16 @@ export async function PUT(request, { params }) {
       );
     }
 
-    const row = await updateCategory(id, parsed.data);
+    const row = await updateCategory(id, parsed.data, {
+      createdBy: session.user?.id ?? null,
+    });
     return NextResponse.json({
       data: {
         id: row.id,
         name: row.name,
         description: row.description,
         status: row.status,
+        sectionId: row.sectionId,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       },
@@ -113,7 +118,9 @@ export async function DELETE(_request, { params }) {
     }
 
     const { id } = await params;
-    const result = await archiveOrDeleteCategory(id);
+    const result = await archiveOrDeleteCategory(id, {
+      createdBy: session.user?.id ?? null,
+    });
     return NextResponse.json({
       data: {
         id: result.id,

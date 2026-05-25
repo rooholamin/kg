@@ -39,7 +39,7 @@ export function HeaderMobile() {
                 className="min-w-[15px]"
               />
             </div>
-            <span className="text-white text-lg font-semibold">Metronic</span>
+            <span className="text-white text-lg font-semibold">KGHub</span>
           </Link>
 
           <div className="flex items-center gap-2">

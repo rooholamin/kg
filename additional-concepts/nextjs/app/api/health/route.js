@@ -5,7 +5,7 @@ export async function GET() {
     {
       status: 'ok',
       timestamp: new Date().toISOString(),
-      service: 'metronic-react-concepts-nextjs',
+      service: 'KGHub-react-concepts-nextjs',
     },
     { status: 200 },
   );

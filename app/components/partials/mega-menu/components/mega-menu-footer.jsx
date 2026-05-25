@@ -10,12 +10,12 @@ const MegaMenuFooter = () => {
           Read to Get Started ?
         </div>
         <div className="text-sm fomt-medium text-secondary-foreground">
-          Take your docs to the next level of Metronic
+          Take your docs to the next level of KGHub
         </div>
       </div>
       <Button variant="mono" asChild>
         <a
-          href="https://keenthemes.com/metronic"
+          href="https://keenthemes.com/KGHub"
           target="_blank"
           rel="noopener noreferrer"
         >

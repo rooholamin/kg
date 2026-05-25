@@ -7,7 +7,7 @@ const items = [
   {
     logo: 'x-dark.svg',
     title: '@keenthemes',
-    path: 'https://keenthemes.com/metronic/tailwind/docs/',
+    path: 'https://keenthemes.com/KGHub/tailwind/docs/',
   },
   {
     logo: 'slack.svg',
@@ -16,8 +16,8 @@ const items = [
   },
   {
     logo: 'figma.svg',
-    title: 'metronic',
-    path: 'https://keenthemes.com/metronic/tailwind/docs/',
+    title: 'KGHub',
+    path: 'https://keenthemes.com/KGHub/tailwind/docs/',
   },
 ];
 

@@ -1,6 +1,6 @@
-# Metronic Master Analysis Report — Automation Magazine Dashboard
+# KGHub Master Analysis Report — Automation Magazine Dashboard
 
-> **Version:** Metronic Next.js v9.4.10 · Next.js App Router · Tailwind CSS v4 · TanStack Query v5 · NextAuth v4 · Prisma ORM  
+> **Version:** KGHub Next.js v9.4.10 · Next.js App Router · Tailwind CSS v4 · TanStack Query v5 · NextAuth v4 · Prisma ORM  
 > **Purpose:** Single source of truth for all future dashboard milestones. Do not re-analyze unless theme version changes.  
 > **Last updated:** Added `additional-concepts/` analysis (AI Chat, Todo/Kanban, Calendar, Mail, CRM, Real Estate, Store Inventory)
 
@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-The project uses Metronic's Next.js starter with App Router, a config-driven sidebar, shadcn/ui-style component library, CSS custom-property theming (Tailwind v4), and real NextAuth + Prisma auth. All navigation is declared in one config file. All custom code should live in `app/(protected)/` with no edits to core theme files.
+The project uses KGHub's Next.js starter with App Router, a config-driven sidebar, shadcn/ui-style component library, CSS custom-property theming (Tailwind v4), and real NextAuth + Prisma auth. All navigation is declared in one config file. All custom code should live in `app/(protected)/` with no edits to core theme files.
 
 `additional-concepts/nextjs/` contains **7 fully-built standalone concept apps** (AI Chat, Todo/Kanban, Calendar, Mail, CRM, Real Estate, Store Inventory) — each with its own layout, components, mock data, and types. These are not wired into the main app; they are copy-paste sources for our dashboard modules. They also contain a richer `components/ui/` set (including `EventCalendar`, `Kanban`, `DataGrid`, `ProgressCircle`, `FileUpload`, etc.) that may be more complete than the main app's `components/ui/`.
 
@@ -24,11 +24,11 @@ The project uses Metronic's Next.js starter with App Router, a config-driven sid
 | External systems | n8n, AI APIs, WordPress REST — **not connected yet** |
 | Auth | NextAuth v4 JWT; role-based (UserRole + UserPermission in Prisma) |
 | DB | PostgreSQL via Prisma |
-| UI foundation | Metronic Demo1Layout (light sidebar variant) |
+| UI foundation | KGHub Demo1Layout (light sidebar variant) |
 
 ---
 
-## 3. Metronic Project Structure
+## 3. KGHub Project Structure
 
 ```
 /
@@ -333,13 +333,13 @@ All use Next.js Route Handlers. No tRPC. Prisma accessed via `lib/prisma.js` sin
 | Add pages only in `app/(protected)/[module]/` | Protected route group auto-applies Demo1Layout + auth guard |
 | Add menu items only in `config/menu.config.jsx` | SidebarMenu is purely config-driven — no component editing needed |
 | Add custom components in `app/(protected)/[module]/components/` | Keeps feature code co-located |
-| Add shared custom components in `components/custom/` (create) | Separate from Metronic's `components/ui/` |
+| Add shared custom components in `components/custom/` (create) | Separate from KGHub's `components/ui/` |
 | Add API routes in `app/api/[module]/` | Follows existing route handler pattern |
 | Add custom hooks in `[module]/hooks/` | Co-location with TanStack Query pattern |
 | Add Prisma models by extending `prisma/schema.prisma` | Add new models; never alter User/UserRole/NextAuth tables |
 | Add CSS in new files under `css/components/` or `css/modules/` | Import in `styles.css` |
 | Never edit `css/config.reui.css` | Break design token system |
-| Never edit `components/ui/` files | Metronic updates will overwrite; extend instead |
+| Never edit `components/ui/` files | KGHub updates will overwrite; extend instead |
 | Never edit `app/components/layouts/demo1/` | Core layout — create new layout files if needed |
 | Never edit `config/settings.config.js` layout definitions | Add new keys via `setOption`/`storeOption` in feature code |
 | Keep mock data in `[module]/mock/` or `[module]/data/` | Clear separation from real API logic |
@@ -406,7 +406,7 @@ app/(protected)/
 │   ├── hooks/
 │   └── mock/
 │
-│   # Built-in Metronic modules (already exist — extend, don't rebuild)
+│   # Built-in KGHub modules (already exist — extend, don't rebuild)
 ├── user-management/            # Users, Roles, Permissions ← already functional
 └── account/                    # My Account ← already functional
 
@@ -423,9 +423,9 @@ app/api/
 └── approvals/route.js
 
 components/
-├── ui/                         # Metronic — DO NOT EDIT
-├── common/                     # Metronic — DO NOT EDIT
-├── keenicons/                  # Metronic — DO NOT EDIT
+├── ui/                         # KGHub — DO NOT EDIT
+├── common/                     # KGHub — DO NOT EDIT
+├── keenicons/                  # KGHub — DO NOT EDIT
 └── custom/                     # Our custom shared components
     ├── pipeline-card.jsx
     ├── readiness-badge.jsx
@@ -434,8 +434,8 @@ components/
 
 css/
 ├── styles.css                  # Add @import for new files here only
-├── config.reui.css             # Metronic — DO NOT EDIT
-├── demos/demo1.css             # Metronic — DO NOT EDIT
+├── config.reui.css             # KGHub — DO NOT EDIT
+├── demos/demo1.css             # KGHub — DO NOT EDIT
 └── modules/                    # Our custom module CSS
     ├── editorial.css
     ├── pipeline.css
@@ -447,11 +447,11 @@ prisma/
 
 ---
 
-## 11. Mapping: Dashboard Modules → Metronic
+## 11. Mapping: Dashboard Modules → KGHub
 
 > **Bold** = copy from `additional-concepts/`. Regular = from main `components/ui/` or `partials/`.
 
-| Dashboard Module | Metronic/Concept Source | Route | Status |
+| Dashboard Module | KGHub/Concept Source | Route | Status |
 |---|---|---|---|
 | AI Chat Command Center | **`additional-concepts/ai/`** — ChatStarter, ChatMessages, ChatMessage, AIModelSelector, RecentChats, PinnedChats + `ScrollArea`, `Avatar`, `Input`, `Button` | `/ai-chat` | New |
 | Categories / Topics | `DataGrid`+`DataGridPagination`, `Dialog`, `Form`, `Sheet` — pattern from **Store Inventory tables** | `/content/categories`, `/content/topics` | New |
@@ -466,8 +466,8 @@ prisma/
 | Logs / Activity History | `DataGrid`, **`store-inventory/components/customers/activity/`** timeline items, `partials/activities/` | `/logs` | New |
 | Approvals | `DataGrid`, **CRM `TaskList`** with tabs, `Dialog`, `Badge`, `Button` | `/approvals` | New |
 | Notifications | **`additional-concepts/mail/`** MailListMessages pattern + **NotificationsSheet** (20 items) from Store Inventory | `/notifications` | New |
-| Users / Roles | Already functional in Metronic `user-management/` | `/user-management/*` | Extend |
-| My Account | Already functional in Metronic `account/` | `/account/*` | Extend |
+| Users / Roles | Already functional in KGHub `user-management/` | `/user-management/*` | Extend |
+| My Account | Already functional in KGHub `account/` | `/account/*` | Extend |
 
 ---
 
@@ -475,10 +475,10 @@ prisma/
 
 **Every future AI prompt working on this dashboard MUST follow these rules:**
 
-1. **Use this document as the Metronic source of truth.** Do not re-analyze the theme structure unless the Metronic version changes.
+1. **Use this document as the KGHub source of truth.** Do not re-analyze the theme structure unless the KGHub version changes.
 2. **Scope each milestone to one module.** Do not mix article pipeline with editorial calendar in one PR/prompt.
 3. **This is part of the larger Automation Magazine Dashboard.** Every feature must fit the overall data model (categories → topics → articles → pipeline → calendar → social → SEO).
-4. **Reuse Metronic components first.** Check `components/ui/`, `components/common/`, and `app/components/partials/` before creating anything new. Then check `additional-concepts/nextjs/` for pre-built concept implementations — copy relevant components into the main app, never import across the boundary.
+4. **Reuse KGHub components first.** Check `components/ui/`, `components/common/`, and `app/components/partials/` before creating anything new. Then check `additional-concepts/nextjs/` for pre-built concept implementations — copy relevant components into the main app, never import across the boundary.
 5. **Never edit core theme files.** No edits to `components/ui/`, `components/common/`, `components/keenicons/`, `css/config.reui.css`, `css/demos/demo1.css`, or `app/components/layouts/demo1/`.
 6. **Place all custom code in recommended folders.** See §10. Custom components → `components/custom/`. Feature code → `app/(protected)/[module]/`. APIs → `app/api/[module]/`.
 7. **Naming and styling must stay consistent.** Use token-based Tailwind classes (`bg-background`, `text-primary`, etc.). Follow existing file-naming conventions (`content.jsx`, `components/index.js`, `hooks/use-*-query.js`).
@@ -808,7 +808,7 @@ Use this checklist to verify any new module milestone is properly integrated:
 - [ ] API route(s) include `getServerSession()` auth check
 - [ ] Prisma models added/migrated if required
 - [ ] Only token-based Tailwind classes used (`bg-background`, `text-foreground`, etc.)
-- [ ] No edits to core Metronic files
+- [ ] No edits to core KGHub files
 - [ ] Custom shared components placed in `components/custom/`
 - [ ] Custom CSS (if any) added to `css/modules/[module].css` + imported in `styles.css`
 - [ ] No WordPress / n8n / AI connections (unless milestone explicitly requires)

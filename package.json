@@ -1,5 +1,5 @@
 {
-  "name": "metronic-nextjs",
+  "name": "KGHub-nextjs",
   "version": "9.4.10",
   "private": true,
   "scripts": {
@@ -91,7 +91,8 @@
     "prettier-plugin-organize-imports": "^4.2.0",
     "prettier-plugin-tailwindcss": "^0.6.14",
     "prisma": "^6.19.2",
-    "tailwindcss": "^4.1.17"
+    "tailwindcss": "^4.1.17",
+    "xlsx": "^0.18.5"
   },
   "overrides": {
     "minimatch": "^10.2.1",
