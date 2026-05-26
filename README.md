@@ -162,7 +162,8 @@ additional-concepts/ # Pre-built KGHub concept apps (reference only — do not i
 | 4 | Articles + Pipeline | ✅ Complete |
 | 5 | Tasks + Kanban System | ⬜ Pending |
 | 6 | Editorial Calendar + Readiness Rule | ✅ Complete |
-| 7 | Logs, Versions, Activity Tracking | ⬜ Pending |
+| 7 | Logs, Versions, Activity Tracking + Sections + Idea Backlog | ✅ Complete |
+| — | Content Taxonomy Rebuild (Excel import) | ✅ Complete |
 | 8 | WordPress Integration | ⬜ Pending |
 | 9 | AI Chat Integration (Real) | ⬜ Pending |
 | 10 | n8n Automation + SEO + Social | ⬜ Pending |
