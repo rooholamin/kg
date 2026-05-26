@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+      "n8n-mcp": {
+        "command": "npx",
+        "args": ["n8n-mcp"],
+        "env": {
+          "MCP_MODE": "stdio",
+          "LOG_LEVEL": "error",
+          "DISABLE_CONSOLE_OUTPUT": "true",
+          "N8N_API_URL": "https://n8n.rooholamin.net",
+          "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmNGNhODY5OS1kYmNmLTQwZWMtYmE4MS1hY2E0ZWJkZGM0NjkiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzc5ODAxNTkxfQ.qr3uNlgbbGA0u6iOzEd81NNRJkfW9B2yOb4vOYHCxYI"
+        }
+      }
+    }
+  }

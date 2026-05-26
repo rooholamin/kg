@@ -9,6 +9,7 @@ import {
   Briefcase,
   Building,
   CalendarCheck,
+  CalendarClock,
   Captions,
   CheckCircle,
   Code,
@@ -112,6 +113,11 @@ export const MENU_SIDEBAR = [
     title: 'Idea Backlog',
     icon: Lightbulb,
     path: '/dashboard/idea-backlog',
+  },
+  {
+    title: 'Scheduler',
+    icon: CalendarClock,
+    path: '/dashboard/scheduler',
   },
   { heading: 'Intelligence' },
   {

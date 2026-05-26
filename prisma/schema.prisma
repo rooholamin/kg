@@ -276,6 +276,9 @@ model Article {
   readinessDeadline  DateTime?
   seoScore           Int?
   wordpressPostId    Int?
+  scheduleBatchId    String?
+  scheduledSlotId    String?
+  generationSource   String?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   topic              Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
@@ -286,6 +289,8 @@ model Article {
   @@index([categoryId])
   @@index([status])
   @@index([isEditorsChoice])
+  @@index([scheduleBatchId])
+  @@index([scheduledSlotId])
 }
 
 /// Snapshot of article body before an update (important fields)
@@ -500,4 +505,72 @@ model IdeaBacklog {
   @@index([priority])
   @@index([status])
   @@index([createdAt])
+}
+
+// Scheduling Engine — Milestone 8
+enum ScheduleBatchStatus {
+  draft
+  scheduled
+  running
+  paused
+  completed
+  failed
+}
+
+enum ScheduledSlotStatus {
+  planned
+  sent_to_n8n
+  generating
+  completed
+  failed
+}
+
+model ScheduleBatch {
+  id              String               @id @default(uuid())
+  name            String
+  startDate       DateTime
+  endDate         DateTime
+  postsPerDay     Int
+  status          ScheduleBatchStatus  @default(draft)
+  totalSlots      Int                  @default(0)
+  completedSlots  Int                  @default(0)
+  failedSlots     Int                  @default(0)
+  sectionIds      String[]             @default([])
+  categoryIds     String[]             @default([])
+  excludeTopicIds String[]             @default([])
+  /// "n8n_unavailable" | "manual" | null
+  pauseReason     String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdBy       String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  slots           ScheduledArticleSlot[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ScheduledArticleSlot {
+  id             String              @id @default(uuid())
+  batchId        String
+  articleId      String?
+  sectionId      String?
+  categoryId     String
+  topicId        String
+  scheduledDate  DateTime
+  status         ScheduledSlotStatus @default(planned)
+  n8nExecutionId String?
+  errorMessage   String?
+  planningData   Json?
+  triggeredAt    DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  batch          ScheduleBatch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([topicId])
+  @@index([status])
+  @@index([scheduledDate])
 }

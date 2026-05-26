@@ -22,6 +22,7 @@ import { MOCK_CALENDAR_EVENTS } from '@/app/(protected)/dashboard/_mock';
 import {
   articleRowsToCalendarEvents,
   calendarMockExcludingArticlePlan,
+  scheduledSlotsToCalendarEvents,
 } from '@/lib/calendar-article-events';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ import {
   Layers,
   Share2,
   AlertTriangle,
+  CalendarClock,
 } from 'lucide-react';
 
 const SOCIAL_SOURCES = new Set([
@@ -71,6 +73,12 @@ const menuItems = [
     color: 'text-violet-400',
   },
   {
+    id: 'scheduler',
+    label: 'Scheduler',
+    icon: <CalendarClock className="w-4 h-4" />,
+    color: 'text-sky-400',
+  },
+  {
     id: 'social',
     label: 'Social',
     icon: <Share2 className="w-4 h-4" />,
@@ -78,11 +86,11 @@ const menuItems = [
   },
 ];
 
-async function fetchCalendarArticles() {
-  const r = await apiFetch('/api/calendar');
+async function fetchCalendarData() {
+  const r = await apiFetch('/api/calendar?includeSlots=true');
   if (!r.ok) throw new Error('Failed to load calendar');
   const j = await r.json();
-  return j.data ?? [];
+  return { articles: j.data ?? [], slots: j.slots ?? [] };
 }
 
 export function CalendarModule() {
@@ -91,10 +99,13 @@ export function CalendarModule() {
   const [source, setSource] = useState('all');
   const [riskFilter, setRiskFilter] = useState('all');
 
-  const { data: articleRows = [] } = useQuery({
+  const { data: calendarData = { articles: [], slots: [] } } = useQuery({
     queryKey: ['calendar', 'articles'],
-    queryFn: fetchCalendarArticles,
+    queryFn: fetchCalendarData,
   });
+
+  const articleRows = calendarData.articles;
+  const slotRows = calendarData.slots;
 
   const riskCount = useMemo(
     () => articleRows.filter((a) => a.readinessStatus === 'risk').length,
@@ -111,9 +122,14 @@ export function CalendarModule() {
     [articleRows],
   );
 
+  const slotEvents = useMemo(
+    () => scheduledSlotsToCalendarEvents(slotRows),
+    [slotRows],
+  );
+
   const allEvents = useMemo(
-    () => [...articleEvents, ...nonArticleMock],
-    [articleEvents, nonArticleMock],
+    () => [...articleEvents, ...slotEvents, ...nonArticleMock],
+    [articleEvents, slotEvents, nonArticleMock],
   );
 
   const events = useMemo(() => {
@@ -122,6 +138,8 @@ export function CalendarModule() {
       list = list.filter(
         (e) => e.source === 'articles' || e.source === 'readiness',
       );
+    } else if (source === 'scheduler') {
+      list = list.filter((e) => e.source === 'scheduler');
     } else if (source === 'social') {
       list = list.filter((e) => SOCIAL_SOURCES.has(e.source));
     }
@@ -139,14 +157,13 @@ export function CalendarModule() {
   );
 
   const counts = useMemo(() => {
-    const contentCount = articleEvents.length;
-    const socialCount = nonArticleMock.length;
     return {
       all: allEvents.length,
-      content: contentCount,
-      social: socialCount,
+      content: articleEvents.length,
+      scheduler: slotEvents.length,
+      social: nonArticleMock.length,
     };
-  }, [allEvents.length, articleEvents.length, nonArticleMock.length]);
+  }, [allEvents.length, articleEvents.length, slotEvents.length, nonArticleMock.length]);
 
   const upcomingArticles = useMemo(() => {
     const now = startOfDay(new Date());
@@ -265,18 +282,24 @@ export function CalendarModule() {
                       type="button"
                       key={e.id}
                       onClick={() => {
-                        if (e.articleId) {
+                        if (e.source === 'scheduler') {
+                          if (e.articleId) {
+                            router.push(`/dashboard/articles/${e.articleId}`);
+                          } else if (e.batchId) {
+                            router.push(`/dashboard/scheduler/${e.batchId}`);
+                          }
+                        } else if (e.articleId) {
                           router.push(`/dashboard/articles/${e.articleId}`);
                         }
                       }}
-                      disabled={!e.articleId}
+                      disabled={!e.articleId && !e.batchId}
                       className={cn(
                         'relative w-full text-left rounded-md bg-muted/50 p-2 pl-6 text-sm',
                         'after:absolute after:inset-y-2 after:left-2 after:w-1 after:rounded-full',
                         stripForEvent(e),
-                        e.articleId &&
+                        (e.articleId || e.batchId) &&
                           'cursor-pointer hover:bg-muted/80 transition-colors',
-                        !e.articleId && 'opacity-80 cursor-default',
+                        !e.articleId && !e.batchId && 'opacity-80 cursor-default',
                       )}
                     >
                       <div className="font-medium text-foreground leading-tight">
@@ -414,7 +437,13 @@ export function CalendarModule() {
                     onEventUpdate={() => {}}
                     onEventDelete={() => {}}
                     onEventClick={(ev) => {
-                      if (ev.articleId) {
+                      if (ev.source === 'scheduler') {
+                        if (ev.articleId) {
+                          router.push(`/dashboard/articles/${ev.articleId}`);
+                        } else if (ev.batchId) {
+                          router.push(`/dashboard/scheduler/${ev.batchId}`);
+                        }
+                      } else if (ev.articleId) {
                         router.push(`/dashboard/articles/${ev.articleId}`);
                       }
                     }}
