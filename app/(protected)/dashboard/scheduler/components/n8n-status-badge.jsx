@@ -55,10 +55,10 @@ export function N8nStatusBadge({ onStatusChange, className }) {
         />
       )}
       {isLoading
-        ? 'Checking n8n…'
+        ? 'Checking AI Agent…'
         : available
-          ? `n8n Connected${latency ? ` · ${latency}ms` : ''}`
-          : `n8n Unavailable${data?.error ? ` — ${data.error}` : ''}`}
+          ? `AI Agent Connected${latency ? ` · ${latency}ms` : ''}`
+          : `AI Agent Offline${data?.error ? ` — ${data.error}` : ''}`}
     </div>
   );
 }

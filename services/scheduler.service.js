@@ -261,14 +261,15 @@ export async function createScheduleBatch(input, opts = {}) {
       },
     });
 
-    // Create all slots
+    // Create all slots — position preserves the intended intra-day ordering
     await tx.scheduledArticleSlot.createMany({
-      data: slots.map((s) => ({
+      data: slots.map((s, index) => ({
         batchId: batch.id,
         sectionId: s.sectionId,
         categoryId: s.categoryId,
         topicId: s.topicId,
         scheduledDate: s.scheduledDate,
+        position: index,
       })),
     });
 
@@ -310,7 +311,7 @@ export async function getScheduleBatchById(id) {
     where: { id },
     include: {
       slots: {
-        orderBy: { scheduledDate: 'asc' },
+        orderBy: [{ scheduledDate: 'asc' }, { position: 'asc' }],
         include: {
           // Resolve names via category → section relations
         },
@@ -331,7 +332,7 @@ export async function getScheduleBatchDetail(id) {
 
   const slots = await prisma.scheduledArticleSlot.findMany({
     where: { batchId: id },
-    orderBy: { scheduledDate: 'asc' },
+    orderBy: [{ scheduledDate: 'asc' }, { position: 'asc' }],
   });
 
   // Load category + section + topic names in bulk
@@ -390,7 +391,7 @@ export async function getScheduleBatchDetail(id) {
  */
 export async function getScheduledSlotsForCalendar() {
   const slots = await prisma.scheduledArticleSlot.findMany({
-    orderBy: { scheduledDate: 'asc' },
+    orderBy: [{ scheduledDate: 'asc' }, { position: 'asc' }],
     select: {
       id: true,
       batchId: true,
@@ -457,7 +458,7 @@ export async function triggerBatchGeneration(batchId, opts = {}) {
   // Find first planned slot
   const firstSlot = await prisma.scheduledArticleSlot.findFirst({
     where: { batchId, status: 'planned' },
-    orderBy: { scheduledDate: 'asc' },
+    orderBy: [{ scheduledDate: 'asc' }, { position: 'asc' }],
   });
 
   if (!firstSlot) {
@@ -576,13 +577,21 @@ export async function triggerSlotGeneration(slotId, opts = {}) {
     ],
     instruction:
       'Generate a unique article plan for this topic. Avoid duplicating existing titles listed in existingArticleTitles.',
+    callbackUrl: `${(process.env.NEXTAUTH_URL ?? 'http://localhost:3000').replace(/\/$/, '')}/api/webhooks/n8n/article-planning`,
+    webhookSecret: process.env.N8N_WEBHOOK_SECRET ?? '',
   };
 
-  // Send to n8n
+  // Send to n8n and wait for synchronous response
   const n8nUrl = process.env.N8N_WEBHOOK_URL;
   let n8nExecutionId = null;
 
   if (n8nUrl) {
+    // Mark slot as in-flight
+    await prisma.scheduledArticleSlot.update({
+      where: { id: slotId },
+      data: { status: 'sent_to_n8n', triggeredAt: new Date() },
+    });
+
     try {
       const res = await fetch(n8nUrl, {
         method: 'POST',
@@ -592,16 +601,24 @@ export async function triggerSlotGeneration(slotId, opts = {}) {
         },
         body: JSON.stringify(payload),
       });
+
       if (res.ok) {
-        try {
-          const json = await res.json();
-          n8nExecutionId = json?.executionId ?? json?.n8nExecutionId ?? null;
-        } catch {
-          // no-op
+        let json = null;
+        try { json = await res.json(); } catch { /* no-op */ }
+
+        n8nExecutionId = json?.executionId ?? json?.n8nExecutionId ?? null;
+
+        // Synchronous mode: n8n returns the article plan directly in the response.
+        // Process it here instead of waiting for a separate webhook callback.
+        if (json && (json.success === true || json.success === false)) {
+          await updateSlotFromWebhook(
+            { ...json, slotId },
+            { createdBy: opts.createdBy ?? null },
+          );
+          return { sent: true, processed: true };
         }
       }
     } catch (fetchErr) {
-      // If the actual trigger POST fails, auto-pause as well
       await prisma.scheduleBatch.update({
         where: { id: slot.batchId },
         data: { status: 'paused', pauseReason: 'n8n_unavailable' },
@@ -618,16 +635,6 @@ export async function triggerSlotGeneration(slotId, opts = {}) {
       return { paused: true, reason: 'n8n_trigger_failed' };
     }
   }
-
-  // Update slot status
-  await prisma.scheduledArticleSlot.update({
-    where: { id: slotId },
-    data: {
-      status: 'sent_to_n8n',
-      triggeredAt: new Date(),
-      ...(n8nExecutionId ? { n8nExecutionId } : {}),
-    },
-  });
 
   await contentLog({
     type: 'scheduler',
@@ -819,7 +826,7 @@ export async function updateSlotFromWebhook(data, opts = {}) {
     if (freshBatch?.status === 'running') {
       const nextSlot = await prisma.scheduledArticleSlot.findFirst({
         where: { batchId: result.batchId, status: 'planned' },
-        orderBy: { scheduledDate: 'asc' },
+        orderBy: [{ scheduledDate: 'asc' }, { position: 'asc' }],
       });
       if (nextSlot) {
         // Fire and forget — do not await to keep webhook response fast
@@ -858,6 +865,37 @@ export async function retrySlot(slotId, opts = {}) {
     type: 'scheduler',
     action: 'retry',
     message: `Slot retry initiated`,
+    entityType: 'schedule_slot',
+    entityId: slotId,
+    createdBy: opts.createdBy ?? null,
+  });
+
+  return triggerSlotGeneration(slotId, opts);
+}
+
+/**
+ * Redo a slot regardless of current status (including completed).
+ * Clears all previous results and re-triggers AI generation.
+ * The previously generated article is unlinked but not deleted.
+ */
+export async function redoSlot(slotId, opts = {}) {
+  await prisma.scheduledArticleSlot.update({
+    where: { id: slotId },
+    data: {
+      status: 'planned',
+      articleId: null,
+      planningData: null,
+      errorMessage: null,
+      triggeredAt: null,
+      completedAt: null,
+      n8nExecutionId: null,
+    },
+  });
+
+  await contentLog({
+    type: 'scheduler',
+    action: 'redo',
+    message: `Slot regeneration initiated`,
     entityType: 'schedule_slot',
     entityId: slotId,
     createdBy: opts.createdBy ?? null,

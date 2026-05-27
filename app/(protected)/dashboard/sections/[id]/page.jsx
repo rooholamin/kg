@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
@@ -27,6 +28,22 @@ export const metadata = {
   title: 'Section',
   description: 'Section detail and related categories',
 };
+
+function CharacterField({ label, value, multiline = false }) {
+  if (!value) return null;
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+        {label}
+      </p>
+      {multiline ? (
+        <p className="text-foreground/90 leading-relaxed whitespace-pre-line">{value}</p>
+      ) : (
+        <p className="text-foreground/90">{value}</p>
+      )}
+    </div>
+  );
+}
 
 function fmt(d) {
   if (!d) return '—';
@@ -65,7 +82,13 @@ export default async function SectionDetailPage({ params }) {
               icon: section.icon,
               status: section.status,
               characterName: section.characterName,
+              characterBackground: section.characterBackground,
+              characterRole: section.characterRole,
+              characterAge: section.characterAge,
               characterBiography: section.characterBiography,
+              characterTone: section.characterTone,
+              characterWritingStyle: section.characterWritingStyle,
+              characterSampleVoice: section.characterSampleVoice,
               characterPersona: section.characterPersona,
               characterImage: section.characterImage,
               categoryCount: section._count.categories,
@@ -137,13 +160,16 @@ export default async function SectionDetailPage({ params }) {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-6 sm:flex-row">
+              {/* Avatar */}
               <div className="flex-shrink-0">
                 {section.characterImage ? (
-                  <img
+                  <Image
                     src={section.characterImage}
                     alt={section.characterName ?? 'Character'}
+                    width={96}
+                    height={96}
                     className="size-24 rounded-xl object-cover bg-muted"
-                    onError={() => {}}
+                    unoptimized
                   />
                 ) : (
                   <div className="size-24 rounded-xl bg-muted flex items-center justify-center text-3xl font-bold text-muted-foreground">
@@ -151,35 +177,33 @@ export default async function SectionDetailPage({ params }) {
                   </div>
                 )}
               </div>
-              <div className="flex-1 space-y-3 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                    Name
-                  </p>
-                  <p className="font-semibold text-base">
-                    {section.characterName ?? '—'}
-                  </p>
+
+              {/* Fields */}
+              <div className="flex-1 space-y-4 text-sm">
+                {/* Name / Background / Role / Age row */}
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <CharacterField label="Name" value={section.characterName} />
+                  <CharacterField label="Background" value={section.characterBackground} />
+                  <CharacterField label="Role" value={section.characterRole} />
+                  <CharacterField label="Age" value={section.characterAge} />
                 </div>
-                {section.characterBiography && (
+
+                <CharacterField label="Biography" value={section.characterBiography} multiline />
+                <CharacterField label="Tone" value={section.characterTone} />
+                <CharacterField label="Writing style" value={section.characterWritingStyle} multiline />
+
+                {section.characterSampleVoice && (
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                      Biography
+                      Sample voice
                     </p>
-                    <p className="text-foreground/90 leading-relaxed">
-                      {section.characterBiography}
-                    </p>
+                    <blockquote className="border-l-2 border-muted-foreground/30 pl-3 italic text-foreground/80 leading-relaxed">
+                      &ldquo;{section.characterSampleVoice}&rdquo;
+                    </blockquote>
                   </div>
                 )}
-                {section.characterPersona && (
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                      Persona
-                    </p>
-                    <p className="text-foreground/90 leading-relaxed">
-                      {section.characterPersona}
-                    </p>
-                  </div>
-                )}
+
+                <CharacterField label="Persona (AI prompt)" value={section.characterPersona} multiline />
               </div>
             </div>
           </CardContent>

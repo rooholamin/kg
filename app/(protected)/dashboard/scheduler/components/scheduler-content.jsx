@@ -251,7 +251,7 @@ export function SchedulerContent() {
 
   return (
     <Container>
-      {/* n8n Status Banner */}
+      {/* AI Agent Status Banner */}
       <div className="flex items-center justify-between mb-4">
         <N8nStatusBadge onStatusChange={setN8nAvailable} />
       </div>
@@ -539,7 +539,7 @@ function BatchRow({ batch, n8nAvailable, onRun, onStop, onResume, isRunning, isS
         <Alert className="py-2 border-amber-500/30 bg-amber-500/5">
           <AlertTriangle className="size-3 text-amber-500 shrink-0" />
           <AlertDescription className="text-xs text-amber-700 dark:text-amber-400">
-            Auto-paused — n8n was unreachable. No slots were lost.
+            Auto-paused — AI Agent was unreachable. No slots were lost.
           </AlertDescription>
         </Alert>
       )}

@@ -64,7 +64,13 @@ async function findDuplicateSlug(slug, excludeId) {
  *   icon?: string | null;
  *   status: 'active' | 'archived';
  *   characterName?: string | null;
+ *   characterBackground?: string | null;
+ *   characterRole?: string | null;
+ *   characterAge?: string | null;
  *   characterBiography?: string | null;
+ *   characterTone?: string | null;
+ *   characterWritingStyle?: string | null;
+ *   characterSampleVoice?: string | null;
  *   characterPersona?: string | null;
  *   characterImage?: string | null;
  * }} data
@@ -97,7 +103,13 @@ export async function createSection(data, opts = {}) {
         icon: data.icon?.trim() || null,
         status: data.status,
         characterName: data.characterName?.trim() || null,
+        characterBackground: data.characterBackground?.trim() || null,
+        characterRole: data.characterRole?.trim() || null,
+        characterAge: data.characterAge?.trim() || null,
         characterBiography: data.characterBiography?.trim() || null,
+        characterTone: data.characterTone?.trim() || null,
+        characterWritingStyle: data.characterWritingStyle?.trim() || null,
+        characterSampleVoice: data.characterSampleVoice?.trim() || null,
         characterPersona: data.characterPersona?.trim() || null,
         characterImage: data.characterImage?.trim() || null,
       },
@@ -127,7 +139,13 @@ export async function createSection(data, opts = {}) {
  *   icon?: string | null;
  *   status: 'active' | 'archived';
  *   characterName?: string | null;
+ *   characterBackground?: string | null;
+ *   characterRole?: string | null;
+ *   characterAge?: string | null;
  *   characterBiography?: string | null;
+ *   characterTone?: string | null;
+ *   characterWritingStyle?: string | null;
+ *   characterSampleVoice?: string | null;
  *   characterPersona?: string | null;
  *   characterImage?: string | null;
  * }} data
@@ -168,7 +186,13 @@ export async function updateSection(id, data, opts = {}) {
         icon: data.icon?.trim() || null,
         status: data.status,
         characterName: data.characterName?.trim() || null,
+        characterBackground: data.characterBackground?.trim() || null,
+        characterRole: data.characterRole?.trim() || null,
+        characterAge: data.characterAge?.trim() || null,
         characterBiography: data.characterBiography?.trim() || null,
+        characterTone: data.characterTone?.trim() || null,
+        characterWritingStyle: data.characterWritingStyle?.trim() || null,
+        characterSampleVoice: data.characterSampleVoice?.trim() || null,
         characterPersona: data.characterPersona?.trim() || null,
         characterImage: data.characterImage?.trim() || null,
       },

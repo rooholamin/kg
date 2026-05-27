@@ -8,6 +8,7 @@ const ALLOWED_DIRECTORIES = new Set([
   'galleries',
   'editor-inline',
   'covers',
+  'characters',
 ]);
 
 const ALLOWED_MIMES = new Set([

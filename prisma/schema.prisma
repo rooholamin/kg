@@ -205,20 +205,26 @@ enum ApprovalStatus {
 }
 
 model Section {
-  id                 String        @id @default(uuid())
-  name               String
-  slug               String        @unique
-  description        String?
-  summary            String?
-  icon               String?
-  status             SectionStatus @default(active)
-  characterName      String?
-  characterBiography String?
-  characterPersona   String?
-  characterImage     String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  categories         Category[]
+  id                    String        @id @default(uuid())
+  name                  String
+  slug                  String        @unique
+  description           String?
+  summary               String?
+  icon                  String?
+  status                SectionStatus @default(active)
+  characterName         String?
+  characterBackground   String?
+  characterRole         String?
+  characterAge          String?
+  characterBiography    String?       @db.Text
+  characterTone         String?
+  characterWritingStyle String?       @db.Text
+  characterSampleVoice  String?       @db.Text
+  characterPersona      String?       @db.Text
+  characterImage        String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  categories            Category[]
 
   @@index([status])
   @@index([slug])
@@ -559,6 +565,7 @@ model ScheduledArticleSlot {
   categoryId     String
   topicId        String
   scheduledDate  DateTime
+  position       Int                 @default(0)
   status         ScheduledSlotStatus @default(planned)
   n8nExecutionId String?
   errorMessage   String?
