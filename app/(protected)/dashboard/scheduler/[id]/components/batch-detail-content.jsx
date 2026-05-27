@@ -20,8 +20,12 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  PlusCircle,
+  Trash2,
+  BookOpen,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { toast } from 'sonner';
 import { Container } from '@/components/common/container';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -102,7 +106,7 @@ async function fetchBatchDetail(id) {
 // Slot Card
 // ---------------------------------------------------------------------------
 
-const SlotCard = forwardRef(function SlotCard({ slot, animateTitle, onRedo, onRetry, isRedoing, isRetrying, n8nAvailable }, ref) {
+const SlotCard = forwardRef(function SlotCard({ slot, animateTitle, onRedo, onRetry, onPromote, onRevoke, isRedoing, isRetrying, isPromoting, isRevoking, n8nAvailable }, ref) {
   const cfg = STATUS_CFG[slot.status] ?? { label: slot.status, dot: 'bg-muted', text: 'text-muted-foreground', ring: 'ring-border' };
   const isActive = slot.status === 'sent_to_n8n' || slot.status === 'generating';
   const isCompleted = slot.status === 'completed';
@@ -194,17 +198,44 @@ const SlotCard = forwardRef(function SlotCard({ slot, animateTitle, onRedo, onRe
         )}
 
         {/* Actions */}
-        <div className="flex items-center gap-2 pt-1 flex-wrap">
-          {isCompleted && slot.articleId && (
-            <Link
-              href={`/dashboard/articles/${slot.articleId}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        <div className="flex items-center gap-3 pt-1 flex-wrap">
+
+          {/* Completed + no article → Promote */}
+          {isCompleted && !slot.articleId && slot.planningData && (
+            <button
+              type="button"
+              onClick={() => onPromote(slot.id)}
+              disabled={isPromoting}
+              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors disabled:opacity-40"
             >
-              <ExternalLink className="size-3" />
-              View Article
-            </Link>
+              {isPromoting ? <Loader2 className="size-3 animate-spin" /> : <PlusCircle className="size-3" />}
+              Add to Articles
+            </button>
           )}
 
+          {/* Completed + has article → View + Revoke */}
+          {isCompleted && slot.articleId && (
+            <>
+              <Link
+                href={`/dashboard/articles/${slot.articleId}`}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                <BookOpen className="size-3" />
+                View Article
+              </Link>
+              <button
+                type="button"
+                onClick={() => onRevoke(slot.id)}
+                disabled={isRevoking}
+                className="inline-flex items-center gap-1 text-xs text-rose-500 hover:text-rose-600 transition-colors disabled:opacity-40"
+              >
+                {isRevoking ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
+                Revoke
+              </button>
+            </>
+          )}
+
+          {/* Show/hide planning details */}
           {isCompleted && slot.planningData && (
             <button
               type="button"
@@ -212,10 +243,11 @@ const SlotCard = forwardRef(function SlotCard({ slot, animateTitle, onRedo, onRe
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-              {expanded ? 'Hide details' : 'Show details'}
+              {expanded ? 'Hide plan' : 'Show plan'}
             </button>
           )}
 
+          {/* Redo (completed) / Retry (failed) */}
           {(isCompleted || isFailed) && (
             <button
               type="button"
@@ -432,6 +464,48 @@ export function BatchDetailContent({ batchId }) {
     onSuccess: invalidate,
   });
 
+  const promoteMutation = useMutation({
+    mutationFn: async (slotId) => {
+      const r = await apiFetch(`/api/scheduler/slots/${slotId}/promote`, { method: 'POST' });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || 'Failed to promote slot'); }
+      return r.json();
+    },
+    onSuccess: () => { toast.success('Article created from slot'); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: async (slotId) => {
+      const r = await apiFetch(`/api/scheduler/slots/${slotId}/revoke`, { method: 'POST' });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || 'Failed to revoke'); }
+      return r.json();
+    },
+    onSuccess: () => { toast.success('Article revoked'); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const promoteAllMutation = useMutation({
+    mutationFn: async () => {
+      const eligible = (data?.slots ?? []).filter(
+        (s) => s.status === 'completed' && !s.articleId && s.planningData,
+      );
+      if (eligible.length === 0) throw new Error('No completed slots without articles found');
+      let ok = 0;
+      let failed = 0;
+      for (const slot of eligible) {
+        const r = await apiFetch(`/api/scheduler/slots/${slot.id}/promote`, { method: 'POST' });
+        if (r.ok) { ok++; } else { failed++; }
+      }
+      return { ok, failed };
+    },
+    onSuccess: ({ ok, failed }) => {
+      if (failed === 0) toast.success(`${ok} article${ok !== 1 ? 's' : ''} created`);
+      else toast.warning(`${ok} created, ${failed} failed`);
+      invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   if (isLoading) {
     return (
       <Container>
@@ -456,6 +530,7 @@ export function BatchDetailContent({ batchId }) {
     : 0;
   const isRunning = batch.status === 'running';
   const isAutoPaused = batch.status === 'paused' && batch.pauseReason === 'n8n_unavailable';
+  const isStartable = batch.status === 'draft' || batch.status === 'scheduled';
   const totalDuration = formatDuration(batch.startedAt, batch.completedAt);
 
   const filteredSlots = statusFilter === 'all' ? slots : slots.filter((s) => s.status === statusFilter);
@@ -504,6 +579,12 @@ export function BatchDetailContent({ batchId }) {
 
               <div className="flex items-center gap-2 flex-wrap">
                 <N8nStatusBadge onStatusChange={setN8nAvailable} />
+                {isStartable && (
+                  <Button size="sm" onClick={() => resumeMutation.mutate()} disabled={!n8nAvailable || resumeMutation.isPending}>
+                    {resumeMutation.isPending ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Play className="size-3.5 mr-1.5" />}
+                    Run
+                  </Button>
+                )}
                 {isRunning && (
                   <Button size="sm" variant="outline" onClick={() => stopMutation.mutate()} disabled={stopMutation.isPending}>
                     <Square className="size-3.5 mr-1.5" />Stop
@@ -518,6 +599,12 @@ export function BatchDetailContent({ batchId }) {
                 {batch.failedSlots > 0 && (
                   <Button size="sm" variant="outline" onClick={() => retryAllFailedMutation.mutate()} disabled={!n8nAvailable || retryAllFailedMutation.isPending}>
                     <RefreshCw className="size-3.5 mr-1.5" />Retry All Failed
+                  </Button>
+                )}
+                {slots.some((s) => s.status === 'completed' && !s.articleId && s.planningData) && (
+                  <Button size="sm" onClick={() => promoteAllMutation.mutate()} disabled={promoteAllMutation.isPending}>
+                    {promoteAllMutation.isPending ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <PlusCircle className="size-3.5 mr-1.5" />}
+                    Add All to Articles
                   </Button>
                 )}
               </div>
@@ -545,10 +632,11 @@ export function BatchDetailContent({ batchId }) {
         </Card>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
             { label: 'Total', value: batch.totalSlots, Icon: FileText },
             { label: 'Completed', value: batch.completedSlots, Icon: CheckCircle2, color: 'text-emerald-500' },
+            { label: 'In Articles', value: slots.filter((s) => s.articleId).length, Icon: BookOpen, color: 'text-violet-500' },
             { label: 'Failed', value: batch.failedSlots, Icon: XCircle, color: 'text-rose-500' },
             { label: 'Remaining', value: slots.filter((s) => s.status === 'planned').length, Icon: Clock, color: 'text-sky-500' },
           ].map(({ label, value, Icon, color }) => (
@@ -627,8 +715,12 @@ export function BatchDetailContent({ batchId }) {
                               animateTitle={animatingTitles.has(slot.id)}
                               onRedo={(id) => redoMutation.mutate(id)}
                               onRetry={(id) => retryMutation.mutate(id)}
+                              onPromote={(id) => promoteMutation.mutate(id)}
+                              onRevoke={(id) => revokeMutation.mutate(id)}
                               isRedoing={redoMutation.isPending && redoMutation.variables === slot.id}
                               isRetrying={retryMutation.isPending && retryMutation.variables === slot.id}
+                              isPromoting={promoteMutation.isPending && promoteMutation.variables === slot.id}
+                              isRevoking={revokeMutation.isPending && revokeMutation.variables === slot.id}
                               n8nAvailable={n8nAvailable}
                             />
                           );

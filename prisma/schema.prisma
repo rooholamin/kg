@@ -282,14 +282,22 @@ model Article {
   readinessDeadline  DateTime?
   seoScore           Int?
   wordpressPostId    Int?
-  scheduleBatchId    String?
-  scheduledSlotId    String?
-  generationSource   String?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  topic              Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  category           Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  versions           ArticleVersion[]
+  scheduleBatchId      String?
+  scheduledSlotId      String?
+  generationSource     String?
+  // AI planning fields (populated when slot is promoted to article)
+  articleAngle         String?       @db.Text
+  seoKeywords          String[]      @default([])
+  outline              Json?
+  featuredImagePrompt  String?       @db.Text
+  inlineImagePrompts   Json?
+  videoIdea            String?       @db.Text
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  topic                Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  category             Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  versions             ArticleVersion[]
+  scheduledSlots       ScheduledArticleSlot[]
 
   @@index([topicId])
   @@index([categoryId])
@@ -575,8 +583,10 @@ model ScheduledArticleSlot {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   batch          ScheduleBatch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  article        Article?            @relation(fields: [articleId], references: [id], onDelete: SetNull)
 
   @@index([batchId])
+  @@index([articleId])
   @@index([topicId])
   @@index([status])
   @@index([scheduledDate])

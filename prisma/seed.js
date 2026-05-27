@@ -411,15 +411,16 @@ async function main() {
       }
       console.log('Sections (7 KG verticals) seeded.');
 
-      // ── Clear all existing categories (cascades to topics and articles) ──────
-      await tx.topic.deleteMany({});
-      await tx.category.deleteMany({});
-      console.log('Existing categories and topics cleared.');
-
-      // ── Seed categories and topics from Excel ────────────────────────────────
+      // ── Upsert categories and topics (preserves existing articles) ───────────
       for (const c of kgSectionsContent.categories) {
-        await tx.category.create({
-          data: {
+        await tx.category.upsert({
+          where: { id: c.id },
+          update: {
+            name: c.name,
+            status: c.status,
+            sectionId: c.sectionId,
+          },
+          create: {
             id: c.id,
             name: c.name,
             status: c.status,
@@ -428,8 +429,14 @@ async function main() {
         });
       }
       for (const t of kgSectionsContent.topics) {
-        await tx.topic.create({
-          data: {
+        await tx.topic.upsert({
+          where: { id: t.id },
+          update: {
+            name: t.name,
+            status: t.status,
+            categoryId: t.categoryId,
+          },
+          create: {
             id: t.id,
             name: t.name,
             status: t.status,

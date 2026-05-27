@@ -685,7 +685,8 @@ export async function stopBatch(batchId, opts = {}) {
 
 /**
  * Process the result from n8n for a single slot.
- * Updates slot, creates/updates Article, chains next slot.
+ * Stores planningData on the slot — does NOT create an Article.
+ * Articles are created manually via promoteSlotToArticle().
  * @param {object} data — n8n webhook body
  * @param {{ createdBy?: string | null }} [opts]
  */
@@ -710,53 +711,7 @@ export async function updateSlotFromWebhook(data, opts = {}) {
       throw err;
     }
 
-    let articleId = slot.articleId ?? null;
-
-    if (success) {
-      // Create article from planning data
-      const ARTICLE_STATUS_VALID = new Set([
-        'planning', 'research', 'writing', 'assets', 'review',
-        'approval', 'scheduling', 'publishing', 'post_publish',
-      ]);
-      const recStatus = ARTICLE_STATUS_VALID.has(data.recommendedStatus)
-        ? data.recommendedStatus
-        : 'planning';
-
-      // Compute readinessDeadline = publishDate - 7 days
-      const publishDate = slot.scheduledDate;
-      const readinessDeadline = new Date(publishDate.getTime() - 7 * MS_PER_DAY);
-
-      const article = await tx.article.create({
-        data: {
-          title: data.title ?? `Scheduled: ${slotId}`,
-          summary: data.summary ?? null,
-          topicId: slot.topicId,
-          categoryId: slot.categoryId,
-          status: recStatus,
-          publishDate,
-          readinessDeadline,
-          scheduleBatchId: slot.batchId,
-          scheduledSlotId: slot.id,
-          generationSource: 'scheduler',
-        },
-      });
-      articleId = article.id;
-
-      await contentLog(
-        {
-          type: 'scheduler',
-          action: 'create',
-          message: `Article "${article.title}" created from scheduled slot`,
-          entityType: 'article',
-          entityId: article.id,
-          metadata: { slotId, batchId: slot.batchId },
-          createdBy: opts.createdBy ?? null,
-        },
-        tx,
-      );
-    }
-
-    // Update slot
+    // Store the full AI planning payload on the slot (no article created here)
     const slotPlanningData = success
       ? {
           title: data.title,
@@ -776,7 +731,6 @@ export async function updateSlotFromWebhook(data, opts = {}) {
       data: {
         status: success ? 'completed' : 'failed',
         completedAt: now,
-        articleId: articleId ?? undefined,
         planningData: slotPlanningData ?? undefined,
         errorMessage: success ? null : (slotError ?? 'Unknown error'),
       },
@@ -805,7 +759,7 @@ export async function updateSlotFromWebhook(data, opts = {}) {
         type: 'scheduler',
         action: 'webhook',
         message: success
-          ? `Webhook received — slot completed`
+          ? `Slot completed — plan ready to promote`
           : `Webhook received — slot failed: ${slotError ?? 'unknown'}`,
         entityType: 'schedule_slot',
         entityId: slotId,
@@ -838,6 +792,156 @@ export async function updateSlotFromWebhook(data, opts = {}) {
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Promote Slot → Article
+// ---------------------------------------------------------------------------
+
+/**
+ * Create an Article from a completed slot's planningData and link them.
+ * Idempotent: if the slot already has an articleId, returns the existing article.
+ * @param {string} slotId
+ * @param {{ createdBy?: string | null }} [opts]
+ */
+export async function promoteSlotToArticle(slotId, opts = {}) {
+  const slot = await prisma.scheduledArticleSlot.findUnique({
+    where: { id: slotId },
+  });
+  if (!slot) {
+    const err = new Error('Slot not found');
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+  if (slot.status !== 'completed') {
+    const err = new Error('Only completed slots can be promoted to articles');
+    err.code = 'VALIDATION';
+    throw err;
+  }
+  if (!slot.planningData) {
+    const err = new Error('Slot has no planning data to promote');
+    err.code = 'VALIDATION';
+    throw err;
+  }
+
+  // Idempotency: return early if already promoted
+  if (slot.articleId) {
+    const existing = await prisma.article.findUnique({ where: { id: slot.articleId } });
+    if (existing) return existing;
+  }
+
+  const plan = slot.planningData;
+
+  const ARTICLE_STATUS_VALID = new Set([
+    'planning', 'research', 'writing', 'assets', 'review',
+    'approval', 'scheduling', 'publishing', 'post_publish',
+  ]);
+  const recStatus = ARTICLE_STATUS_VALID.has(plan.recommendedStatus)
+    ? plan.recommendedStatus
+    : 'planning';
+
+  const publishDate = slot.scheduledDate;
+  const readinessDeadline = new Date(publishDate.getTime() - 7 * MS_PER_DAY);
+
+  return prisma.$transaction(async (tx) => {
+    const article = await tx.article.create({
+      data: {
+        title: plan.title ?? `Scheduled: ${slotId}`,
+        summary: plan.summary ?? null,
+        topicId: slot.topicId,
+        categoryId: slot.categoryId,
+        status: recStatus,
+        publishDate,
+        readinessDeadline,
+        scheduleBatchId: slot.batchId,
+        scheduledSlotId: slot.id,
+        generationSource: 'scheduler',
+        // AI planning fields
+        articleAngle: plan.articleAngle ?? null,
+        seoKeywords: Array.isArray(plan.seoKeywords) ? plan.seoKeywords : [],
+        outline: plan.outline ?? null,
+        featuredImagePrompt: plan.featuredImagePrompt ?? null,
+        inlineImagePrompts: plan.inlineImagePrompts ?? null,
+        videoIdea: plan.videoIdea ?? null,
+      },
+    });
+
+    // Link slot → article
+    await tx.scheduledArticleSlot.update({
+      where: { id: slotId },
+      data: { articleId: article.id },
+    });
+
+    await contentLog(
+      {
+        type: 'scheduler',
+        action: 'promote',
+        message: `Slot promoted — article "${article.title}" created`,
+        entityType: 'article',
+        entityId: article.id,
+        metadata: { slotId, batchId: slot.batchId },
+        createdBy: opts.createdBy ?? null,
+      },
+      tx,
+    );
+
+    return article;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Revoke Slot Article
+// ---------------------------------------------------------------------------
+
+/**
+ * Unlinks a promoted article from its slot and deletes the article.
+ * The slot returns to `completed` status with its planningData intact so it
+ * can be promoted again.
+ * @param {string} slotId
+ * @param {{ createdBy?: string | null }} [opts]
+ */
+export async function revokeSlotArticle(slotId, opts = {}) {
+  const slot = await prisma.scheduledArticleSlot.findUnique({
+    where: { id: slotId },
+  });
+  if (!slot) {
+    const err = new Error('Slot not found');
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+  if (!slot.articleId) {
+    const err = new Error('Slot has no linked article to revoke');
+    err.code = 'VALIDATION';
+    throw err;
+  }
+
+  const articleId = slot.articleId;
+
+  return prisma.$transaction(async (tx) => {
+    // Unlink first (FK constraint)
+    await tx.scheduledArticleSlot.update({
+      where: { id: slotId },
+      data: { articleId: null },
+    });
+
+    // Delete the article (also clears Article.scheduledSlotId reference)
+    await tx.article.delete({ where: { id: articleId } });
+
+    await contentLog(
+      {
+        type: 'scheduler',
+        action: 'revoke',
+        message: `Article revoked and deleted from slot`,
+        entityType: 'schedule_slot',
+        entityId: slotId,
+        metadata: { articleId, batchId: slot.batchId },
+        createdBy: opts.createdBy ?? null,
+      },
+      tx,
+    );
+
+    return { revoked: true, articleId };
+  });
 }
 
 // ---------------------------------------------------------------------------
