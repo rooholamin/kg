@@ -1,0 +1,26 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 160.153.185.4
+          port: 2222
+          username: kghubdeploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd /opt/kghub/app
+            sudo -u kghubapp git pull origin main
+            sudo -u kghubapp npm ci --omit=dev
+            sudo -u kghubapp /opt/kghub/app/node_modules/.bin/prisma generate
+            sudo -u kghubapp npm run build
+            sudo -u kghubapp /opt/kghub/app/node_modules/.bin/prisma migrate deploy
+            sudo -u kghubapp /usr/local/lib/node_modules/pm2/bin/pm2 restart kghub
