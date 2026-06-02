@@ -19,7 +19,8 @@ jobs:
           script: |
             set -e
             cd /opt/kghub/app
-            sudo -u kghubapp git pull origin main
+            sudo -u kghubapp git fetch origin main
+            sudo -u kghubapp git reset --hard origin/main
             sudo -u kghubapp npm ci --omit=dev
             sudo -u kghubapp /opt/kghub/app/node_modules/.bin/prisma generate
             sudo -u kghubapp npm run build
