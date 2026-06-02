@@ -52,7 +52,7 @@ export default function Page() {
         const errorData = JSON.parse(response.error);
         setError(errorData.message);
       } else {
-        router.push('/');
+        router.push('/dashboard');
       }
     } catch (err) {
       setError(
