@@ -5,21 +5,31 @@ alwaysApply: true
 
 # KGHub Production Server
 
+## Credentials
+
+All secrets live in `.env.server` at the project root (git-ignored). Read it before running any server commands:
+
+```bash
+source .env.server
+# Variables: SERVER_IP, SERVER_SSH_PORT, DEPLOY_USER, DEPLOY_PASSWORD,
+#            DB_NAME, DB_USER, DB_PASSWORD
+```
+
 ## Connection
 
 | Field | Value |
 |---|---|
-| IP | `160.153.185.4` |
+| IP | `$SERVER_IP` (see `.env.server`) |
 | SSH Port | `2222` |
-| Deploy user | `kghubdeploy` (password in team vault) |
+| Deploy user | `kghubdeploy` (password in `.env.server`) |
 | App user | `kghubapp` (owns `/opt/kghub/app`, runs PM2) |
 | cPanel user | `kghubweb` (owns `kghub.ai` vhosts) |
 | Platform root | `/opt/kghub/app` |
 | OS | AlmaLinux 9 — use `dnf`, never `apt` |
 
 ```bash
-# SSH in
-ssh -p 2222 kghubdeploy@160.153.185.4
+source .env.server
+ssh -p $SERVER_SSH_PORT $DEPLOY_USER@$SERVER_IP
 ```
 
 ## Architecture
@@ -27,7 +37,7 @@ ssh -p 2222 kghubdeploy@160.153.185.4
 - **Web layer**: Apache managed by cPanel/WHM — do NOT install standalone Nginx
 - **SSL**: cPanel AutoSSL (Let's Encrypt) — certs live on Apache vhosts
 - **App**: Next.js 16 on port 4000, managed by PM2 as `kghubapp`
-- **Database**: PostgreSQL 17, localhost only — DB `kghub_prod`, user `kghub_db_user` (password in `/opt/kghub/app/.env` on server)
+- **Database**: PostgreSQL 17, localhost only — DB `kghub_prod`, user `kghub_db_user` (password in `.env.server` → `DB_PASSWORD`)
 - **Storage**: DigitalOcean Spaces (`kghub` bucket, `tor1` region)
 - **Domains**: `admin.kghub.ai` → frontend, `api.kghub.ai` → API (same Next.js process)
 
@@ -80,8 +90,10 @@ sudo -u kghubapp /usr/local/lib/node_modules/pm2/bin/pm2 restart kghub
 - File: `/home/kghubweb/public_html/index.html` (self-contained, logos base64-embedded)
 - To update: edit `public/index.html` locally then:
 ```bash
-scp -P 2222 public/index.html kghubdeploy@160.153.185.4:/tmp/kghub_index.html
-ssh -p 2222 kghubdeploy@160.153.185.4 'sudo cp /tmp/kghub_index.html /home/kghubweb/public_html/index.html && sudo chown kghubweb:kghubweb /home/kghubweb/public_html/index.html'
+source .env.server
+sshpass -p "$DEPLOY_PASSWORD" scp -P $SERVER_SSH_PORT public/index.html $DEPLOY_USER@$SERVER_IP:/tmp/kghub_index.html
+sshpass -p "$DEPLOY_PASSWORD" ssh -p $SERVER_SSH_PORT $DEPLOY_USER@$SERVER_IP \
+  'sudo cp /tmp/kghub_index.html /home/kghubweb/public_html/index.html && sudo chown kghubweb:kghubweb /home/kghubweb/public_html/index.html'
 ```
 
 ## Key npm Notes
