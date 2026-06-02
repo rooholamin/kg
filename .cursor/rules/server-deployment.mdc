@@ -1,0 +1,92 @@
+---
+description: Production server credentials, architecture, and deployment procedures for KGHub
+alwaysApply: true
+---
+
+# KGHub Production Server
+
+## Connection
+
+| Field | Value |
+|---|---|
+| IP | `160.153.185.4` |
+| SSH Port | `2222` |
+| Deploy user | `kghubdeploy` (password in team vault) |
+| App user | `kghubapp` (owns `/opt/kghub/app`, runs PM2) |
+| cPanel user | `kghubweb` (owns `kghub.ai` vhosts) |
+| Platform root | `/opt/kghub/app` |
+| OS | AlmaLinux 9 — use `dnf`, never `apt` |
+
+```bash
+# SSH in
+ssh -p 2222 kghubdeploy@160.153.185.4
+```
+
+## Architecture
+
+- **Web layer**: Apache managed by cPanel/WHM — do NOT install standalone Nginx
+- **SSL**: cPanel AutoSSL (Let's Encrypt) — certs live on Apache vhosts
+- **App**: Next.js 16 on port 4000, managed by PM2 as `kghubapp`
+- **Database**: PostgreSQL 17, localhost only — DB `kghub_prod`, user `kghub_db_user` (password in `/opt/kghub/app/.env` on server)
+- **Storage**: DigitalOcean Spaces (`kghub` bucket, `tor1` region)
+- **Domains**: `admin.kghub.ai` → frontend, `api.kghub.ai` → API (same Next.js process)
+
+## Apache Reverse Proxy
+
+Include files (survive `rebuildhttpdconf`) live at:
+- HTTP:  `/etc/apache2/conf.d/userdata/std/2_4/kghubweb/<domain>/proxy.conf`
+- HTTPS: `/etc/apache2/conf.d/userdata/ssl/2_4/kghubweb/<domain>/proxy.conf`
+
+After editing any include file, always run:
+```bash
+sudo /scripts/rebuildhttpdconf
+sudo /usr/local/cpanel/scripts/restartsrv_httpd
+```
+
+## PM2
+
+```bash
+# Check status
+sudo -u kghubapp bash -c "export HOME=/home/kghubapp; /usr/local/lib/node_modules/pm2/bin/pm2 list"
+
+# Restart app
+sudo -u kghubapp /usr/local/lib/node_modules/pm2/bin/pm2 restart kghub
+
+# Logs
+sudo -u kghubapp /usr/local/lib/node_modules/pm2/bin/pm2 logs kghub --lines 50 --nostream
+```
+
+## Manual Deploy (without CI/CD)
+
+```bash
+cd /opt/kghub/app
+sudo -u kghubapp git pull origin main
+sudo -u kghubapp npm ci --omit=dev
+sudo -u kghubapp /opt/kghub/app/node_modules/.bin/prisma generate
+sudo -u kghubapp npm run build
+sudo -u kghubapp /opt/kghub/app/node_modules/.bin/prisma migrate deploy
+sudo -u kghubapp /usr/local/lib/node_modules/pm2/bin/pm2 restart kghub
+```
+
+## CI/CD (GitHub Actions)
+
+- Workflow: `.github/workflows/deploy.yml` — triggers on push to `main`
+- Secret required: `SSH_PRIVATE_KEY` → private half of `/tmp/kghub_cicd_key` (generated during deploy session)
+- Public key already installed on server at `/home/kghubdeploy/.ssh/authorized_keys`
+- Sudoers rule at `/etc/sudoers.d/kghubdeploy-deploy` allows `kghubdeploy` to run deploy commands as `kghubapp`
+
+## kghub.ai Landing Page
+
+- File: `/home/kghubweb/public_html/index.html` (self-contained, logos base64-embedded)
+- To update: edit `public/index.html` locally then:
+```bash
+scp -P 2222 public/index.html kghubdeploy@160.153.185.4:/tmp/kghub_index.html
+ssh -p 2222 kghubdeploy@160.153.185.4 'sudo cp /tmp/kghub_index.html /home/kghubweb/public_html/index.html && sudo chown kghubweb:kghubweb /home/kghubweb/public_html/index.html'
+```
+
+## Key npm Notes
+
+- `prisma` and `@prisma/client` are in `dependencies` (not devDependencies) — required at build time
+- `@tailwindcss/postcss`, `tailwindcss`, `postcss`, `autoprefixer` are in `dependencies` — required at build time
+- `.npmrc` has `legacy-peer-deps=true` to resolve `@auth/core` peer dep conflict
+- Build command: `npm ci --omit=dev && prisma generate && npm run build`
