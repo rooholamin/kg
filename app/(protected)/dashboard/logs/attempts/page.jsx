@@ -12,7 +12,21 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiFetch } from '@/lib/api';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
+
+const TYPE_LABELS = {
+  planning: 'Planning',
+  research: 'Research',
+  writing: 'Writing',
+  image_generation: 'Image',
+};
+
+const TYPE_COLORS = {
+  planning: 'secondary',
+  research: 'outline',
+  writing: 'default',
+  image_generation: 'warning',
+};
 
 async function fetchAttempts() {
   const res = await apiFetch('/api/ai-attempts');
@@ -41,17 +55,9 @@ export default function AttemptsPage() {
     <>
       <PageHeader
         title="AI attempts"
-        description="Per-generation log for prompts and model outputs."
+        description="Per-generation log for every n8n workflow call — planning, research, writing, and image generation."
       />
       <Container>
-        <Alert className="mt-4 border-primary/30 bg-primary/5">
-          <AlertTitle>AI attempts activate in Milestone 9</AlertTitle>
-          <AlertDescription>
-            This list uses the live database structure. Entries appear here once generation
-            is wired in; you can still POST attempts via the API for testing.
-          </AlertDescription>
-        </Alert>
-
         <div className="mt-4 grid grid-cols-1 gap-4">
           {isError ? (
             <Alert variant="destructive">
@@ -70,8 +76,8 @@ export default function AttemptsPage() {
               <CardHeader>
                 <CardTitle>No attempts yet</CardTitle>
                 <CardDescription>
-                  When Milestone 9 ships, every generation will appear here with model, prompt,
-                  and full result for audit and compare.
+                  Every n8n call for planning, research, writing, and image generation will appear
+                  here with model, prompt, and result for audit and comparison.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -82,13 +88,23 @@ export default function AttemptsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <CardTitle className="text-base">
-                        {a.articleId ? `Article ${a.articleId.slice(0, 8)}…` : 'No article'}
+                        {TYPE_LABELS[a.type] ?? a.type}
+                        {a.isRedo ? (
+                          <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground font-normal">
+                            <RefreshCw className="size-3" />
+                            redo
+                          </span>
+                        ) : null}
                       </CardTitle>
                       <CardDescription>
                         {format(parseISO(String(a.createdAt)), 'PPp')}
+                        {a.triggeredBy ? ` · ${a.triggeredBy}` : ''}
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={TYPE_COLORS[a.type] ?? 'secondary'}>
+                        {TYPE_LABELS[a.type] ?? a.type}
+                      </Badge>
                       <Badge variant="secondary">{a.model}</Badge>
                       <Badge
                         variant={a.status === 'failed' ? 'destructive' : 'success'}
@@ -101,25 +117,34 @@ export default function AttemptsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-0.5">
-                      Prompt (preview)
-                    </p>
-                    <p className="font-mono text-xs leading-relaxed bg-muted/50 rounded p-2">
-                      {resultPreview(a.prompt, 400)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-0.5">
-                      Result (preview)
-                    </p>
-                    <p className="text-foreground/90">{resultPreview(a.result)}</p>
-                  </div>
+                  {a.prompt ? (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                        Prompt (preview)
+                      </p>
+                      <p className="font-mono text-xs leading-relaxed bg-muted/50 rounded p-2">
+                        {resultPreview(a.prompt, 400)}
+                      </p>
+                    </div>
+                  ) : null}
+                  {a.result ? (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                        Result (preview)
+                      </p>
+                      <p className="text-foreground/90">{resultPreview(a.result)}</p>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     {a.articleId ? (
                       <Button variant="outline" size="sm" asChild>
                         <Link href={`/dashboard/articles/${a.articleId}`}>Open article</Link>
                       </Button>
+                    ) : null}
+                    {a.slotId ? (
+                      <span className="text-xs text-muted-foreground self-center">
+                        Slot: {a.slotId.slice(0, 8)}…
+                      </span>
                     ) : null}
                   </div>
                   <Separator />

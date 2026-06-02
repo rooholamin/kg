@@ -9,7 +9,6 @@ const ARTICLE_STATUS = new Set([
   'research',
   'writing',
   'assets',
-  'review',
   'approval',
   'scheduling',
   'publishing',
@@ -404,6 +403,41 @@ export async function updateArticle(id, data, opts = {}) {
       tx,
     );
     return row;
+  });
+}
+
+/**
+ * Fetch research data for an article.
+ * @param {string} articleId
+ */
+export async function getArticleResearch(articleId) {
+  return prisma.articleResearch.findUnique({ where: { articleId } });
+}
+
+/**
+ * Fetch asset requests for an article.
+ * @param {string} articleId
+ */
+export async function getArticleAssetRequests(articleId) {
+  return prisma.articleAssetRequest.findMany({
+    where: { articleId },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      history: {
+        orderBy: { version: 'asc' },
+      },
+    },
+  });
+}
+
+/**
+ * Fetch automation runs for an article.
+ * @param {string} articleId
+ */
+export async function getArticleAutomationRuns(articleId) {
+  return prisma.articleAutomationRun.findMany({
+    where: { articleId },
+    orderBy: { createdAt: 'desc' },
   });
 }
 

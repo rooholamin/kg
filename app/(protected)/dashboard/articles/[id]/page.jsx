@@ -5,6 +5,9 @@ import {
   getArticleById,
   getArticleContentLogs,
   getArticleVersions,
+  getArticleResearch,
+  getArticleAssetRequests,
+  getArticleAutomationRuns,
 } from '@/services/article.service';
 import { ArticleDetailContent } from './components/article-detail-content';
 import { ArticleDetailActions } from '../components/article-detail-actions';
@@ -46,9 +49,12 @@ export default async function ArticleDetailPage({ params }) {
   if (!row) notFound();
 
   const article = toArticleView(row);
-  const [activityLogs, versionRows] = await Promise.all([
+  const [activityLogs, versionRows, research, assetRequests, automationRuns] = await Promise.all([
     getArticleContentLogs(id),
     getArticleVersions(id),
+    getArticleResearch(id),
+    getArticleAssetRequests(id),
+    getArticleAutomationRuns(id),
   ]);
 
   const versionUserIds = [
@@ -104,6 +110,9 @@ export default async function ArticleDetailPage({ params }) {
           createdBy: l.createdBy,
           userLabel: l.createdBy ? userLabelMap[l.createdBy] ?? null : null,
         }))}
+        research={research ?? null}
+        assetRequests={assetRequests}
+        automationRuns={automationRuns}
       />
     </>
   );

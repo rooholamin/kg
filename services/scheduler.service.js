@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { contentLog } from '@/services/content-log.service';
+import { createAttempt } from '@/services/ai-attempt.service';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -480,7 +481,7 @@ export async function triggerBatchGeneration(batchId, opts = {}) {
 
 /**
  * @param {string} slotId
- * @param {{ createdBy?: string | null }} [opts]
+ * @param {{ createdBy?: string | null; isRedo?: boolean }} [opts]
  * @returns {Promise<{ paused?: boolean; sent?: boolean }>}
  */
 export async function triggerSlotGeneration(slotId, opts = {}) {
@@ -613,7 +614,7 @@ export async function triggerSlotGeneration(slotId, opts = {}) {
         if (json && (json.success === true || json.success === false)) {
           await updateSlotFromWebhook(
             { ...json, slotId },
-            { createdBy: opts.createdBy ?? null },
+            { createdBy: opts.createdBy ?? null, isRedo: opts.isRedo ?? false },
           );
           return { sent: true, processed: true };
         }
@@ -632,6 +633,16 @@ export async function triggerSlotGeneration(slotId, opts = {}) {
         metadata: { error: fetchErr?.message, slotId },
         createdBy: opts.createdBy ?? null,
       });
+      createAttempt({
+        type: 'planning',
+        slotId,
+        prompt: JSON.stringify(payload),
+        result: fetchErr?.message ?? 'n8n unreachable',
+        model: 'n8n/planning',
+        status: 'failed',
+        isRedo: opts.isRedo ?? false,
+        triggeredBy: opts.createdBy ? 'user' : 'system',
+      }).catch(() => {});
       return { paused: true, reason: 'n8n_trigger_failed' };
     }
   }
@@ -688,7 +699,7 @@ export async function stopBatch(batchId, opts = {}) {
  * Stores planningData on the slot — does NOT create an Article.
  * Articles are created manually via promoteSlotToArticle().
  * @param {object} data — n8n webhook body
- * @param {{ createdBy?: string | null }} [opts]
+ * @param {{ createdBy?: string | null; isRedo?: boolean }} [opts]
  */
 export async function updateSlotFromWebhook(data, opts = {}) {
   const { slotId, success, error: slotError } = data;
@@ -772,6 +783,20 @@ export async function updateSlotFromWebhook(data, opts = {}) {
     return { batch: slot.batch, isDone, batchId: slot.batchId };
   });
 
+  // Log the planning attempt
+  createAttempt({
+    type: 'planning',
+    slotId: data.slotId,
+    prompt: data.instruction ?? 'Article planning',
+    result: success
+      ? (data.title ?? JSON.stringify({ title: data.title, articleAngle: data.articleAngle }))
+      : (data.error ?? 'Planning failed'),
+    model: 'n8n/planning',
+    status: success ? 'success' : 'failed',
+    isRedo: opts.isRedo ?? false,
+    triggeredBy: opts.createdBy ? 'user' : 'system',
+  }).catch(() => {});
+
   // Chain next slot if batch is still running
   if (!result.isDone) {
     const freshBatch = await prisma.scheduleBatch.findUnique({
@@ -833,7 +858,7 @@ export async function promoteSlotToArticle(slotId, opts = {}) {
   const plan = slot.planningData;
 
   const ARTICLE_STATUS_VALID = new Set([
-    'planning', 'research', 'writing', 'assets', 'review',
+    'planning', 'research', 'writing', 'assets',
     'approval', 'scheduling', 'publishing', 'post_publish',
   ]);
   const recStatus = ARTICLE_STATUS_VALID.has(plan.recommendedStatus)
@@ -974,7 +999,7 @@ export async function retrySlot(slotId, opts = {}) {
     createdBy: opts.createdBy ?? null,
   });
 
-  return triggerSlotGeneration(slotId, opts);
+  return triggerSlotGeneration(slotId, { ...opts, isRedo: true });
 }
 
 /**
@@ -1005,5 +1030,5 @@ export async function redoSlot(slotId, opts = {}) {
     createdBy: opts.createdBy ?? null,
   });
 
-  return triggerSlotGeneration(slotId, opts);
+  return triggerSlotGeneration(slotId, { ...opts, isRedo: true });
 }

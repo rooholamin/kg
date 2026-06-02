@@ -5,7 +5,6 @@ export const ARTICLE_STATUSES = [
   'research',
   'writing',
   'assets',
-  'review',
   'approval',
   'scheduling',
   'publishing',

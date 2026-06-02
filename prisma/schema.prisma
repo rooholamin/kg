@@ -191,7 +191,6 @@ enum ArticleStatus {
   research
   writing
   assets
-  review
   approval
   scheduling
   publishing
@@ -292,12 +291,16 @@ model Article {
   featuredImagePrompt  String?       @db.Text
   inlineImagePrompts   Json?
   videoIdea            String?       @db.Text
+  metaDescription      String?       @db.Text
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   topic                Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
   category             Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   versions             ArticleVersion[]
   scheduledSlots       ScheduledArticleSlot[]
+  research             ArticleResearch?
+  assetRequests        ArticleAssetRequest[]
+  automationRuns       ArticleAutomationRun[]
 
   @@index([topicId])
   @@index([categoryId])
@@ -328,17 +331,30 @@ enum AIAttemptStatus {
   failed
 }
 
-/// AI generation attempts (populated from Milestone 9)
+enum AIAttemptType {
+  planning
+  research
+  writing
+  image_generation
+}
+
+/// AI generation attempts — one row per n8n call or redo
 model AIAttempt {
-  id        String          @id @default(uuid())
-  articleId String?
-  prompt    String          @db.Text
-  result    String          @db.Text
-  model     String
-  status    AIAttemptStatus @default(success)
-  createdAt DateTime        @default(now())
+  id          String          @id @default(uuid())
+  articleId   String?
+  slotId      String?
+  type        AIAttemptType
+  prompt      String?         @db.Text
+  result      String?         @db.Text
+  model       String
+  status      AIAttemptStatus @default(success)
+  isRedo      Boolean         @default(false)
+  triggeredBy String?
+  createdAt   DateTime        @default(now())
 
   @@index([articleId])
+  @@index([slotId])
+  @@index([type])
   @@index([status])
   @@index([createdAt])
 }
@@ -590,4 +606,101 @@ model ScheduledArticleSlot {
   @@index([topicId])
   @@index([status])
   @@index([scheduledDate])
+}
+
+// Article Automation — Milestone 9
+
+/// One-to-one research result per article
+model ArticleResearch {
+  id            String   @id @default(uuid())
+  articleId     String   @unique
+  sources       Json?
+  notes         Json?
+  keyFacts      Json?
+  searchQueries Json?
+  summary       String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+}
+
+enum AssetRequestType {
+  featured_image
+  inline_image
+  diagram
+  chart
+  social_asset
+}
+
+enum AssetRequestStatus {
+  pending
+  generating
+  completed
+  failed
+}
+
+/// One row per image/asset that needs to be generated for an article
+model ArticleAssetRequest {
+  id           String             @id @default(uuid())
+  articleId    String
+  type         AssetRequestType
+  prompt       String             @db.Text
+  placementKey String
+  status       AssetRequestStatus @default(pending)
+  imageUrl     String?
+  errorMessage String?
+  version      Int                @default(1)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  article      Article            @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  history      ArticleAssetHistory[]
+
+  @@index([articleId])
+  @@index([status])
+}
+
+/// Previous versions of a generated asset image (kept when a redo replaces the image)
+model ArticleAssetHistory {
+  id             String              @id @default(uuid())
+  assetRequestId String
+  imageUrl       String
+  prompt         String?             @db.Text
+  version        Int
+  createdAt      DateTime            @default(now())
+  assetRequest   ArticleAssetRequest @relation(fields: [assetRequestId], references: [id], onDelete: Cascade)
+
+  @@index([assetRequestId])
+}
+
+enum AutomationRunWorkflow {
+  research
+  writing
+  image_generation
+}
+
+enum AutomationRunStatus {
+  running
+  completed
+  failed
+}
+
+/// Audit trail for every n8n workflow execution triggered for an article
+model ArticleAutomationRun {
+  id             String                @id @default(uuid())
+  articleId      String
+  workflowType   AutomationRunWorkflow
+  n8nExecutionId String?
+  status         AutomationRunStatus   @default(running)
+  input          Json?
+  output         Json?
+  errorMessage   String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  article        Article               @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@index([workflowType])
+  @@index([status])
 }

@@ -8,11 +8,10 @@ export const PIPELINE_STAGES = [
   { id: 'research', label: 'Research', order: 2 },
   { id: 'writing', label: 'Writing', order: 3 },
   { id: 'assets', label: 'Asset Generation', order: 4 },
-  { id: 'review', label: 'Review', order: 5 },
-  { id: 'approval', label: 'Approval', order: 6 },
-  { id: 'scheduling', label: 'Scheduling', order: 7 },
-  { id: 'publishing', label: 'Publishing', order: 8 },
-  { id: 'post_publish', label: 'Post-Publish', order: 9 },
+  { id: 'approval', label: 'Approval', order: 5 },
+  { id: 'scheduling', label: 'Scheduling', order: 6 },
+  { id: 'publishing', label: 'Publishing', order: 7 },
+  { id: 'post_publish', label: 'Post-Publish', order: 8 },
 ];
 
 export const MOCK_CATEGORIES = [

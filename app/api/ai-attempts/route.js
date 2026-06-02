@@ -5,44 +5,50 @@ import { createAttempt, getAttempts } from '@/services/ai-attempt.service';
 import { z } from 'zod';
 
 const CreateAttemptSchema = z.object({
+  type: z.enum(['planning', 'research', 'writing', 'image_generation']),
   articleId: z.string().uuid().optional().nullable(),
-  prompt: z.string().min(1),
-  result: z.string().min(1),
+  slotId: z.string().optional().nullable(),
+  prompt: z.string().optional().nullable(),
+  result: z.string().optional().nullable(),
   model: z.string().min(1),
   status: z.enum(['success', 'failed']).optional(),
+  isRedo: z.boolean().optional(),
+  triggeredBy: z.string().optional().nullable(),
 });
+
+function serialize(a) {
+  return {
+    id: a.id,
+    type: a.type,
+    articleId: a.articleId,
+    slotId: a.slotId,
+    prompt: a.prompt,
+    result: a.result,
+    model: a.model,
+    status: a.status,
+    isRedo: a.isRedo,
+    triggeredBy: a.triggeredBy,
+    createdAt: a.createdAt,
+  };
+}
 
 export async function GET(req) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
-      return NextResponse.json(
-        { message: 'Unauthorized request' },
-        { status: 401 },
-      );
+      return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
-    const articleId = searchParams.get('articleId');
-    const rows = await getAttempts(articleId || undefined);
+    const articleId = searchParams.get('articleId') || undefined;
+    const slotId = searchParams.get('slotId') || undefined;
+    const type = searchParams.get('type') || undefined;
 
-    const data = rows.map((a) => ({
-      id: a.id,
-      articleId: a.articleId,
-      prompt: a.prompt,
-      result: a.result,
-      model: a.model,
-      status: a.status,
-      createdAt: a.createdAt,
-    }));
-
-    return NextResponse.json({ data });
+    const rows = await getAttempts({ articleId, slotId, type });
+    return NextResponse.json({ data: rows.map(serialize) });
   } catch (e) {
     console.error('[api/ai-attempts GET]', e);
-    return NextResponse.json(
-      { message: 'Failed to load attempts' },
-      { status: 500 },
-    );
+    return NextResponse.json({ message: 'Failed to load attempts' }, { status: 500 });
   }
 }
 
@@ -50,10 +56,7 @@ export async function POST(request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
-      return NextResponse.json(
-        { message: 'Unauthorized request' },
-        { status: 401 },
-      );
+      return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
 
     const body = await request.json();
@@ -67,22 +70,9 @@ export async function POST(request) {
     }
 
     const row = await createAttempt(parsed.data);
-    return NextResponse.json({
-      data: {
-        id: row.id,
-        articleId: row.articleId,
-        prompt: row.prompt,
-        result: row.result,
-        model: row.model,
-        status: row.status,
-        createdAt: row.createdAt,
-      },
-    });
+    return NextResponse.json({ data: serialize(row) });
   } catch (e) {
     console.error('[api/ai-attempts POST]', e);
-    return NextResponse.json(
-      { message: 'Failed to save attempt' },
-      { status: 500 },
-    );
+    return NextResponse.json({ message: 'Failed to save attempt' }, { status: 500 });
   }
 }
