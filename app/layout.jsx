@@ -14,6 +14,9 @@ import '@/components/keenicons/assets/styles.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
+// All pages hit the DB at request time — never statically prerender
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: {
     template: '%s | KGHub',
