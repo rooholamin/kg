@@ -31,13 +31,7 @@ jobs:
             nextjs-${{ runner.os }}-
 
       - name: Write .env for build
-        run: |
-          echo "${{ secrets.ENV_FILE }}" > .env
-          # Override localhost dev values with production URLs so NEXT_PUBLIC_* vars
-          # are baked correctly into the JS bundle at build time
-          sed -i 's|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=https://api.kghub.ai/api|' .env
-          sed -i 's|NEXT_PUBLIC_BASE_PATH=.*|NEXT_PUBLIC_BASE_PATH=https://admin.kghub.ai/|' .env
-          sed -i 's|NEXTAUTH_URL=.*|NEXTAUTH_URL=https://admin.kghub.ai|' .env
+        run: echo "${{ secrets.ENV_FILE }}" > .env
 
       - name: Install dependencies
         run: npm ci
