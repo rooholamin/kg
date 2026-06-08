@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Calendar,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Container } from '@/components/common/container';
@@ -24,6 +25,16 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { N8nStatusBadge } from './n8n-status-badge';
 import { PreviewCalendarModal } from './preview-calendar-modal';
 
@@ -106,6 +117,10 @@ export function SchedulerContent() {
   const [selectedSectionIds, setSelectedSectionIds] = useState([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [selectedExcludeTopicIds, setSelectedExcludeTopicIds] = useState([]);
+
+  // Bulk selection state
+  const [checkedIds, setCheckedIds] = useState(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   // Preview state
   const [previewSlots, setPreviewSlots] = useState(null);
@@ -206,6 +221,44 @@ export function SchedulerContent() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduler-batches'] }),
   });
+
+  // Bulk delete batches
+  const deleteMutation = useMutation({
+    mutationFn: async (ids) => {
+      const res = await apiFetch('/api/scheduler/batches', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to delete batches');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scheduler-batches'] });
+      setCheckedIds(new Set());
+      setDeleteConfirmOpen(false);
+    },
+  });
+
+  const toggleCheck = useCallback((id) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (checkedIds.size === batches.length && batches.length > 0) {
+      setCheckedIds(new Set());
+    } else {
+      setCheckedIds(new Set(batches.map((b) => b.id)));
+    }
+  }, [checkedIds.size, batches]);
 
   // Preview schedule
   const handlePreview = useCallback(async () => {
@@ -447,15 +500,43 @@ export function SchedulerContent() {
         {/* RIGHT — Batch List */}
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Schedule Batches</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => qc.invalidateQueries({ queryKey: ['scheduler-batches'] })}
-              >
-                <RefreshCw className="size-4" />
-              </Button>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {batches.length > 0 && (
+                  <input
+                    type="checkbox"
+                    className="rounded shrink-0"
+                    checked={checkedIds.size === batches.length && batches.length > 0}
+                    ref={(el) => {
+                      if (el) el.indeterminate = checkedIds.size > 0 && checkedIds.size < batches.length;
+                    }}
+                    onChange={toggleSelectAll}
+                    aria-label="Select all batches"
+                  />
+                )}
+                <CardTitle className="text-base">Schedule Batches</CardTitle>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {checkedIds.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeleteConfirmOpen(true)}
+                    disabled={deleteMutation.isPending}
+                    className="h-7 text-xs"
+                  >
+                    <Trash2 className="size-3 mr-1.5" />
+                    Delete {checkedIds.size > 1 ? `${checkedIds.size} batches` : 'batch'}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => qc.invalidateQueries({ queryKey: ['scheduler-batches'] })}
+                >
+                  <RefreshCw className="size-4" />
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -482,6 +563,8 @@ export function SchedulerContent() {
                       onResume={() => resumeMutation.mutate(batch.id)}
                       isRunning={runMutation.isPending || resumeMutation.isPending}
                       isStopping={stopMutation.isPending}
+                      checked={checkedIds.has(batch.id)}
+                      onCheck={() => toggleCheck(batch.id)}
                     />
                   ))}
                 </div>
@@ -503,6 +586,35 @@ export function SchedulerContent() {
         isConfirming={createMutation.isPending}
         confirmError={createMutation.isError ? createMutation.error?.message : null}
       />
+
+      {/* Bulk delete confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {checkedIds.size} {checkedIds.size === 1 ? 'batch' : 'batches'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the selected {checkedIds.size === 1 ? 'batch' : 'batches'} and all their
+              scheduled article slots (calendar events). Any articles already promoted from these slots will be preserved.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteMutation.isError && (
+            <Alert variant="destructive" className="py-2">
+              <AlertDescription className="text-sm">{deleteMutation.error?.message}</AlertDescription>
+            </Alert>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMutation.mutate([...checkedIds])}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : `Delete ${checkedIds.size === 1 ? 'batch' : 'batches'}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Container>
   );
 }
@@ -511,22 +623,31 @@ export function SchedulerContent() {
 // Batch Row
 // ---------------------------------------------------------------------------
 
-function BatchRow({ batch, n8nAvailable, onRun, onStop, onResume, isRunning, isStopping }) {
+function BatchRow({ batch, n8nAvailable, onRun, onStop, onResume, isRunning, isStopping, checked, onCheck }) {
   const pct = progressPercent(batch);
   const isAutoPaused = batch.status === 'paused' && batch.pauseReason === 'n8n_unavailable';
 
   return (
-    <div className="p-4 space-y-2">
+    <div className={`p-4 space-y-2 transition-colors ${checked ? 'bg-muted/40' : ''}`}>
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm truncate">{batch.name}</span>
-            <BatchStatusBadge status={batch.status} />
+        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+          <input
+            type="checkbox"
+            className="rounded mt-0.5 shrink-0"
+            checked={checked}
+            onChange={onCheck}
+            aria-label={`Select batch ${batch.name}`}
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm truncate">{batch.name}</span>
+              <BatchStatusBadge status={batch.status} />
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {format(parseISO(batch.startDate), 'MMM d')} –{' '}
+              {format(parseISO(batch.endDate), 'MMM d, yyyy')} · {batch.postsPerDay}/day
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {format(parseISO(batch.startDate), 'MMM d')} –{' '}
-            {format(parseISO(batch.endDate), 'MMM d, yyyy')} · {batch.postsPerDay}/day
-          </p>
         </div>
         <Link href={`/dashboard/scheduler/${batch.id}`}>
           <Button variant="ghost" size="icon" className="size-7 shrink-0">

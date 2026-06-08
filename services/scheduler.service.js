@@ -1032,3 +1032,24 @@ export async function redoSlot(slotId, opts = {}) {
 
   return triggerSlotGeneration(slotId, { ...opts, isRedo: true });
 }
+
+// ---------------------------------------------------------------------------
+// Delete Batch(es)
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete one or more schedule batches by id.
+ * All child ScheduledArticleSlot rows are removed via DB cascade.
+ * Promoted Article rows are preserved (their scheduledSlotId is nulled by SetNull cascade).
+ * @param {string | string[]} ids
+ */
+export async function deleteScheduleBatches(ids) {
+  const idList = Array.isArray(ids) ? ids : [ids];
+  if (idList.length === 0) return { deleted: 0 };
+
+  const result = await prisma.scheduleBatch.deleteMany({
+    where: { id: { in: idList } },
+  });
+
+  return { deleted: result.count };
+}
