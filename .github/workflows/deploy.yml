@@ -8,14 +8,63 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - name: Deploy via SSH
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Persist Next.js compilation cache across runs — cuts build time ~60% after first run
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'services/**', 'prisma/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nextjs-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p 2222 -H 160.153.185.4 >> ~/.ssh/known_hosts 2>/dev/null
+
+      # Transfer the compiled .next folder (skip cache dir — it's for build-time only)
+      - name: Sync .next to server
+        run: |
+          rsync -az --delete \
+            --exclude='cache' \
+            -e "ssh -i ~/.ssh/deploy_key -p 2222" \
+            .next/ kghubdeploy@160.153.185.4:/tmp/kghub-next/
+
+      # On the server: update source, install runtime deps, migrate, swap .next, restart
+      - name: Finalize deploy on server
         uses: appleboy/ssh-action@v1
         with:
           host: 160.153.185.4
           port: 2222
           username: kghubdeploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 10m
           script: |
             set -e
             cd /opt/kghub/app
@@ -23,6 +72,7 @@ jobs:
             sudo -u kghubapp git reset --hard origin/main
             sudo -u kghubapp npm ci --omit=dev
             sudo -u kghubapp /opt/kghub/app/node_modules/.bin/prisma generate
-            sudo -u kghubapp npm run build
             sudo -u kghubapp /opt/kghub/app/node_modules/.bin/prisma migrate deploy
+            sudo -u kghubapp cp -rT /tmp/kghub-next /opt/kghub/app/.next
+            rm -rf /tmp/kghub-next
             sudo -u kghubapp /usr/local/lib/node_modules/pm2/bin/pm2 restart kghub
