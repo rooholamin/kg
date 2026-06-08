@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // User Modoule
@@ -300,6 +301,7 @@ model Article {
   research             ArticleResearch?
   assetRequests        ArticleAssetRequest[]
   automationRuns       ArticleAutomationRun[]
+  pipelineEngineLogs   PipelineEngineLog[]
 
   @@index([topicId])
   @@index([categoryId])
@@ -605,6 +607,46 @@ model ScheduledArticleSlot {
   @@index([topicId])
   @@index([status])
   @@index([scheduledDate])
+}
+
+// Pipeline Engine — batch article automation
+
+enum PipelineEngineStatus {
+  idle
+  running
+  paused
+}
+
+/// One row per engine type: "research" | "writing" | "images"
+model PipelineEngine {
+  id                 String               @id    // "research" | "writing" | "images"
+  status             PipelineEngineStatus @default(idle)
+  pauseReason        String?
+  currentArticleId   String?
+  currentStep        String?              // "research" | "writing" | "assets"
+  delayMinutes       Int                  @default(0) // wait N minutes between jobs
+  lastJobCompletedAt DateTime?
+  totalProcessed     Int                  @default(0)
+  totalFailed        Int                  @default(0)
+  updatedAt          DateTime             @updatedAt
+}
+
+/// Immutable log entry for each article step processed by the pipeline engine
+model PipelineEngineLog {
+  id          String    @id @default(uuid())
+  engineId    String?   // "research" | "writing" | "images" (null = legacy)
+  articleId   String
+  steps       String[]
+  status      String    // "completed" | "failed"
+  error       String?
+  startedAt   DateTime
+  completedAt DateTime?
+  article     Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([engineId])
+  @@index([articleId])
+  @@index([status])
+  @@index([startedAt])
 }
 
 // Article Automation — Milestone 9

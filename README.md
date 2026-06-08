@@ -113,6 +113,8 @@ Open [http://localhost:4000](http://localhost:4000) (dev port is set in `package
 - **Milestone 6** — **Editorial calendar + readiness**: `GET /api/calendar`, readiness states on the calendar, at-risk summary, filters, upcoming list, navigation to `/dashboard/articles/[id]`; social calendar remains mock until Milestone 10. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.6.0]`.
 - **Milestone 7** — **Logs, versions, AI attempts, sections, idea backlog**: `ArticleVersion` snapshots, `AIAttempt` tracking, enriched `ContentLog` (action, metadata, createdBy), `Section` model with character fields, sections CRUD at `/dashboard/sections`, `IdeaBacklog` model and UI at `/dashboard/idea-backlog`, real data in `/dashboard/logs` and `/dashboard/logs/attempts`. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.8.0]`.
 - **Content taxonomy rebuild** — all categories and topics replaced with 70 categories and 700 topics sourced from the KGHub Categories spreadsheet (10 categories × 7 sections, 10 topics per category). Re-run `npx prisma db seed` to apply. See [`CHANGELOG.md`](./CHANGELOG.md) `[0.9.0]`.
+- **Pipeline Engine v1 ("Editor in Chief")** — single engine that chains research → writing → image generation for every article in the queue; dashboard at `/dashboard/pipeline-engine` with animated character, pipeline progress nodes, queue list, and history. See [`CHANGELOG.md`](./CHANGELOG.md) `[1.0.0]`.
+- **Pipeline Engine v2 (3-engine)** — three independent engines (`research`, `writing`, `images`) that run in parallel on their respective article statuses; per-engine configurable rate-limit delay; always-on polling; per-engine start/pause/rate controls in the dashboard. See [`CHANGELOG.md`](./CHANGELOG.md) `[1.1.0]`.
 
 ---
 
@@ -164,6 +166,9 @@ additional-concepts/ # Pre-built KGHub concept apps (reference only — do not i
 | 6 | Editorial Calendar + Readiness Rule | ✅ Complete |
 | 7 | Logs, Versions, Activity Tracking + Sections + Idea Backlog | ✅ Complete |
 | — | Content Taxonomy Rebuild (Excel import) | ✅ Complete |
+| — | n8n Article Automation (Research / Writing / Images) | ✅ Complete |
+| — | Pipeline Engine v1 — single "Editor in Chief" engine | ✅ Complete |
+| — | Pipeline Engine v2 — 3 parallel engines with rate limiting | ✅ Complete |
 | 8 | WordPress Integration | ⬜ Pending |
 | 9 | AI Chat Integration (Real) | ⬜ Pending |
 | 10 | n8n Automation + SEO + Social | ⬜ Pending |

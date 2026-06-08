@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.1.0] — Three-Engine Pipeline (Research / Writing / Images) — 2026-06-08
+
+### Added
+
+- **3 independent pipeline engines** — `research`, `writing`, `images` — each runs its own fire-and-forget processing loop targeting only its slice of the article pipeline (`planning/research` → `writing` → `assets`).
+- **`PipelineEngine.delayMinutes`** — configurable rate-limit delay between jobs per engine (0 = no delay, max 1440 min); saved to DB and respected by `setTimeout`-based chaining.
+- **`PipelineEngine.lastJobCompletedAt`** — timestamp of last completed job; used to compute remaining rate-limit wait after a server restart.
+- **`PipelineEngineLog.engineId`** — which engine produced each log entry (`research | writing | images | null` for legacy rows).
+- **`updateEngineSettings(engineId, { delayMinutes })`** — new service function; exposed via `PATCH /api/pipeline-engine/[type]/settings`.
+- **`PATCH /api/pipeline-engine/[type]/settings`** — update per-engine rate limit.
+- **`POST /api/pipeline-engine/[type]/start`** — start a specific engine (replaces generic `/start`).
+- **`POST /api/pipeline-engine/[type]/pause`** — pause a specific engine (replaces generic `/pause`).
+- **Always-on polling** — when a queue is empty, the engine stays `running` and re-checks every 60 s instead of going idle; new `isWaiting` flag surfaced in status.
+- **`EngineCard` component** — per-engine card with status badge, current article, live countdown ("Next job in Xm Ys"), rate-limit input, processed/failed stats, and start/pause controls.
+- **Migration `20260608235900_pipeline_engine_multi`** — adds `delayMinutes`, `lastJobCompletedAt`, `engineId`; seeds `research / writing / images` rows; removes `singleton`.
+
+### Changed
+
+- **`getEngineStatus()`** — now returns `{ engines: { research, writing, images }, ... }` with `isStalled`, `isWaiting`, `nextRunMs` enriched per engine; combined queue and stage counts still included.
+- **`startEngine(engineId)`** — clears `currentArticleId` on every start so stale claims from previous sessions never block the new chain.
+- **`processNext`** — chain is now bulletproof: claim-release update runs first (unconditionally); log creation and `lastJobCompletedAt` update are fire-and-forget so a Prisma client mismatch can't silently kill the chain.
+- **`EngineDashboard`** — redesigned around 3 engine cards; `EditorInChief` character reflects the most active running step; stage breakdown shows queue per engine type.
+- **`config/menu.config.jsx`** — "Editor in Chief" nav entry moved under Planning.
+
+### Removed
+
+- **`app/api/pipeline-engine/start/route.js`** and **`app/api/pipeline-engine/pause/route.js`** — replaced by `[type]/start` and `[type]/pause` dynamic routes.
+
+---
+
+## [1.0.0] — Single Pipeline Engine ("Editor in Chief") — 2026-06-08
+
+### Added
+
+- **`PipelineEngine` + `PipelineEngineLog` Prisma models** — singleton engine state row and per-article processing history. Migration: `prisma/migrations/20260608220000_pipeline_engine/migration.sql`.
+- **`PipelineEngineStatus` enum** — `idle | running | paused`.
+- **`services/pipeline-engine.service.js`** — `getEngineStatus`, `startEngine`, `pauseEngine`, `processNext` (fire-and-forget chain), `processArticle` (research → writing → assets), `cleanupStaleState` (resets orphaned `generating` assets and `running` automation runs on startup), stall detection (`isStalled` after 15 min without `updatedAt` change), per-session `skippedArticleIds` set.
+- **`GET /api/pipeline-engine`**, **`POST /api/pipeline-engine/start`**, **`POST /api/pipeline-engine/pause`**, **`GET /api/pipeline-engine/history`**, **`POST /api/pipeline-engine/unstick`**.
+- **`/dashboard/pipeline-engine`** — "Editor in Chief" dashboard with animated character (`EditorInChief`), pipeline node progress (`PipelineProgress`), queue list (`QueueList`), completed list (`CompletedList`), stage breakdown by article status, stall warning banner.
+- **`config/menu.config.jsx`** — "Editor in Chief" entry added under Planning with `Cpu` icon.
+
+---
+
 ## [0.9.0] — Content Taxonomy Rebuild (Excel Import) — 2026-05-25
 
 ### Changed

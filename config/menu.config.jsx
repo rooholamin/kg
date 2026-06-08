@@ -62,6 +62,7 @@ import {
   Link2,
   Lightbulb,
   ListChecks,
+  Cpu,
 } from 'lucide-react';
 
 export const MENU_SIDEBAR = [
@@ -118,6 +119,11 @@ export const MENU_SIDEBAR = [
     title: 'Scheduler',
     icon: CalendarClock,
     path: '/dashboard/scheduler',
+  },
+  {
+    title: 'Editor in Chief',
+    icon: Cpu,
+    path: '/dashboard/pipeline-engine',
   },
   { heading: 'Intelligence' },
   {
