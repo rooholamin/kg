@@ -392,6 +392,10 @@ export async function publishArticleToWordPress(articleId, userId = null) {
       : article.summary
         ? { excerpt: article.summary }
         : {}),
+    // FIFU (Featured Image from URL) plugin — set featured image via S3 URL directly
+    ...(article.featuredImage
+      ? { meta: { fifu_image_url: article.featuredImage, fifu_image_alt: article.title } }
+      : {}),
   };
 
   try {
@@ -416,7 +420,7 @@ export async function publishArticleToWordPress(articleId, userId = null) {
 
     await contentLog({
       type: 'article', action: 'status_change',
-      message: `Article "${article.title}" published to WordPress (post ID ${wordpressPostId}, status: ${wpStatus})`,
+      message: `Article "${article.title}" published to WordPress (post ID ${wordpressPostId}, status: ${wpStatus}${article.featuredImage ? ', featured image set via FIFU' : ''})`,
       entityType: 'article', entityId: articleId,
       createdBy: userId,
     });
