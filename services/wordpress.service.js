@@ -413,6 +413,17 @@ export async function publishArticleToWordPress(articleId, userId = null) {
     const wpPost = await res.json();
     const wordpressPostId = wpPost.id;
 
+    // FIFU requires a second save_post cycle to register the featured image for
+    // use in homepage/archive templates. Re-POST the meta immediately after creation.
+    if (article.featuredImage) {
+      await wpFetch(`${base}/wp-json/wp/v2/posts/${wordpressPostId}`, creds, {
+        method: 'POST',
+        body: JSON.stringify({
+          meta: { fifu_image_url: article.featuredImage, fifu_image_alt: article.title },
+        }),
+      });
+    }
+
     await prisma.article.update({
       where: { id: articleId },
       data: { wordpressPostId, status: 'publishing' },

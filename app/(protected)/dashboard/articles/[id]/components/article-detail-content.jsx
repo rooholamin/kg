@@ -47,6 +47,37 @@ import {
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
+// Sync featured image button (FIFU second-save workaround)
+// ---------------------------------------------------------------------------
+
+function SyncImageButton({ articleId }) {
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/articles/${articleId}/wordpress/sync-image`, { method: 'POST' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to sync image');
+      }
+    },
+    onSuccess: () => toast.success('Featured image synced to WordPress.'),
+    onError: (err) => toast.error(err.message),
+  });
+
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+      className="text-xs h-6 px-2"
+    >
+      {mutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <ImageIcon className="size-3 me-1" />}
+      Sync image
+    </Button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline progress bar
 // ---------------------------------------------------------------------------
 
@@ -2035,11 +2066,16 @@ export function ArticleDetailContent({
               </div>
               <div>
                 <span className="text-muted-foreground">WordPress</span>
-                <p className="text-muted-foreground">
-                  {article.wordpressPostId != null
-                    ? `WP #${article.wordpressPostId}`
-                    : 'Not synced'}
-                </p>
+                {article.wordpressPostId != null ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm">WP #{article.wordpressPostId}</p>
+                    {article.featuredImage && (
+                      <SyncImageButton articleId={article.id} />
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">Not synced</p>
+                )}
               </div>
             </CardContent>
           </Card>
