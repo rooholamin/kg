@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { ProjectMilestoneSchema } from '@/app/(protected)/dashboard/project-progress/forms/milestone-schema';
-import { requireAdmin } from '@/lib/require-admin';
+import { requireRole } from '@/lib/require-role';
 import { createMilestone } from '@/services/project-progress.service';
 
 export async function POST(request) {
@@ -11,7 +11,7 @@ export async function POST(request) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
-    requireAdmin(session);
+    requireRole(session, 'superadmin', 'admin');
 
     const body = await request.json();
     const parsed = ProjectMilestoneSchema.safeParse(body);

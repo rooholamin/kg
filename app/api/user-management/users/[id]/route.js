@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { systemLog } from '@/services/system-log';
 import { UserProfileSchema } from '@/app/(protected)/user-management/users/[id]/forms/user-profile-schema';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
 import { UserStatus } from '@/app/models/user';
 
 // GET: Fetch a specific user by ID, including role
@@ -58,6 +59,7 @@ export async function PUT(request, { params }) {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin');
 
     const { id } = await params;
 
@@ -139,6 +141,7 @@ export async function DELETE(request, { params }) {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin');
 
     const clientIp = getClientIP(request);
     const { id } = await params;

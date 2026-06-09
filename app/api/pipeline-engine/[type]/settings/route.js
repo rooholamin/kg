@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
 import { updateEngineSettings, ENGINE_IDS } from '@/services/pipeline-engine.service';
 
 export async function PATCH(req, { params }) {
@@ -9,6 +10,7 @@ export async function PATCH(req, { params }) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const { type } = await params;
     if (!ENGINE_IDS.includes(type)) {

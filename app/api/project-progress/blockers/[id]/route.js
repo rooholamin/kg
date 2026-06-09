@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { ProjectBlockerSchema } from '@/app/(protected)/dashboard/project-progress/forms/blocker-schema';
-import { requireAdmin } from '@/lib/require-admin';
+import { requireRole } from '@/lib/require-role';
 import {
   deleteBlocker,
   updateBlocker,
@@ -27,7 +27,7 @@ export async function PUT(request, { params }) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
-    requireAdmin(session);
+    requireRole(session, 'superadmin', 'admin');
 
     const { id } = await params;
     const body = await request.json();
@@ -53,7 +53,7 @@ export async function DELETE(_request, { params }) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
-    requireAdmin(session);
+    requireRole(session, 'superadmin', 'admin');
 
     const { id } = await params;
     const data = await deleteBlocker(id);

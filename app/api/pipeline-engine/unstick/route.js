@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -18,6 +19,7 @@ export async function POST(request) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const body = await request.json().catch(() => ({}));
     const { articleId } = body;

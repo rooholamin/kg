@@ -116,6 +116,7 @@ Open [http://localhost:4000](http://localhost:4000) (dev port is set in `package
 - **Pipeline Engine v1 ("Editor in Chief")** — single engine that chains research → writing → image generation for every article in the queue; dashboard at `/dashboard/pipeline-engine` with animated character, pipeline progress nodes, queue list, and history. See [`CHANGELOG.md`](./CHANGELOG.md) `[1.0.0]`.
 - **Pipeline Engine v2 (3-engine)** — three independent engines (`research`, `writing`, `images`) that run in parallel on their respective article statuses; per-engine configurable rate-limit delay; always-on polling; per-engine start/pause/rate controls in the dashboard. See [`CHANGELOG.md`](./CHANGELOG.md) `[1.1.0]`.
 - **WordPress Integration** — per-section WordPress credentials (`wpSiteUrl`, `wpUsername`, `wpAppPassword`, `wpAuthorId`); bulk category and topic sync to WP taxonomy; article approval triggers automatic publishing via `POST /wp-json/wp/v2/posts`; featured-image hero in approval preview modal; live approvals queue at `/dashboard/approvals`. See [`CHANGELOG.md`](./CHANGELOG.md) `[1.2.0]`.
+- **Roles, Access Control & User Management** — 3 editorial roles (`superadmin`, `admin`, `editor`); `roleSlug` in JWT session; `lib/require-role.js` guard used on all write routes; approval attribution (`approvedById`/`rejectedById`) on articles; live approved/rejected history tabs; functional users page with change-role action for superadmin; public signup disabled; fake seed users removed. See [`CHANGELOG.md`](./CHANGELOG.md) `[1.3.0]`.
 
 ---
 
@@ -171,6 +172,7 @@ additional-concepts/ # Pre-built KGHub concept apps (reference only — do not i
 | — | Pipeline Engine v1 — single "Editor in Chief" engine | ✅ Complete |
 | — | Pipeline Engine v2 — 3 parallel engines with rate limiting | ✅ Complete |
 | — | WordPress Integration — publishing, category/topic sync, approvals queue | ✅ Complete |
+| — | Roles, access control, user management, approval attribution | ✅ Complete |
 | 8 | WordPress Integration — media upload, tags, full SEO meta | ⬜ Pending |
 | 9 | AI Chat Integration (Real) | ⬜ Pending |
 | 10 | n8n Automation + SEO + Social | ⬜ Pending |

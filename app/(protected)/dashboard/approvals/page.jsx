@@ -55,6 +55,30 @@ async function fetchApprovalArticles() {
   return res.json();
 }
 
+async function fetchApprovedArticles() {
+  const res = await apiFetch('/api/articles?approvedBy=set');
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.message || 'Failed to load articles');
+  }
+  return res.json();
+}
+
+async function fetchRejectedArticles() {
+  const res = await apiFetch('/api/articles?rejectedBy=set');
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.message || 'Failed to load articles');
+  }
+  return res.json();
+}
+
+async function fetchUsers() {
+  const res = await apiFetch('/api/user-management/users/select');
+  if (!res.ok) return [];
+  return res.json();
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -310,6 +334,60 @@ function ArticleApprovalCard({ article, onOpen, onApprove, onReject, onEdit }) {
 }
 
 // ---------------------------------------------------------------------------
+// History card — used for approved/rejected tabs
+// ---------------------------------------------------------------------------
+
+function ArticleHistoryCard({ article, userMap, type }) {
+  const publishDateStr = fmtDate(article.publishDate);
+  const actorId = type === 'approved' ? article.approvedById : article.rejectedById;
+  const actorAt = type === 'approved' ? article.approvedAt : article.rejectedAt;
+  const actorName = actorId ? (userMap[actorId] ?? 'Unknown') : null;
+  const actorDateStr = actorAt ? fmtDate(actorAt) : null;
+
+  return (
+    <Card>
+      <CardContent className="p-5 space-y-3">
+        <div>
+          <p className="font-semibold text-base leading-snug">{article.title}</p>
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            {article.categoryName && (
+              <Badge variant="secondary" className="text-xs gap-1">
+                <Tag className="size-3" />
+                {article.categoryName}
+              </Badge>
+            )}
+            {publishDateStr && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <CalendarDays className="size-3" />
+                {publishDateStr}
+              </span>
+            )}
+          </div>
+        </div>
+        {actorName && (
+          <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+            {type === 'approved'
+              ? <CheckCheck className="size-3.5 text-green-500 shrink-0" />
+              : <XCircle className="size-3.5 text-destructive shrink-0" />}
+            {type === 'approved' ? 'Approved' : 'Rejected'} by{' '}
+            <span className="font-medium text-foreground">{actorName}</span>
+            {actorDateStr && <span>· {actorDateStr}</span>}
+          </p>
+        )}
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/dashboard/articles/${article.id}`}>
+              <ExternalLink className="me-1.5 size-3.5" />
+              View
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -326,7 +404,29 @@ export default function ApprovalsPage() {
     queryFn: fetchApprovalArticles,
   });
 
+  const { data: approvedData, isLoading: approvedLoading } = useQuery({
+    queryKey: ['articles', 'approved'],
+    queryFn: fetchApprovedArticles,
+  });
+
+  const { data: rejectedData, isLoading: rejectedLoading } = useQuery({
+    queryKey: ['articles', 'rejected'],
+    queryFn: fetchRejectedArticles,
+  });
+
+  const { data: usersData } = useQuery({
+    queryKey: ['users', 'select'],
+    queryFn: fetchUsers,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const userMap = Object.fromEntries(
+    (usersData ?? []).map((u) => [u.id, u.name || u.email]),
+  );
+
   const articles = data?.data ?? [];
+  const approvedArticles = approvedData?.data ?? [];
+  const rejectedArticles = rejectedData?.data ?? [];
 
   const decisionMutation = useMutation({
     mutationFn: async ({ id, action, notes }) => {
@@ -355,6 +455,8 @@ export default function ApprovalsPage() {
       setRejectTarget(null);
       setPreviewArticle(null);
       queryClient.invalidateQueries({ queryKey: ['articles', 'approval'] });
+      queryClient.invalidateQueries({ queryKey: ['articles', 'approved'] });
+      queryClient.invalidateQueries({ queryKey: ['articles', 'rejected'] });
       queryClient.invalidateQueries({ queryKey: ['articles'] });
     },
     onError: (err) => {
@@ -422,8 +524,22 @@ export default function ApprovalsPage() {
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="approved">Approved</TabsTrigger>
-              <TabsTrigger value="rejected">Rejected</TabsTrigger>
+              <TabsTrigger value="approved">
+                Approved
+                {approvedArticles.length > 0 && (
+                  <Badge variant="success" appearance="light" size="sm" className="ms-2">
+                    {approvedArticles.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="rejected">
+                Rejected
+                {rejectedArticles.length > 0 && (
+                  <Badge variant="destructive" appearance="light" size="sm" className="ms-2">
+                    {rejectedArticles.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
             </TabsList>
 
             {/* Pending tab — live data */}
@@ -458,25 +574,56 @@ export default function ApprovalsPage() {
               )}
             </TabsContent>
 
-            {/* Approved / Rejected tabs — history not yet tracked */}
+            {/* Approved tab */}
             <TabsContent value="approved" className="mt-4">
-              <div className="flex flex-col items-center justify-center py-16 border border-dashed rounded-lg text-center gap-3">
-                <CheckCheck className="size-8 text-muted-foreground" />
-                <p className="text-sm font-medium text-muted-foreground">Approval history coming soon</p>
-                <p className="text-xs text-muted-foreground max-w-xs">
-                  A full audit log of approved articles will be available in a future update.
-                </p>
-              </div>
+              {approvedLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-28 w-full" />
+                  <Skeleton className="h-28 w-full" />
+                </div>
+              ) : approvedArticles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 border border-dashed rounded-lg text-center gap-3">
+                  <CheckCheck className="size-8 text-muted-foreground" />
+                  <p className="text-sm font-medium text-muted-foreground">No approved articles yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {approvedArticles.map((article) => (
+                    <ArticleHistoryCard
+                      key={article.id}
+                      article={article}
+                      userMap={userMap}
+                      type="approved"
+                    />
+                  ))}
+                </div>
+              )}
             </TabsContent>
 
+            {/* Rejected tab */}
             <TabsContent value="rejected" className="mt-4">
-              <div className="flex flex-col items-center justify-center py-16 border border-dashed rounded-lg text-center gap-3">
-                <XCircle className="size-8 text-muted-foreground" />
-                <p className="text-sm font-medium text-muted-foreground">Rejection history coming soon</p>
-                <p className="text-xs text-muted-foreground max-w-xs">
-                  A full audit log of rejected articles will be available in a future update.
-                </p>
-              </div>
+              {rejectedLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-28 w-full" />
+                  <Skeleton className="h-28 w-full" />
+                </div>
+              ) : rejectedArticles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 border border-dashed rounded-lg text-center gap-3">
+                  <XCircle className="size-8 text-muted-foreground" />
+                  <p className="text-sm font-medium text-muted-foreground">No rejected articles yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {rejectedArticles.map((article) => (
+                    <ArticleHistoryCard
+                      key={article.id}
+                      article={article}
+                      userMap={userMap}
+                      type="rejected"
+                    />
+                  ))}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
 import { getTopicById, updateTopic, archiveOrDeleteTopic } from '@/services/topic.service';
 import { TopicFormSchema } from '@/app/(protected)/dashboard/topics/forms/topic-schema';
 
@@ -58,6 +59,7 @@ export async function PUT(request, { params }) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const { id } = await params;
     const body = await request.json();
@@ -114,6 +116,7 @@ export async function DELETE(_request, { params }) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const { id } = await params;
     const result = await archiveOrDeleteTopic(id, {

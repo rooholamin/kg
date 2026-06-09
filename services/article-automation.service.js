@@ -757,7 +757,14 @@ export async function approveArticle(articleId, userId, notes) {
     throw err;
   }
 
-  await prisma.article.update({ where: { id: articleId }, data: { status: 'scheduling' } });
+  await prisma.article.update({
+    where: { id: articleId },
+    data: {
+      status: 'scheduling',
+      approvedById: userId ?? null,
+      approvedAt: new Date(),
+    },
+  });
 
   await contentLog({
     type: 'article', action: 'status_change',
@@ -777,7 +784,14 @@ export async function rejectArticle(articleId, userId, notes) {
     throw err;
   }
 
-  await prisma.article.update({ where: { id: articleId }, data: { status: 'writing' } });
+  await prisma.article.update({
+    where: { id: articleId },
+    data: {
+      status: 'writing',
+      rejectedById: userId ?? null,
+      rejectedAt: new Date(),
+    },
+  });
 
   await contentLog({
     type: 'article', action: 'status_change',

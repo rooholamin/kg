@@ -18,16 +18,16 @@ async function main() {
 
   await prisma.$transaction(
     async (tx) => {
-      // Ensure the owner role exists
+      // Ensure the superadmin role exists
       const ownerRole = await tx.userRole.upsert({
-        where: { slug: 'owner' },
-        update: {}, // No updates needed, ensures idempotency
+        where: { slug: 'superadmin' },
+        update: { name: 'Super Admin' },
         create: {
-          slug: 'owner',
-          name: 'Owner',
-          description: 'The default system role with full access.',
+          slug: 'superadmin',
+          name: 'Super Admin',
+          description: 'Full access to everything. Reserved for the platform owner.',
           isProtected: true,
-          isDefault: false, // Optional: set to false if it's not the default role
+          isDefault: false,
         },
       });
 
@@ -60,20 +60,6 @@ async function main() {
           avatar: null, // Optional: Add avatar URL if available
           emailVerifiedAt: new Date(), // Optional: Mark email as verified
           status: 'ACTIVE',
-        },
-      });
-
-      // Seed UserRoles
-      await tx.userRole.upsert({
-        where: { slug: 'member' },
-        update: {}, // No updates needed, ensures idempotency
-        create: {
-          slug: 'member',
-          name: 'Member',
-          description: 'Default member role',
-          isDefault: true,
-          isProtected: true,
-          createdAt: new Date(),
         },
       });
 
@@ -168,69 +154,6 @@ async function main() {
         });
       }
       console.log('Users seeded.');
-
-      // Fetch admin users with roles that are not marked as isDefault
-      const users = await tx.user.findMany({
-        where: {
-          role: {
-            isDefault: false, // Exclude default roles
-          },
-        },
-        include: {
-          role: true, // Include role details if needed
-        },
-      });
-
-      // Seed AuditLogs
-      const meaningfulVerbs = [
-        'created',
-        'updated',
-        'deleted',
-        'requested',
-        'reset',
-        'terminated',
-        'fetched',
-        'reviewed',
-      ];
-
-      const systemLogPromises = Array.from({ length: 20 }).map(() => {
-        const entity = faker.helpers.arrayElement([
-          { type: 'user', id: faker.helpers.arrayElement(users).id },
-        ]);
-
-        const event = faker.helpers.arrayElement([
-          'CREATE',
-          'UPDATE',
-          'DELETE',
-          'FETCH',
-        ]);
-
-        // Map meaningful verbs based on the event type
-        const verbMap = {
-          CREATE: ['created', 'added', 'initialized', 'generated'],
-          UPDATE: ['updated', 'modified', 'changed', 'edited'],
-          DELETE: ['deleted', 'removed', 'cleared', 'erased'],
-          FETCH: ['fetched', 'retrieved', 'requested', 'accessed'],
-        };
-
-        const descriptionVerb = faker.helpers.arrayElement(
-          verbMap[event] || meaningfulVerbs, // Fallback to the generic meaningfulVerbs
-        );
-
-        return tx.systemLog.create({
-          data: {
-            event,
-            userId: faker.helpers.arrayElement(users).id,
-            entityId: entity.id,
-            entityType: entity.type,
-            description: `${entity.type} was ${descriptionVerb}`,
-            createdAt: new Date(),
-            ipAddress: faker.internet.ipv4(),
-          },
-        });
-      });
-
-      await Promise.all(systemLogPromises);
 
       // Seed Settings
       await tx.systemSetting.create({

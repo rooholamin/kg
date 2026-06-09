@@ -169,12 +169,14 @@ export async function getArticleVersions(articleId) {
  * @param {{ topicId?: string | null; categoryId?: string | null; status?: string | null }} [filters]
  */
 export async function getArticles(filters = {}) {
-  const { topicId, categoryId, status } = filters;
+  const { topicId, categoryId, status, approvedBySet, rejectedBySet } = filters;
 
   const where = {
     ...(topicId ? { topicId } : {}),
     ...(categoryId ? { categoryId } : {}),
     ...(status && status !== 'all' ? { status } : {}),
+    ...(approvedBySet ? { approvedById: { not: null } } : {}),
+    ...(rejectedBySet ? { rejectedById: { not: null } } : {}),
   };
 
   return prisma.article.findMany({

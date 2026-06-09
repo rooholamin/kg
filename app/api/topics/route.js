@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
 import { getTopics, createTopic } from '@/services/topic.service';
 import { TopicFormSchema } from '@/app/(protected)/dashboard/topics/forms/topic-schema';
 
@@ -54,6 +55,7 @@ export async function POST(request) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const body = await request.json();
     const parsed = TopicFormSchema.safeParse(body);

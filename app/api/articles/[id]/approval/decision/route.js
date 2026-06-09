@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
 import { approveArticle, rejectArticle } from '@/services/article-automation.service';
 import { publishArticleToWordPress } from '@/services/wordpress.service';
 
@@ -10,6 +11,7 @@ export async function POST(request, { params }) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin', 'editor');
 
     const { id } = await params;
     const body = await request.json();

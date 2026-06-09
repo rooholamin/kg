@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.3.0] — Roles, Access Control & User Management — 2026-06-08
+
+### Added
+
+- **3 editorial roles** — `superadmin` (owner, full access), `admin` (settings, engines, taxonomy), `editor` (articles, approvals); seeded via `prisma/data/roles.js` + migration `20260608250000_editorial_roles`.
+- **`roleSlug` in JWT/session** — `auth-options.js` now stores `token.roleSlug = role?.slug` alongside `roleName`; exposed as `session.user.roleSlug` for all slug-based checks.
+- **`lib/require-role.js`** — replaces `lib/require-admin.js`; `requireRole(session, ...allowedSlugs)` throws `FORBIDDEN` if the session role is not in the allowed list.
+- **API route guards** added to:
+  - Pipeline engine start/pause/settings/unstick → `superadmin`, `admin`
+  - Sections, categories, topics POST/PUT/DELETE → `superadmin`, `admin`
+  - Articles POST/PUT/DELETE and approval/decision → `superadmin`, `admin`, `editor`
+  - User-management users PUT/DELETE → `superadmin` only
+- **Approval attribution** — `approvedById`, `approvedAt`, `rejectedById`, `rejectedAt` fields added to `Article` model. Migration `20260608260000_article_approval_attribution`. `approveArticle`/`rejectArticle` services now set these fields; both article GET endpoints include them.
+- **Approvals page — live history tabs** — Approved and Rejected tabs now fetch real data (`?approvedBy=set` / `?rejectedBy=set`); resolve actor names from the users select API; show "Approved/Rejected by X · date" on each card with counts in tab badges.
+- **Users page** (`/dashboard/users`) — fully replaced mock with real data: live user list from `/api/user-management/users`, role stats cards, role badge per user, last sign-in column. Superadmin sees a "Change role" action per row (dialog, uses `PUT /api/user-management/users/[id]`).
+- **Public signup disabled** — `POST /api/auth/signup` now returns `403` immediately. `/signup` page replaced with a static "Registration is closed — contact an administrator" screen.
+- **Fake seed users removed** — `prisma/data/users.js` emptied; 49 `@example.com` demo users and their system logs deleted from both local and production databases.
+
+### Changed
+
+- All existing `requireAdmin` callers (project-progress, idea-backlog routes) updated to `requireRole(session, 'superadmin', 'admin')`.
+- `useIsAdmin()` hooks in project-progress and idea-backlog UI components updated to use `roleSlug` comparison instead of display-name string.
+- `prisma/seed.js` — owner user now gets `superadmin` role; fake user seeding loop and system log generation block removed.
+
+---
+
 ## [1.2.0] — WordPress Publishing Integration — 2026-06-08
 
 ### Added

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
 import { getArticles, createArticle } from '@/services/article.service';
 import { ArticleFormSchema } from '@/app/(protected)/dashboard/articles/forms/article-schema';
 
@@ -20,6 +21,10 @@ function mapArticle(a) {
     readinessDeadline: a.readinessDeadline,
     seoScore: a.seoScore,
     wordpressPostId: a.wordpressPostId,
+    approvedById: a.approvedById,
+    approvedAt: a.approvedAt,
+    rejectedById: a.rejectedById,
+    rejectedAt: a.rejectedAt,
     featuredImage: a.featuredImage,
     galleryImages: a.galleryImages,
     videoUrl: a.videoUrl,
@@ -46,11 +51,15 @@ export async function GET(req) {
     const topicId = searchParams.get('topicId') || null;
     const categoryId = searchParams.get('categoryId') || null;
     const status = searchParams.get('status') || null;
+    const approvedBy = searchParams.get('approvedBy') || null;
+    const rejectedBy = searchParams.get('rejectedBy') || null;
 
     const rows = await getArticles({
       topicId: topicId && topicId !== 'all' ? topicId : null,
       categoryId: categoryId && categoryId !== 'all' ? categoryId : null,
       status: status && status !== 'all' ? status : null,
+      approvedBySet: approvedBy === 'set',
+      rejectedBySet: rejectedBy === 'set',
     });
 
     const data = rows.map(mapArticle);
@@ -74,6 +83,7 @@ export async function POST(request) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin', 'editor');
 
     const body = await request.json();
     const parsed = ArticleFormSchema.safeParse(body);

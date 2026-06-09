@@ -288,6 +288,10 @@ model Article {
   readinessDeadline  DateTime?
   seoScore           Int?
   wordpressPostId    Int?
+  approvedById       String?
+  approvedAt         DateTime?
+  rejectedById       String?
+  rejectedAt         DateTime?
   scheduleBatchId      String?
   scheduledSlotId      String?
   generationSource     String?

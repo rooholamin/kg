@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
 import { getCategories, createCategory } from '@/services/category.service';
 import { CategoryFormSchema } from '@/app/(protected)/dashboard/categories/forms/category-schema';
 
@@ -48,6 +49,7 @@ export async function POST(request) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const body = await request.json();
     const parsed = CategoryFormSchema.safeParse(body);

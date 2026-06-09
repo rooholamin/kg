@@ -15,9 +15,8 @@ import { WorkstreamFormDialog } from './workstream-form-dialog';
 
 function useIsAdmin() {
   const { data } = useSession();
-  return (
-    data?.user?.roleName === 'Administrator' || data?.user?.roleName === 'Owner'
-  );
+  const slug = data?.user?.roleSlug;
+  return slug === 'superadmin' || slug === 'admin';
 }
 
 async function fetchProjectProgress() {

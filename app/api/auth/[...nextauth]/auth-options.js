@@ -172,6 +172,7 @@ const authOptions = {
           token.status = user.status;
           token.roleId = user.roleId;
           token.roleName = role?.name;
+          token.roleSlug = role?.slug;
         }
       }
 
@@ -186,6 +187,7 @@ const authOptions = {
         session.user.status = token.status;
         session.user.roleId = token.roleId;
         session.user.roleName = token.roleName;
+        session.user.roleSlug = token.roleSlug;
       }
       return session;
     },
