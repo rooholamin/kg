@@ -12,4 +12,8 @@ export const UserAddSchema = z.object({
   roleId: z.string().nonempty({
     message: 'Role ID is required.',
   }),
+  password: z
+    .string()
+    .nonempty({ message: 'Password is required.' })
+    .min(8, { message: 'Password must be at least 8 characters.' }),
 });

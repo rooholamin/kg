@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { formatDateTime } from '@/lib/helpers';
 import { Badge, BadgeDot } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,9 +9,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getUserStatusProps } from '../../constants/status';
 import UserProfileEditDialog from './user-profile-edit-dialog';
+import UserSetPasswordDialog from './user-set-password-dialog';
 
 const UserProfile = ({ user, isLoading }) => {
+  const { data: session } = useSession();
+  const isSuperAdmin = session?.user?.roleSlug === 'superadmin';
   const [isEditDialogOpen, setEditDialogOpen] = useState(false);
+  const [isSetPasswordOpen, setSetPasswordOpen] = useState(false);
 
   const Loading = () => (
     <Card>
@@ -145,15 +150,39 @@ const UserProfile = ({ user, isLoading }) => {
     );
   };
 
+  const SecurityCard = () => (
+    <Card>
+      <CardContent>
+        <h3 className="font-semibold mb-1">Password</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Set or reset the password for this account.
+        </p>
+        <Button variant="outline" onClick={() => setSetPasswordOpen(true)}>
+          Set password
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <>
       {isLoading || !user ? <Loading /> : <Content />}
+
+      {isSuperAdmin && !isLoading && user && <SecurityCard />}
 
       <UserProfileEditDialog
         open={isEditDialogOpen}
         closeDialog={() => setEditDialogOpen(false)}
         user={user}
       />
+
+      {user && (
+        <UserSetPasswordDialog
+          open={isSetPasswordOpen}
+          onOpenChange={setSetPasswordOpen}
+          user={user}
+        />
+      )}
     </>
   );
 };

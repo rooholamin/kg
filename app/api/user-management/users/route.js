@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
+import bcrypt from 'bcrypt';
 import { getClientIP } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
 import { systemLog } from '@/services/system-log';
@@ -138,7 +139,7 @@ export async function POST(request) {
       );
     }
 
-    const { name, email, roleId } = parsedData.data;
+    const { name, email, roleId, password } = parsedData.data;
 
     // Check if the email already exists
     const existingUser = await prisma.user.findUnique({
@@ -167,6 +168,8 @@ export async function POST(request) {
       );
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     // Use a transaction to insert multiple records atomically
     const result = await prisma.$transaction(async (tx) => {
       // Create a user
@@ -174,6 +177,7 @@ export async function POST(request) {
         data: {
           name,
           email,
+          password: hashedPassword,
           status: UserStatus.ACTIVE,
           roleId,
         },

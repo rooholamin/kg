@@ -27,6 +27,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Eye, EyeOff } from 'lucide-react';
+import { useState as useLocalState } from 'react';
 import {
   Select,
   SelectContent,
@@ -40,6 +42,7 @@ import { UserAddSchema } from '../forms/user-add-schema';
 
 const UserAddDialog = ({ open, closeDialog, onSuccess }) => {
   const queryClient = useQueryClient();
+  const [showPassword, setShowPassword] = useLocalState(false);
 
   // Fetch available roles
   const { data: roleList } = useRoleSelectQuery();
@@ -50,6 +53,7 @@ const UserAddDialog = ({ open, closeDialog, onSuccess }) => {
       name: '',
       email: '',
       roleId: '',
+      password: '',
     },
     mode: 'onSubmit',
   });
@@ -184,6 +188,33 @@ const UserAddDialog = ({ open, closeDialog, onSuccess }) => {
                           </SelectGroup>
                         </SelectContent>
                       </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="Set initial password"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="absolute inset-y-0 end-3 flex items-center text-muted-foreground hover:text-foreground"
+                        >
+                          {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
