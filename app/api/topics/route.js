@@ -29,6 +29,7 @@ export async function GET(req) {
       categoryName: t.category.name,
       targetKeyword: t.targetKeyword ?? '',
       status: t.status,
+      wpCategoryId: t.wpCategoryId ?? null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       articleCount: t._count.articles,

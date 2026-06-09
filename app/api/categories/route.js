@@ -22,6 +22,7 @@ export async function GET() {
       status: c.status,
       sectionId: c.sectionId,
       section: c.section ?? null,
+      wpCategoryId: c.wpCategoryId ?? null,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
       topicCount: c._count.topics,

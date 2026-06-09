@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.2.0] — WordPress Publishing Integration — 2026-06-08
+
+### Added
+
+- **WordPress credentials on `Section`** — `wpSiteUrl`, `wpUsername`, `wpAppPassword`, `wpAuthorId` fields; each section can publish as a different WordPress author/persona.
+- **`wpCategoryId` on `Category` and `Topic`** — stores the matching WordPress category ID after sync; applied directly via `prisma db execute`.
+- **`services/wordpress.service.js`** — centralised WordPress REST API service:
+  - `syncCategoryToWordPress(categoryId)` — creates or links a top-level WP category; idempotent (search-then-create).
+  - `syncTopicToWordPress(topicId)` — creates or links a WP child category under the parent; requires parent category to be synced first.
+  - `publishArticleToWordPress(articleId)` — converts TipTap JSON to HTML, sets WP post status to `future` or `publish` based on `publishDate`, attaches category/topic WP IDs and author; saves `wordpressPostId`; on failure logs error and leaves status as `scheduling` for retry.
+  - `contentToHtml` / `nodesToHtml` — server-side TipTap JSON → HTML converter (no DOM, safe in Next.js route handlers).
+- **`POST /api/articles/[id]/approval/decision`** — approve or reject an article; approve advances status to `scheduling` and fire-and-forgets `publishArticleToWordPress`.
+- **`POST /api/articles/[id]/wordpress/publish`** — manual retry endpoint for WordPress publishing.
+- **`POST /api/categories/wordpress/sync-all`** — bulk-syncs all unsynced (`wpCategoryId: null`) active categories; returns `{ synced, skipped, errors }` summary.
+- **`POST /api/topics/wordpress/sync-all`** — bulk-syncs all unsynced active topics; skips topics whose parent category is not yet synced.
+- **WordPress credentials tab in section form** — "WordPress Integration" section in `section-form-dialog.jsx` with Site URL, Username, Application Password, and WP Author ID fields; validated via Zod (`section-schema.js`).
+- **WP Sync column on categories and topics list pages** — shows the WordPress category ID or `—` for unsynced items.
+- **"Sync to WordPress" toolbar button** on categories and topics list pages — bulk-syncs unsynced items; shows count of pending items and a spinner during sync; placed via the new `secondaryAction` prop on `MockTableToolbar`.
+
+### Changed
+
+- **`approveArticle` / `rejectArticle`** added to `services/article-automation.service.js` — approve sets status to `scheduling`; reject sets status back to `writing`.
+- **`app/(protected)/dashboard/approvals/page.jsx`** — fully rewritten from mock data to live queue:
+  - Fetches articles with `status=approval` via TanStack Query.
+  - `ArticleApprovalCard` — card layout with proper `p-5` padding (no `CardHeader`), title, category badge, publish date, SEO score, summary, and Open / Edit / Approve / Reject actions.
+  - `ArticlePreviewModal` — wide (`max-w-5xl`) scrollable dialog; featured image shown as a hero with title and meta overlaid via gradient; falls back to plain text header when no image; summary shown as lead text above article body.
+- **`app/(protected)/dashboard/components/mock-table-toolbar.jsx`** — added `secondaryAction` prop for consistent secondary button placement.
+- **`app/api/categories/route.js`** and **`app/api/topics/route.js`** — `GET` responses now include `wpCategoryId`.
+- **`app/api/sections/[id]/route.js`** — `GET` and `PUT` include all four WordPress credential fields.
+
+---
+
 ## [1.1.0] — Three-Engine Pipeline (Research / Writing / Images) — 2026-06-08
 
 ### Added

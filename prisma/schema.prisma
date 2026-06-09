@@ -221,6 +221,11 @@ model Section {
   characterSampleVoice  String?       @db.Text
   characterPersona      String?       @db.Text
   characterImage        String?
+  // WordPress integration — credentials for the author persona of this section
+  wpSiteUrl             String?
+  wpUsername            String?
+  wpAppPassword         String?
+  wpAuthorId            Int?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   categories            Category[]
@@ -230,16 +235,17 @@ model Section {
 }
 
 model Category {
-  id          String         @id @default(uuid())
-  name        String
-  description String?
-  status      CategoryStatus @default(active)
-  sectionId   String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  section     Section?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-  topics      Topic[]
-  articles    Article[]
+  id           String         @id @default(uuid())
+  name         String
+  description  String?
+  status       CategoryStatus @default(active)
+  sectionId    String?
+  wpCategoryId Int?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  section      Section?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  topics       Topic[]
+  articles     Article[]
 
   @@index([status])
   @@index([sectionId])
@@ -252,6 +258,7 @@ model Topic {
   categoryId    String
   targetKeyword String?
   status        TopicStatus @default(active)
+  wpCategoryId  Int?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   category      Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)

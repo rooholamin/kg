@@ -25,4 +25,9 @@ export const SectionFormSchema = z.object({
   characterSampleVoice: z.string().max(5000).optional().nullable(),
   characterPersona: z.string().max(10000).optional().nullable(),
   characterImage: z.string().max(500).optional().nullable(),
+  // WordPress integration
+  wpSiteUrl: z.string().url({ message: 'Must be a valid URL.' }).max(500).optional().nullable().or(z.literal('')),
+  wpUsername: z.string().max(200).optional().nullable(),
+  wpAppPassword: z.string().max(500).optional().nullable(),
+  wpAuthorId: z.coerce.number().int().positive().optional().nullable(),
 });

@@ -1,0 +1,48 @@
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { approveArticle, rejectArticle } from '@/services/article-automation.service';
+import { publishArticleToWordPress } from '@/services/wordpress.service';
+
+export async function POST(request, { params }) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const body = await request.json();
+    const { action, notes } = body;
+
+    if (!['approve', 'reject'].includes(action)) {
+      return NextResponse.json(
+        { message: 'action must be "approve" or "reject"' },
+        { status: 400 },
+      );
+    }
+
+    const userId = session.user?.id ?? null;
+
+    if (action === 'reject') {
+      await rejectArticle(id, userId, notes ?? null);
+      return NextResponse.json({ ok: true, action: 'rejected' });
+    }
+
+    // Approve — move to scheduling then fire-and-forget WordPress publish
+    await approveArticle(id, userId, notes ?? null);
+
+    // Fire-and-forget: don't await so the response is immediate
+    publishArticleToWordPress(id, userId).catch((err) => {
+      console.error(`[approval/decision] WP publish failed for article ${id}:`, err);
+    });
+
+    return NextResponse.json({ ok: true, action: 'approved' });
+  } catch (e) {
+    console.error('[api/articles/:id/approval/decision POST]', e);
+    if (e?.code === 'NOT_FOUND') {
+      return NextResponse.json({ message: e.message }, { status: 404 });
+    }
+    return NextResponse.json({ message: 'Failed to process approval decision' }, { status: 500 });
+  }
+}

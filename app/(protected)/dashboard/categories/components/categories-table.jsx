@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -11,7 +11,8 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, RefreshCw, CheckCircle2, AlertCircle, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { Card, CardFooter, CardTable } from '@/components/ui/card';
 import { DataGrid } from '@/components/ui/data-grid';
@@ -22,8 +23,8 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/custom/status-badge';
 import { MockTableToolbar } from '@/app/(protected)/dashboard/components/mock-table-toolbar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Container } from '@/components/common/container';
-import { AlertCircle, ChevronRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CategoryFormDialog } from './category-form-dialog';
@@ -41,6 +42,7 @@ async function fetchCategories() {
 
 export function CategoriesTable() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
   const [formOpen, setFormOpen] = useState(false);
@@ -52,6 +54,31 @@ export function CategoriesTable() {
     queryKey: ['categories'],
     queryFn: fetchCategories,
   });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch('/api/categories/wordpress/sync-all', { method: 'POST' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Sync failed');
+      }
+      return res.json();
+    },
+    onSuccess: (result) => {
+      const { synced, skipped, errors } = result.data ?? {};
+      const parts = [];
+      if (synced) parts.push(`${synced} synced`);
+      if (skipped) parts.push(`${skipped} skipped`);
+      if (errors?.length) parts.push(`${errors.length} failed`);
+      toast.success(`WordPress sync complete${parts.length ? ': ' + parts.join(', ') : ''}`);
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const unsyncedCount = (data?.data ?? []).filter((c) => !c.wpCategoryId && c.status === 'active').length;
 
   const rows = data?.data ?? [];
 
@@ -154,6 +181,25 @@ export function CategoriesTable() {
           <DataGridColumnHeader title="Articles" column={column} />
         ),
         size: 80,
+      },
+      {
+        accessorKey: 'wpCategoryId',
+        id: 'wpCategoryId',
+        header: ({ column }) => (
+          <DataGridColumnHeader title="WP Sync" column={column} />
+        ),
+        cell: ({ getValue }) => {
+          const v = getValue();
+          return v ? (
+            <Badge variant="secondary" appearance="light" className="gap-1 text-xs text-green-700 dark:text-green-400">
+              <CheckCircle2 className="size-3" />
+              #{v}
+            </Badge>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          );
+        },
+        size: 100,
       },
       {
         accessorKey: 'createdAt',
@@ -277,6 +323,22 @@ export function CategoriesTable() {
             setFormOpen(true);
           }}
           placeholder="Filter categories"
+          secondaryAction={
+            unsyncedCount > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.status === 'pending'}
+              >
+                <RefreshCw className={`me-1.5 size-4 ${syncMutation.status === 'pending' ? 'animate-spin' : ''}`} />
+                Sync to WordPress
+                <Badge variant="secondary" appearance="light" className="ms-1.5">
+                  {unsyncedCount}
+                </Badge>
+              </Button>
+            ) : null
+          }
         />
         {isFetching && !isLoading && (
           <p className="text-xs text-muted-foreground mb-2">Refreshing…</p>

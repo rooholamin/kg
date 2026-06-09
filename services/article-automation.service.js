@@ -746,7 +746,51 @@ export async function triggerAssets(articleId, userId, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Manual approval
+// Approval decisions
+// ---------------------------------------------------------------------------
+
+export async function approveArticle(articleId, userId, notes) {
+  const article = await prisma.article.findUnique({ where: { id: articleId } });
+  if (!article) {
+    const err = new Error('Article not found');
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  await prisma.article.update({ where: { id: articleId }, data: { status: 'scheduling' } });
+
+  await contentLog({
+    type: 'article', action: 'status_change',
+    message: `Article "${article.title}" approved — queued for WordPress publishing${notes ? `: ${notes}` : ''}`,
+    entityType: 'article', entityId: articleId,
+    createdBy: userId ?? null,
+  });
+
+  return { ok: true };
+}
+
+export async function rejectArticle(articleId, userId, notes) {
+  const article = await prisma.article.findUnique({ where: { id: articleId } });
+  if (!article) {
+    const err = new Error('Article not found');
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  await prisma.article.update({ where: { id: articleId }, data: { status: 'writing' } });
+
+  await contentLog({
+    type: 'article', action: 'status_change',
+    message: `Article "${article.title}" rejected — sent back to writing${notes ? `: ${notes}` : ''}`,
+    entityType: 'article', entityId: articleId,
+    createdBy: userId ?? null,
+  });
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Manual approval (legacy — sends to approval queue)
 // ---------------------------------------------------------------------------
 
 export async function sendToApproval(articleId, userId) {

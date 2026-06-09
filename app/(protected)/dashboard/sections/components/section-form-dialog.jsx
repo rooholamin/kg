@@ -55,6 +55,10 @@ const EMPTY_DEFAULTS = {
   characterSampleVoice: '',
   characterPersona: '',
   characterImage: '',
+  wpSiteUrl: '',
+  wpUsername: '',
+  wpAppPassword: '',
+  wpAuthorId: '',
 };
 
 /**
@@ -99,6 +103,10 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
         characterSampleVoice: section.characterSampleVoice ?? '',
         characterPersona: section.characterPersona ?? '',
         characterImage: section.characterImage ?? '',
+        wpSiteUrl: section.wpSiteUrl ?? '',
+        wpUsername: section.wpUsername ?? '',
+        wpAppPassword: section.wpAppPassword ?? '',
+        wpAuthorId: section.wpAuthorId ?? '',
       });
       setAvatarPreview(section.characterImage || null);
     } else {
@@ -170,6 +178,10 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
           characterSampleVoice: values.characterSampleVoice || null,
           characterPersona: values.characterPersona || null,
           characterImage: values.characterImage || null,
+          wpSiteUrl: values.wpSiteUrl || null,
+          wpUsername: values.wpUsername || null,
+          wpAppPassword: values.wpAppPassword || null,
+          wpAuthorId: values.wpAuthorId ? Number(values.wpAuthorId) : null,
         }),
       });
       if (!response.ok) {
@@ -572,6 +584,103 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
                       </FormItem>
                     )}
                   />
+                </div>
+              </div>
+
+              {/* ── WordPress integration ── */}
+              <div className="border-t pt-4">
+                <p className="text-sm font-semibold text-foreground mb-1">
+                  WordPress Integration
+                </p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Credentials for publishing articles from this section. Use an{' '}
+                  <a
+                    href="https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    Application Password
+                  </a>
+                  {' '}(not your login password).
+                </p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="wpSiteUrl"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>WordPress site URL</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="https://myblog.com"
+                              {...field}
+                              value={field.value ?? ''}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="wpUsername"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>WordPress username</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="wp-username"
+                              {...field}
+                              value={field.value ?? ''}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="wpAppPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Application password</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="password"
+                              placeholder="xxxx xxxx xxxx xxxx xxxx xxxx"
+                              autoComplete="new-password"
+                              {...field}
+                              value={field.value ?? ''}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="wpAuthorId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>WP Author ID</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={1}
+                              placeholder="e.g. 2"
+                              {...field}
+                              value={field.value ?? ''}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 </div>
               </div>
             </DialogBody>

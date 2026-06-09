@@ -3,14 +3,15 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Pencil, Trash2, AlertCircle, ChevronRight } from 'lucide-react';
+import { Pencil, Trash2, AlertCircle, ChevronRight, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { Card, CardFooter, CardTable } from '@/components/ui/card';
 import { DataGrid } from '@/components/ui/data-grid';
@@ -51,6 +52,7 @@ async function fetchCategories() {
 
 export function TopicsTable() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
@@ -63,6 +65,31 @@ export function TopicsTable() {
     queryKey: ['topics'],
     queryFn: fetchTopics,
   });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch('/api/topics/wordpress/sync-all', { method: 'POST' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Sync failed');
+      }
+      return res.json();
+    },
+    onSuccess: (result) => {
+      const { synced, skipped, errors } = result.data ?? {};
+      const parts = [];
+      if (synced) parts.push(`${synced} synced`);
+      if (skipped) parts.push(`${skipped} skipped (parent not synced or no credentials)`);
+      if (errors?.length) parts.push(`${errors.length} failed`);
+      toast.success(`WordPress sync complete${parts.length ? ': ' + parts.join(', ') : ''}`);
+      queryClient.invalidateQueries({ queryKey: ['topics'] });
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const unsyncedCount = (data?.data ?? []).filter((t) => !t.wpCategoryId && t.status === 'active').length;
 
   const { data: catData } = useQuery({
     queryKey: ['categories'],
@@ -162,6 +189,25 @@ export function TopicsTable() {
         id: 'articleCount',
         header: 'Articles',
         size: 80,
+      },
+      {
+        accessorKey: 'wpCategoryId',
+        id: 'wpCategoryId',
+        header: ({ column }) => (
+          <DataGridColumnHeader title="WP Sync" column={column} />
+        ),
+        cell: ({ getValue }) => {
+          const v = getValue();
+          return v ? (
+            <Badge variant="secondary" appearance="light" className="gap-1 text-xs text-green-700 dark:text-green-400">
+              <CheckCircle2 className="size-3" />
+              #{v}
+            </Badge>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          );
+        },
+        size: 100,
       },
       {
         id: 'readiness',
@@ -302,6 +348,22 @@ export function TopicsTable() {
             setFormOpen(true);
           }}
           placeholder="Filter topics"
+          secondaryAction={
+            unsyncedCount > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.status === 'pending'}
+              >
+                <RefreshCw className={`me-1.5 size-4 ${syncMutation.status === 'pending' ? 'animate-spin' : ''}`} />
+                Sync to WordPress
+                <Badge variant="secondary" appearance="light" className="ms-1.5">
+                  {unsyncedCount}
+                </Badge>
+              </Button>
+            ) : null
+          }
         />
         {isFetching && !isLoading && (
           <p className="text-xs text-muted-foreground">Refreshing…</p>

@@ -73,6 +73,10 @@ async function findDuplicateSlug(slug, excludeId) {
  *   characterSampleVoice?: string | null;
  *   characterPersona?: string | null;
  *   characterImage?: string | null;
+ *   wpSiteUrl?: string | null;
+ *   wpUsername?: string | null;
+ *   wpAppPassword?: string | null;
+ *   wpAuthorId?: number | null;
  * }} data
  * @param {{ createdBy?: string | null }} [opts]
  */
@@ -112,6 +116,10 @@ export async function createSection(data, opts = {}) {
         characterSampleVoice: data.characterSampleVoice?.trim() || null,
         characterPersona: data.characterPersona?.trim() || null,
         characterImage: data.characterImage?.trim() || null,
+        wpSiteUrl: data.wpSiteUrl?.trim() || null,
+        wpUsername: data.wpUsername?.trim() || null,
+        wpAppPassword: data.wpAppPassword || null,
+        wpAuthorId: data.wpAuthorId ?? null,
       },
     });
     await contentLog(
@@ -148,6 +156,10 @@ export async function createSection(data, opts = {}) {
  *   characterSampleVoice?: string | null;
  *   characterPersona?: string | null;
  *   characterImage?: string | null;
+ *   wpSiteUrl?: string | null;
+ *   wpUsername?: string | null;
+ *   wpAppPassword?: string | null;
+ *   wpAuthorId?: number | null;
  * }} data
  * @param {{ createdBy?: string | null }} [opts]
  */
@@ -195,6 +207,10 @@ export async function updateSection(id, data, opts = {}) {
         characterSampleVoice: data.characterSampleVoice?.trim() || null,
         characterPersona: data.characterPersona?.trim() || null,
         characterImage: data.characterImage?.trim() || null,
+        wpSiteUrl: data.wpSiteUrl?.trim() || null,
+        wpUsername: data.wpUsername?.trim() || null,
+        wpAppPassword: data.wpAppPassword || null,
+        wpAuthorId: data.wpAuthorId ?? null,
       },
     });
     await contentLog(

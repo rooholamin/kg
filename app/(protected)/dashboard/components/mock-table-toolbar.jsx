@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 
 /**
  * Light toolbar shell for list pages — search is local filter only in M1.
+ * Pass `secondaryAction` to render an extra button between the search and the primary action.
  */
 export function MockTableToolbar({
   search,
@@ -11,6 +12,7 @@ export function MockTableToolbar({
   actionLabel = 'New',
   onAction,
   placeholder = 'Search…',
+  secondaryAction,
 }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
@@ -23,11 +25,14 @@ export function MockTableToolbar({
           onChange={(e) => onSearchChange(e.target.value)}
         />
       </div>
-      {actionLabel && (
-        <Button onClick={onAction} type="button">
-          {actionLabel}
-        </Button>
-      )}
+      <div className="flex items-center gap-2 shrink-0">
+        {secondaryAction}
+        {actionLabel && (
+          <Button onClick={onAction} type="button">
+            {actionLabel}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
