@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { updateEngineSettings, ENGINE_IDS } from '@/services/pipeline-engine.service';
 
 export async function PATCH(req, { params }) {
@@ -27,6 +28,6 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ data });
   } catch (e) {
     console.error('[api/pipeline-engine/[type]/settings PATCH]', e);
-    return NextResponse.json({ message: e.message ?? 'Failed to update settings' }, { status: 500 });
+    return routeError(e, 'Failed to update settings');
   }
 }

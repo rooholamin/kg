@@ -94,6 +94,12 @@ const authOptions = {
         });
 
         if (existingUser) {
+          if (existingUser.status !== 'ACTIVE') {
+            throw new Error(
+              'Account not activated or blocked. Please contact support.',
+            );
+          }
+
           // Update `lastSignInAt` field for existing users
           await prisma.user.update({
             where: { id: existingUser.id },
@@ -158,21 +164,36 @@ const authOptions = {
   callbacks: {
     async jwt({ token, user, session, trigger }) {
       if (trigger === 'update' && session?.user) {
-        token = session.user;
-      } else {
-        if (user && user.roleId) {
-          const role = await prisma.userRole.findUnique({
-            where: { id: user.roleId },
-          });
+        token = { ...token, ...session.user };
+      }
 
-          token.id = user.id || token.sub;
-          token.email = user.email;
-          token.name = user.name;
-          token.avatar = user.avatar;
-          token.status = user.status;
-          token.roleId = user.roleId;
-          token.roleName = role?.name;
-          token.roleSlug = role?.slug;
+      if (user && user.roleId) {
+        // Initial sign-in: stamp all user fields
+        const role = await prisma.userRole.findUnique({ where: { id: user.roleId } });
+        token.id = user.id || token.sub;
+        token.email = user.email;
+        token.name = user.name;
+        token.avatar = user.avatar;
+        token.status = user.status;
+        token.roleId = user.roleId;
+        token.roleName = role?.name;
+        token.roleSlug = role?.slug;
+      } else if (token.id) {
+        // Re-fetch role from DB every 5 min so role changes take effect without re-login
+        const now = Math.floor(Date.now() / 1000);
+        const lastRefresh = token._roleRefreshedAt ?? 0;
+        if (!token.roleSlug || now - lastRefresh > 300) {
+          const freshUser = await prisma.user.findUnique({
+            where: { id: token.id },
+            select: { roleId: true, status: true, role: { select: { name: true, slug: true } } },
+          });
+          if (freshUser) {
+            token.status = freshUser.status;
+            token.roleId = freshUser.roleId;
+            token.roleName = freshUser.role?.name;
+            token.roleSlug = freshUser.role?.slug;
+            token._roleRefreshedAt = now;
+          }
         }
       }
 

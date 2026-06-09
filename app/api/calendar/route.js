@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { getCalendarArticles } from '@/services/article.service';
 import { getScheduledSlotsForCalendar } from '@/services/scheduler.service';
 
@@ -13,6 +15,7 @@ export async function GET(req) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin', 'editor');
 
     const { searchParams } = new URL(req.url);
     const topicId = searchParams.get('topicId') || null;

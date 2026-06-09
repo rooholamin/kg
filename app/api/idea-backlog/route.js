@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { createIdea, getIdeas } from '@/services/idea-backlog.service';
 
 export async function GET(req) {
@@ -19,7 +20,7 @@ export async function GET(req) {
     return NextResponse.json({ data });
   } catch (error) {
     console.error('[api/idea-backlog GET]', error);
-    return NextResponse.json({ message: 'Failed to load idea backlog' }, { status: 500 });
+    return routeError(e, 'Failed to load idea backlog');
   }
 }
 
@@ -42,6 +43,6 @@ export async function POST(request) {
     if (error?.code === 'VALIDATION') {
       return NextResponse.json({ message: error.message }, { status: 400 });
     }
-    return NextResponse.json({ message: 'Failed to create idea' }, { status: 500 });
+    return routeError(e, 'Failed to create idea');
   }
 }

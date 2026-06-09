@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
@@ -96,7 +97,7 @@ function fmtDate(v) {
 // Article preview modal (Open) — shows content with Approve / Reject in footer
 // ---------------------------------------------------------------------------
 
-function ArticlePreviewModal({ article, open, onOpenChange, onApprove, onReject, isDecisionLoading }) {
+function ArticlePreviewModal({ article, open, onOpenChange, onApprove, onReject, isDecisionLoading, canApprove }) {
   const [rejectNotes, setRejectNotes] = useState('');
   const [rejectMode, setRejectMode] = useState(false);
 
@@ -247,18 +248,20 @@ function ArticlePreviewModal({ article, open, onOpenChange, onApprove, onReject,
                   <XCircle className="me-1.5 size-3.5" />
                   Reject
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={onApprove}
-                  disabled={isDecisionLoading}
-                >
-                  {isDecisionLoading ? (
-                    <Loader2 className="me-1.5 size-3.5 animate-spin" />
-                  ) : (
-                    <CheckCheck className="me-1.5 size-3.5" />
-                  )}
-                  Approve
-                </Button>
+                {canApprove && (
+                  <Button
+                    size="sm"
+                    onClick={onApprove}
+                    disabled={isDecisionLoading}
+                  >
+                    {isDecisionLoading ? (
+                      <Loader2 className="me-1.5 size-3.5 animate-spin" />
+                    ) : (
+                      <CheckCheck className="me-1.5 size-3.5" />
+                    )}
+                    Approve
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -272,7 +275,7 @@ function ArticlePreviewModal({ article, open, onOpenChange, onApprove, onReject,
 // Single article approval card
 // ---------------------------------------------------------------------------
 
-function ArticleApprovalCard({ article, onOpen, onApprove, onReject, onEdit }) {
+function ArticleApprovalCard({ article, onOpen, onApprove, onReject, onEdit, canApprove }) {
   const publishDateStr = fmtDate(article.publishDate);
 
   return (
@@ -323,10 +326,12 @@ function ArticleApprovalCard({ article, onOpen, onApprove, onReject, onEdit }) {
             <XCircle className="me-1.5 size-3.5" />
             Reject
           </Button>
-          <Button size="sm" onClick={() => onApprove(article)}>
-            <CheckCheck className="me-1.5 size-3.5" />
-            Approve
-          </Button>
+          {canApprove && (
+            <Button size="sm" onClick={() => onApprove(article)}>
+              <CheckCheck className="me-1.5 size-3.5" />
+              Approve
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -392,6 +397,8 @@ function ArticleHistoryCard({ article, userMap, type }) {
 // ---------------------------------------------------------------------------
 
 export default function ApprovalsPage() {
+  const { data: session } = useSession();
+  const canApprove = session?.user?.roleSlug === 'superadmin' || session?.user?.roleSlug === 'admin';
   const queryClient = useQueryClient();
 
   const [previewArticle, setPreviewArticle] = useState(null);
@@ -568,6 +575,7 @@ export default function ApprovalsPage() {
                       onApprove={setApproveTarget}
                       onReject={setRejectTarget}
                       onEdit={setEditTarget}
+                      canApprove={canApprove}
                     />
                   ))}
                 </div>
@@ -637,6 +645,7 @@ export default function ApprovalsPage() {
         onApprove={handlePreviewApprove}
         onReject={handlePreviewReject}
         isDecisionLoading={isDecisionLoading}
+        canApprove={canApprove}
       />
 
       {/* Quick-approve confirm dialog (from card button) */}

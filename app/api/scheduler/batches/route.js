@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { getScheduleBatches, createScheduleBatch, deleteScheduleBatches } from '@/services/scheduler.service';
 
 export async function GET() {
@@ -9,6 +11,7 @@ export async function GET() {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin');
     const data = await getScheduleBatches();
     return NextResponse.json({ data });
   } catch (e) {
@@ -23,6 +26,7 @@ export async function POST(request) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const body = await request.json();
     const {
@@ -69,6 +73,7 @@ export async function DELETE(request) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const body = await request.json().catch(() => ({}));
     const { ids } = body;

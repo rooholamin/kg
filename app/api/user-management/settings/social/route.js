@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { systemLog } from '@/services/system-log';
 import { SocialSettingsSchema } from '@/app/(protected)/user-management/settings/forms/social-settings-schema';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 export async function POST(request) {
   try {
@@ -16,6 +18,8 @@ export async function POST(request) {
         { status: 401 }, // Unauthorized
       );
     }
+
+    requireRole(session, 'superadmin', 'admin');
 
     const clientIp = getClientIP(request);
 
@@ -61,10 +65,7 @@ export async function POST(request) {
       { message: 'Social settings updated successfully' },
       { status: 200 },
     );
-  } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+  } catch (error) {
+    return routeError(error, 'Failed to update social settings');
   }
 }

@@ -6,6 +6,8 @@ import { prisma } from '@/lib/prisma';
 import { systemLog } from '@/services/system-log';
 import { PermissionSchema } from '@/app/(protected)/user-management/permissions/forms/permission-schema';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 // GET: Fetch all permissions
 export async function GET(request) {
@@ -27,6 +29,7 @@ export async function GET(request) {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     // Count total records matching the filter
     const total = await prisma.userPermission.count({
@@ -104,6 +107,7 @@ export async function POST(request) {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const clientIp = getClientIP(request);
     const body = await request.json();

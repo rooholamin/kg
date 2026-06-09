@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 export async function GET() {
   try {
@@ -14,6 +16,8 @@ export async function GET() {
       );
     }
 
+    requireRole(session, 'superadmin', 'admin');
+
     // Get settings
     const settings = await prisma.systemSetting.findFirst();
 
@@ -25,10 +29,7 @@ export async function GET() {
 
     // Return the setting and sorted role list data
     return NextResponse.json({ settings, roles });
-  } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+  } catch (error) {
+    return routeError(error, 'Failed to load settings');
   }
 }

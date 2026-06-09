@@ -111,6 +111,38 @@ function escapeAttr(str) {
 }
 
 /**
+ * Call the kghub-featured-image mu-plugin to create a virtual WP attachment
+ * record (DB only, no file stored) and set it as the post's featured image.
+ * Returns the attachment ID on success, or null on failure.
+ * @param {string} wpSiteUrl
+ * @param {number} wpPostId
+ * @param {string} imageUrl
+ * @param {string} title
+ * @returns {Promise<number | null>}
+ */
+async function setFeaturedImageViaPlugin(wpSiteUrl, wpPostId, imageUrl, title) {
+  const secret = process.env.WP_KGHUB_SECRET;
+  if (!secret) return null;
+
+  const base = normaliseUrl(wpSiteUrl);
+  try {
+    const res = await fetch(`${base}/wp-json/kghub/v1/set-featured-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Kghub-Secret': secret,
+      },
+      body: JSON.stringify({ post_id: wpPostId, image_url: imageUrl, title }),
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body?.attachment_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Make an authenticated request to the WP REST API.
  * @param {string} url
  * @param {{ username: string; appPassword: string }} creds
@@ -413,15 +445,20 @@ export async function publishArticleToWordPress(articleId, userId = null) {
     const wpPost = await res.json();
     const wordpressPostId = wpPost.id;
 
-    // FIFU requires a second save_post cycle to register the featured image for
-    // use in homepage/archive templates. Re-POST the meta immediately after creation.
+    // Create a virtual WP attachment record pointing to the S3 URL (no file upload)
+    // and set it as the post's featured image. This replicates what FIFU does on
+    // admin save, making the image visible on homepage/archive templates immediately.
+    let imageNote = '';
     if (article.featuredImage) {
-      await wpFetch(`${base}/wp-json/wp/v2/posts/${wordpressPostId}`, creds, {
-        method: 'POST',
-        body: JSON.stringify({
-          meta: { fifu_image_url: article.featuredImage, fifu_image_alt: article.title },
-        }),
-      });
+      const attachmentId = await setFeaturedImageViaPlugin(
+        section.wpSiteUrl,
+        wordpressPostId,
+        article.featuredImage,
+        article.title,
+      );
+      imageNote = attachmentId
+        ? `, featured image set (attachment ${attachmentId})`
+        : ', featured image: mu-plugin not available, FIFU meta only';
     }
 
     await prisma.article.update({
@@ -431,7 +468,7 @@ export async function publishArticleToWordPress(articleId, userId = null) {
 
     await contentLog({
       type: 'article', action: 'status_change',
-      message: `Article "${article.title}" published to WordPress (post ID ${wordpressPostId}, status: ${wpStatus}${article.featuredImage ? ', featured image set via FIFU' : ''})`,
+      message: `Article "${article.title}" published to WordPress (post ID ${wordpressPostId}, status: ${wpStatus}${imageNote})`,
       entityType: 'article', entityId: articleId,
       createdBy: userId,
     });

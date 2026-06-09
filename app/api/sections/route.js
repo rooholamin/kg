@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { getSections, createSection } from '@/services/section.service';
 import { SectionFormSchema } from '@/app/(protected)/dashboard/sections/forms/section-schema';
 
@@ -42,10 +43,7 @@ export async function GET() {
     return NextResponse.json({ data });
   } catch (e) {
     console.error('[api/sections]', e);
-    return NextResponse.json(
-      { message: 'Failed to load sections' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to load sections');
   }
 }
 
@@ -105,9 +103,6 @@ export async function POST(request) {
     if (e?.code === 'VALIDATION') {
       return NextResponse.json({ message: e.message }, { status: 400 });
     }
-    return NextResponse.json(
-      { message: 'Failed to create section' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to create section');
   }
 }

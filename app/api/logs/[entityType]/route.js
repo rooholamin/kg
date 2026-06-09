@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { getLogs } from '@/services/content-log.service';
 import prisma from '@/lib/prisma';
 
@@ -17,6 +19,7 @@ export async function GET(req, { params }) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const { entityType: pathEntityType } = await params;
     const { searchParams } = new URL(req.url);

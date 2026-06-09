@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { getTopics, createTopic } from '@/services/topic.service';
 import { TopicFormSchema } from '@/app/(protected)/dashboard/topics/forms/topic-schema';
 
@@ -39,10 +40,7 @@ export async function GET(req) {
     return NextResponse.json({ data });
   } catch (e) {
     console.error('[api/topics]', e);
-    return NextResponse.json(
-      { message: 'Failed to load topics' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to load topics');
   }
 }
 
@@ -95,9 +93,6 @@ export async function POST(request) {
         { status: e.code === 'NOT_FOUND' ? 404 : 400 },
       );
     }
-    return NextResponse.json(
-      { message: 'Failed to create topic' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to create topic');
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import {
   getArticleById,
   updateArticle,
@@ -61,10 +62,7 @@ export async function GET(_req, { params }) {
     return NextResponse.json({ data: mapArticle(row) });
   } catch (e) {
     console.error('[api/articles/:id]', e);
-    return NextResponse.json(
-      { message: 'Failed to load article' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to load article');
   }
 }
 
@@ -102,10 +100,7 @@ export async function PUT(request, { params }) {
     if (e?.code === 'VALIDATION') {
       return NextResponse.json({ message: e.message }, { status: 400 });
     }
-    return NextResponse.json(
-      { message: 'Failed to update article' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to update article');
   }
 }
 
@@ -133,12 +128,6 @@ export async function DELETE(_request, { params }) {
     });
   } catch (e) {
     console.error('[api/articles/:id DELETE]', e);
-    if (e?.code === 'NOT_FOUND') {
-      return NextResponse.json({ message: e.message }, { status: 404 });
-    }
-    return NextResponse.json(
-      { message: 'Failed to delete article' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to delete article');
   }
 }

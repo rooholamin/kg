@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { getCategories, createCategory } from '@/services/category.service';
 import { CategoryFormSchema } from '@/app/(protected)/dashboard/categories/forms/category-schema';
 
@@ -33,10 +34,7 @@ export async function GET() {
     return NextResponse.json({ data });
   } catch (e) {
     console.error('[api/categories]', e);
-    return NextResponse.json(
-      { message: 'Failed to load categories' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to load categories');
   }
 }
 
@@ -86,9 +84,6 @@ export async function POST(request) {
     if (e?.code === 'VALIDATION') {
       return NextResponse.json({ message: e.message }, { status: 400 });
     }
-    return NextResponse.json(
-      { message: 'Failed to create category' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to create category');
   }
 }

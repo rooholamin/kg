@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { systemLog } from '@/services/system-log';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 const SetPasswordSchema = z.object({
   password: z
@@ -54,9 +55,6 @@ export async function PATCH(request, { params }) {
 
     return NextResponse.json({ message: 'Password updated successfully.' }, { status: 200 });
   } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+    return routeError(e);
   }
 }

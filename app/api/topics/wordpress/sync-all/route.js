@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 import { syncTopicToWordPress } from '@/services/wordpress.service';
 
@@ -10,6 +12,7 @@ export async function POST() {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin');
 
     // Find all active topics that haven't been synced yet
     const unsynced = await prisma.topic.findMany({

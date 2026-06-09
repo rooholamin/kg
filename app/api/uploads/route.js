@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { uploadToS3 } from '@/lib/s3-upload';
 
 const ALLOWED_DIRECTORIES = new Set([
@@ -32,6 +34,7 @@ export async function POST(request) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin', 'editor');
 
     const formData = await request.formData();
     const file = formData.get('file');

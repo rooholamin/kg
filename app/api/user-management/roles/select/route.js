@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 export async function GET() {
   try {
@@ -13,6 +15,7 @@ export async function GET() {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin', 'admin', 'editor');
 
     const roles = await prisma.userRole.findMany({
       select: {

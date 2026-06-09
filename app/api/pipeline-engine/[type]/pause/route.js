@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { pauseEngine, ENGINE_IDS } from '@/services/pipeline-engine.service';
 
 export async function POST(req, { params }) {
@@ -21,6 +22,6 @@ export async function POST(req, { params }) {
     return NextResponse.json({ data });
   } catch (e) {
     console.error('[api/pipeline-engine/[type]/pause POST]', e);
-    return NextResponse.json({ message: 'Failed to pause engine' }, { status: 500 });
+    return routeError(e, 'Failed to pause engine');
   }
 }

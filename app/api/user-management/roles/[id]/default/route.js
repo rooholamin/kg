@@ -4,6 +4,8 @@ import { getClientIP } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
 import { systemLog } from '@/services/system-log';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 export async function PATCH(request, { params }) {
   try {
@@ -15,6 +17,7 @@ export async function PATCH(request, { params }) {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const clientIp = getClientIP(request);
     const { id } = await params;

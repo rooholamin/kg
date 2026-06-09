@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { startEngine, ENGINE_IDS } from '@/services/pipeline-engine.service';
 import { checkN8nHealth } from '@/services/scheduler.service';
 
@@ -30,6 +31,6 @@ export async function POST(req, { params }) {
     return NextResponse.json({ data });
   } catch (e) {
     console.error('[api/pipeline-engine/[type]/start POST]', e);
-    return NextResponse.json({ message: 'Failed to start engine' }, { status: 500 });
+    return routeError(e, 'Failed to start engine');
   }
 }

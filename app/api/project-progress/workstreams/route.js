@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { ProjectWorkstreamSchema } from '@/app/(protected)/dashboard/project-progress/forms/workstream-schema';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { createWorkstream } from '@/services/project-progress.service';
 
 export async function POST(request) {
@@ -35,10 +36,7 @@ export async function POST(request) {
     if (error?.code === 'NOT_FOUND') {
       return NextResponse.json({ message: error.message }, { status: 404 });
     }
-    return NextResponse.json(
-      { message: 'Failed to create workstream' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to create workstream');
   }
 }
 

@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -11,6 +15,10 @@ import { prisma } from '@/lib/prisma';
  */
 export async function POST() {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    requireRole(session, 'superadmin', 'admin');
+
     const batches = await prisma.scheduleBatch.findMany({ select: { id: true } });
 
     let totalUpdated = 0;
@@ -42,6 +50,6 @@ export async function POST() {
     return NextResponse.json({ ok: true, totalUpdated, batchesProcessed: batches.length });
   } catch (err) {
     console.error('[backfill-positions]', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return routeError(err, 'Backfill failed');
   }
 }

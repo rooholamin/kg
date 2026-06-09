@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import {
   getSectionById,
   updateSection,
@@ -63,10 +64,7 @@ export async function GET(_req, { params }) {
     });
   } catch (e) {
     console.error('[api/sections/:id]', e);
-    return NextResponse.json(
-      { message: 'Failed to load section' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to load section');
   }
 }
 
@@ -133,10 +131,7 @@ export async function PUT(request, { params }) {
     if (e?.code === 'VALIDATION') {
       return NextResponse.json({ message: e.message }, { status: 400 });
     }
-    return NextResponse.json(
-      { message: 'Failed to update section' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to update section');
   }
 }
 
@@ -170,12 +165,6 @@ export async function DELETE(_request, { params }) {
     });
   } catch (e) {
     console.error('[api/sections/:id DELETE]', e);
-    if (e?.code === 'NOT_FOUND') {
-      return NextResponse.json({ message: e.message }, { status: 404 });
-    }
-    return NextResponse.json(
-      { message: 'Failed to delete section' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to delete section');
   }
 }

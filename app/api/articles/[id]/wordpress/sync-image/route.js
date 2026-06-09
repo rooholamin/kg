@@ -3,16 +3,13 @@ import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
-
-function basicAuth(username, appPassword) {
-  return 'Basic ' + Buffer.from(`${username}:${appPassword}`).toString('base64');
-}
+import { routeError } from '@/lib/route-error';
 
 /**
  * POST /api/articles/:id/wordpress/sync-image
- * Re-sends the FIFU featured image meta to an already-published WordPress post.
- * This triggers a second save_post cycle so FIFU registers the image for
- * homepage/archive templates.
+ * Creates a virtual WP attachment record (DB only, no file upload) for the
+ * article's S3 featured image and sets it as the post's featured_media.
+ * Requires the kghub-featured-image mu-plugin on the WP server.
  */
 export async function POST(_request, { params }) {
   try {
@@ -49,32 +46,42 @@ export async function POST(_request, { params }) {
       return NextResponse.json({ message: 'Section has no WordPress credentials configured' }, { status: 400 });
     }
 
+    const secret = process.env.WP_KGHUB_SECRET;
+    if (!secret) {
+      return NextResponse.json({ message: 'WP_KGHUB_SECRET not configured' }, { status: 500 });
+    }
+
     const base = section.wpSiteUrl.replace(/\/+$/, '');
-    const res = await fetch(`${base}/wp-json/wp/v2/posts/${article.wordpressPostId}`, {
+
+    const res = await fetch(`${base}/wp-json/kghub/v1/set-featured-image`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: basicAuth(section.wpUsername, section.wpAppPassword),
+        'X-Kghub-Secret': secret,
       },
       body: JSON.stringify({
-        meta: {
-          fifu_image_url: article.featuredImage,
-          fifu_image_alt: article.title,
-        },
+        post_id: article.wordpressPostId,
+        image_url: article.featuredImage,
+        title: article.title,
       }),
     });
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       return NextResponse.json(
-        { message: `WordPress API error: ${body?.message ?? res.statusText}` },
+        { message: `mu-plugin error: ${body?.message ?? res.statusText}` },
         { status: 502 },
       );
     }
 
-    return NextResponse.json({ ok: true, message: 'Featured image synced to WordPress.' });
+    const body = await res.json();
+    return NextResponse.json({
+      ok: true,
+      attachment_id: body.attachment_id,
+      message: body.note ?? 'Featured image synced successfully.',
+    });
   } catch (e) {
     console.error('[api/articles/:id/wordpress/sync-image POST]', e);
-    return NextResponse.json({ message: 'Failed to sync featured image' }, { status: 500 });
+    return routeError(e, 'Failed to sync featured image');
   }
 }

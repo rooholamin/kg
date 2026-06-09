@@ -6,6 +6,8 @@ import { prisma } from '@/lib/prisma';
 import { systemLog } from '@/services/system-log';
 import { RoleSchema } from '@/app/(protected)/user-management/roles/forms/role-schema';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 // GET: Fetch a specific role by ID, including permissions
 export async function GET(request, { params }) {
@@ -18,6 +20,7 @@ export async function GET(request, { params }) {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const role = await prisma.userRole.findUnique({
       where: { id: (await params).id },
@@ -57,6 +60,7 @@ export async function PUT(request, context) {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     // Await the params to resolve correctly
     const { params } = context;
@@ -144,6 +148,7 @@ export async function DELETE(request, { params }) {
         { status: 401 }, // Unauthorized
       );
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const clientIp = getClientIP(request);
     const { id } = await params;

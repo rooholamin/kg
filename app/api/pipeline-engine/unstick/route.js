@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -62,6 +63,6 @@ export async function POST(request) {
     });
   } catch (e) {
     console.error('[api/pipeline-engine/unstick POST]', e);
-    return NextResponse.json({ message: 'Failed to unstick article' }, { status: 500 });
+    return routeError(e, 'Failed to unstick article');
   }
 }

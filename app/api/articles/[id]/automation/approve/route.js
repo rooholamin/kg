@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { sendToApproval } from '@/services/article-automation.service';
 
 export async function POST(_req, { params }) {
@@ -9,6 +11,7 @@ export async function POST(_req, { params }) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const { id } = await params;
     const result = await sendToApproval(id, session.user?.id ?? null);

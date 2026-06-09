@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { ProjectBlockerSchema } from '@/app/(protected)/dashboard/project-progress/forms/blocker-schema';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { createBlocker, getBlockers } from '@/services/project-progress.service';
 
 export async function GET(request) {
@@ -18,10 +19,7 @@ export async function GET(request) {
     return NextResponse.json({ data });
   } catch (error) {
     console.error('[api/project-progress/blockers GET]', error);
-    return NextResponse.json(
-      { message: 'Failed to load blockers' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to load blockers');
   }
 }
 
@@ -55,10 +53,7 @@ export async function POST(request) {
     if (error?.code === 'NOT_FOUND') {
       return NextResponse.json({ message: error.message }, { status: 404 });
     }
-    return NextResponse.json(
-      { message: 'Failed to create blocker' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to create blocker');
   }
 }
 

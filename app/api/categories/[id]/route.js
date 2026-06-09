@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import {
   getCategoryById,
   updateCategory,
@@ -48,10 +49,7 @@ export async function GET(_req, { params }) {
     });
   } catch (e) {
     console.error('[api/categories/:id]', e);
-    return NextResponse.json(
-      { message: 'Failed to load category' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to load category');
   }
 }
 
@@ -102,10 +100,7 @@ export async function PUT(request, { params }) {
     if (e?.code === 'VALIDATION') {
       return NextResponse.json({ message: e.message }, { status: 400 });
     }
-    return NextResponse.json(
-      { message: 'Failed to update category' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to update category');
   }
 }
 
@@ -139,12 +134,6 @@ export async function DELETE(_request, { params }) {
     });
   } catch (e) {
     console.error('[api/categories/:id DELETE]', e);
-    if (e?.code === 'NOT_FOUND') {
-      return NextResponse.json({ message: e.message }, { status: 404 });
-    }
-    return NextResponse.json(
-      { message: 'Failed to delete category' },
-      { status: 500 },
-    );
+    return routeError(e, 'Failed to delete category');
   }
 }

@@ -52,3 +52,6 @@ coverage/
 
 # AWS / S3
 .aws/
+
+# Local diagnostics / WP plugin source (not part of the app)
+_wpdiagnose/

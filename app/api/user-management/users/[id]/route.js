@@ -6,6 +6,7 @@ import { systemLog } from '@/services/system-log';
 import { UserProfileSchema } from '@/app/(protected)/user-management/users/[id]/forms/user-profile-schema';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { UserStatus } from '@/app/models/user';
 
 // GET: Fetch a specific user by ID, including role
@@ -20,6 +21,8 @@ export async function GET(request, { params }) {
         { status: 401 }, // Unauthorized
       );
     }
+
+    requireRole(session, 'superadmin', 'admin');
 
     const { id } = await params;
 
@@ -40,10 +43,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json(user);
   } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+    return routeError(e);
   }
 }
 
@@ -123,10 +123,7 @@ export async function PUT(request, { params }) {
       { status: 200 },
     );
   } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+    return routeError(e);
   }
 }
 
@@ -190,9 +187,6 @@ export async function DELETE(request, { params }) {
       { status: 200 },
     );
   } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+    return routeError(e);
   }
 }

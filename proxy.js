@@ -3,8 +3,10 @@ import { NextResponse } from 'next/server';
 
 const PUBLIC_PATHS = [
   '/signin',
+  '/signup',
   '/reset-password',
   '/verify-email',
+  '/change-password',
 ];
 
 export async function proxy(req) {

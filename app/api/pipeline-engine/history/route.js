@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(request) {
@@ -9,6 +11,7 @@ export async function GET(request) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    requireRole(session, 'superadmin', 'admin');
 
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));

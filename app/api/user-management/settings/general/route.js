@@ -6,6 +6,8 @@ import { deleteFromS3, uploadToS3 } from '@/lib/s3-upload';
 import { systemLog } from '@/services/system-log';
 import { GeneralSettingsSchema } from '@/app/(protected)/user-management/settings/forms/general-settings-schema';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 export async function POST(request) {
   try {
@@ -17,6 +19,8 @@ export async function POST(request) {
         { status: 401 }, // Unauthorized
       );
     }
+
+    requireRole(session, 'superadmin', 'admin');
 
     const clientIp = getClientIP(request);
     const settings = await prisma.systemSetting.findFirst();
@@ -148,13 +152,6 @@ export async function POST(request) {
       { status: 200 },
     );
   } catch (error) {
-    return NextResponse.json(
-      {
-        message:
-          "Oops! Something didn't go as planned. Please try again in a moment." +
-          error,
-      },
-      { status: 500 },
-    );
+    return routeError(error, 'Failed to update general settings');
   }
 }

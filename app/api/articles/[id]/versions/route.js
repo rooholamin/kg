@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
+import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { getArticleById, getArticleVersions } from '@/services/article.service';
 
 export async function GET(_req, { params }) {
@@ -12,6 +14,7 @@ export async function GET(_req, { params }) {
         { status: 401 },
       );
     }
+    requireRole(session, 'superadmin', 'admin', 'editor');
 
     const { id } = await params;
     const article = await getArticleById(id);

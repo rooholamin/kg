@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 import { approveArticle, rejectArticle } from '@/services/article-automation.service';
 import { publishArticleToWordPress } from '@/services/wordpress.service';
 
@@ -11,6 +12,7 @@ export async function POST(request, { params }) {
     if (!session) {
       return NextResponse.json({ message: 'Unauthorized request' }, { status: 401 });
     }
+    // Editors can reject but only admins/superadmins can approve (triggers WP publishing)
     requireRole(session, 'superadmin', 'admin', 'editor');
 
     const { id } = await params;
@@ -22,6 +24,10 @@ export async function POST(request, { params }) {
         { message: 'action must be "approve" or "reject"' },
         { status: 400 },
       );
+    }
+
+    if (action === 'approve') {
+      requireRole(session, 'superadmin', 'admin');
     }
 
     const userId = session.user?.id ?? null;
@@ -42,9 +48,6 @@ export async function POST(request, { params }) {
     return NextResponse.json({ ok: true, action: 'approved' });
   } catch (e) {
     console.error('[api/articles/:id/approval/decision POST]', e);
-    if (e?.code === 'NOT_FOUND') {
-      return NextResponse.json({ message: e.message }, { status: 404 });
-    }
-    return NextResponse.json({ message: 'Failed to process approval decision' }, { status: 500 });
+    return routeError(e, 'Failed to process approval decision');
   }
 }

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/lib/prisma';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 export async function GET(request, { params }) {
   try {
@@ -29,9 +30,6 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ data: logs, pagination: { total, page, limit } });
   } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+    return routeError(e);
   }
 }

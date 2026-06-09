@@ -8,6 +8,7 @@ import { UserAddSchema } from '@/app/(protected)/user-management/users/forms/use
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { UserStatus } from '@/app/models/user';
 import { requireRole } from '@/lib/require-role';
+import { routeError } from '@/lib/route-error';
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
@@ -29,6 +30,8 @@ export async function GET(req) {
         { status: 401 }, // Unauthorized
       );
     }
+
+    requireRole(session, 'superadmin', 'admin');
 
     // Map status query to enum type, fallback to null if invalid
     const statusFilter = status && status !== 'all' ? status : undefined;
@@ -107,10 +110,7 @@ export async function GET(req) {
       },
     });
   } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+    return routeError(e);
   }
 }
 
@@ -207,9 +207,6 @@ export async function POST(request) {
       { status: 200 },
     );
   } catch {
-    return NextResponse.json(
-      { message: 'Oops! Something went wrong. Please try again in a moment.' },
-      { status: 500 },
-    );
+    return routeError(e);
   }
 }
