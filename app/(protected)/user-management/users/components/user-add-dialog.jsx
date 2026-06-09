@@ -38,7 +38,7 @@ import {
 import { useRoleSelectQuery } from '../../roles/hooks/use-role-select-query';
 import { UserAddSchema } from '../forms/user-add-schema';
 
-const UserAddDialog = ({ open, closeDialog }) => {
+const UserAddDialog = ({ open, closeDialog, onSuccess }) => {
   const queryClient = useQueryClient();
 
   // Fetch available roles
@@ -95,6 +95,8 @@ const UserAddDialog = ({ open, closeDialog }) => {
       );
 
       queryClient.invalidateQueries({ queryKey: ['user-users'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-users'] });
+      onSuccess?.();
       closeDialog();
     },
     onError: (error) => {

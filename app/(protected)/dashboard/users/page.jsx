@@ -10,6 +10,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
+import Link from 'next/link';
 import { PageHeader } from '@/components/custom/page-header';
 import { Card, CardFooter, CardTable } from '@/components/ui/card';
 import { DataGrid } from '@/components/ui/data-grid';
@@ -39,7 +40,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
-import { ShieldAlert, UserCog } from 'lucide-react';
+import { Pencil, Plus, ShieldAlert, UserCog } from 'lucide-react';
+import UserAddDialog from '@/app/(protected)/user-management/users/components/user-add-dialog';
 
 // ---------------------------------------------------------------------------
 // Data fetching
@@ -173,6 +175,7 @@ export default function DashboardUsersPage() {
 
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
   const [roleTarget, setRoleTarget] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['dashboard-users'],
@@ -242,25 +245,31 @@ export default function DashboardUsersPage() {
       ),
       size: 130,
     },
-    ...(isSuperAdmin
-      ? [
-          {
-            id: 'actions',
-            header: '',
-            cell: ({ row }) => (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setRoleTarget(row.original)}
-              >
-                <UserCog className="size-3.5 me-1.5" />
-                Change role
-              </Button>
-            ),
-            size: 130,
-          },
-        ]
-      : []),
+    {
+      id: 'actions',
+      header: '',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={`/user-management/users/${row.original.id}`}>
+              <Pencil className="size-3.5 me-1.5" />
+              Edit
+            </Link>
+          </Button>
+          {isSuperAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRoleTarget(row.original)}
+            >
+              <UserCog className="size-3.5 me-1.5" />
+              Role
+            </Button>
+          )}
+        </div>
+      ),
+      size: 180,
+    },
   ];
 
   const table = useReactTable({
@@ -279,6 +288,14 @@ export default function DashboardUsersPage() {
       <PageHeader
         title="Users &amp; roles"
         description="Manage team members and their access roles."
+        actions={
+          isSuperAdmin ? (
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Plus className="size-4 me-1.5" />
+              Add user
+            </Button>
+          ) : null
+        }
       />
       <Container>
         <div className="mt-4">
@@ -332,6 +349,13 @@ export default function DashboardUsersPage() {
           roles={roles}
           open={Boolean(roleTarget)}
           onOpenChange={(v) => { if (!v) setRoleTarget(null); }}
+        />
+      )}
+
+      {isSuperAdmin && (
+        <UserAddDialog
+          open={addOpen}
+          closeDialog={() => setAddOpen(false)}
         />
       )}
     </>

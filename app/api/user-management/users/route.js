@@ -6,6 +6,7 @@ import { systemLog } from '@/services/system-log';
 import { UserAddSchema } from '@/app/(protected)/user-management/users/forms/user-add-schema';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { UserStatus } from '@/app/models/user';
+import { requireRole } from '@/lib/require-role';
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
@@ -123,6 +124,8 @@ export async function POST(request) {
         { status: 401 }, // Unauthorized
       );
     }
+
+    requireRole(session, 'superadmin');
 
     const clientIp = getClientIP(request);
     const body = await request.json();
