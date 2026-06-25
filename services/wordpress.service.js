@@ -143,6 +143,37 @@ async function setFeaturedImageViaPlugin(wpSiteUrl, wpPostId, imageUrl, title) {
 }
 
 /**
+ * Pick a random quarter-hour publish time on the same calendar day as
+ * `publishDate`, between 09:00 and 20:00 inclusive.
+ *
+ * Returns a timezone-naive ISO string (e.g. "2026-06-25T14:15:00") so
+ * WordPress interprets it in the site's own configured timezone rather than
+ * UTC.  `publishDate` is stored as midnight UTC in the DB, so we always read
+ * year/month/day from the UTC components.
+ *
+ * Slots: 09:00, 09:15, 09:30 … 19:45, 20:00 (45 slots total).
+ *
+ * @param {Date} publishDate
+ * @returns {string}
+ */
+function randomPublishDateTime(publishDate) {
+  const year  = publishDate.getUTCFullYear();
+  const month = String(publishDate.getUTCMonth() + 1).padStart(2, '0');
+  const day   = String(publishDate.getUTCDate()).padStart(2, '0');
+
+  const FIRST_QUARTER = 9 * 4;   // 09:00 in quarter-hours from midnight
+  const LAST_QUARTER  = 20 * 4;  // 20:00 in quarter-hours from midnight
+  const totalSlots = LAST_QUARTER - FIRST_QUARTER + 1; // 45
+
+  const slot         = Math.floor(Math.random() * totalSlots);
+  const totalMinutes = (FIRST_QUARTER + slot) * 15;
+  const hour         = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+  const minute       = String(totalMinutes % 60).padStart(2, '0');
+
+  return `${year}-${month}-${day}T${hour}:${minute}:00`;
+}
+
+/**
  * Make an authenticated request to the WP REST API.
  * @param {string} url
  * @param {{ username: string; appPassword: string }} creds
@@ -403,11 +434,15 @@ export async function publishArticleToWordPress(articleId, userId = null) {
     topic?.wpCategoryId,
   ].filter(Boolean);
 
-  // Determine post status and date
+  // Determine post status and date.
+  // The time is randomised to a quarter-hour slot between 09:00 and 20:00 in
+  // the WordPress site's local timezone (timezone-naive string, no Z suffix).
   const now = new Date();
   const publishDate = article.publishDate ? new Date(article.publishDate) : null;
-  const wpStatus = publishDate && publishDate > now ? 'future' : 'publish';
-  const wpDate = publishDate ? publishDate.toISOString() : undefined;
+  const wpDate = publishDate ? randomPublishDateTime(publishDate) : undefined;
+  // Compare against a Date built from the naive string to decide future vs publish
+  const wpDateObj = wpDate ? new Date(wpDate) : null;
+  const wpStatus = wpDateObj && wpDateObj > now ? 'future' : 'publish';
 
   // Convert content to HTML
   const htmlContent = contentToHtml(article.content);
