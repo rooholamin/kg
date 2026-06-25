@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.1] — Articles Bulk Actions — 2026-06-25
+
+### Added
+
+- **`POST /api/articles/bulk`** — bulk-approve endpoint; accepts `{ action: 'approve', ids: string[] }`; calls `approveArticle` per ID in parallel and fire-and-forgets WordPress publishing for each; `superadmin`/`admin` only.
+- **`DELETE /api/articles/bulk`** — bulk-delete endpoint; accepts `{ ids: string[] }`; calls `archiveOrDeleteArticle` per ID in parallel; returns `{ deleted, failed, total }`; `superadmin`/`admin`/`editor`.
+- **Row selection on the articles table** — checkbox column (select-all in header, per-row checkbox that stops row-click navigation); TanStack Table `enableRowSelection` wired up with `rowSelection` state.
+- **`ArticlesBulkBar`** — contextual action bar that appears above the table whenever one or more rows are selected; shows selection count badge, **"Approve X in review"** button (visible only when at least one selected article has `status === 'approval'`), **"Delete X"** button, and a clear-selection ✕ button.
+- **`ArticlesBulkDeleteDialog`** — confirmation `AlertDialog` for bulk delete; reports `deleted`/`failed` counts in the success toast; invalidates the `articles` query on success.
+- **`ArticlesBulkApproveDialog`** — confirmation `AlertDialog` for bulk approve; reports approved/failed counts; same query invalidation pattern.
+
+---
+
 ## [1.3.0] — Roles, Access Control & User Management — 2026-06-08
 
 ### Added

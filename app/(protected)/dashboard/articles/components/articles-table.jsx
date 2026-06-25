@@ -23,6 +23,7 @@ import { PipelineStageBadge } from '@/components/custom/pipeline-stage-badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, ChevronRight, Pencil, Star, Trash2 } from 'lucide-react';
+import { DataGridTableRowSelect, DataGridTableRowSelectAll } from '@/components/ui/data-grid-table';
 import { Badge } from '@/components/ui/badge';
 import { PIPELINE_STAGES } from '@/app/(protected)/dashboard/_mock';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -32,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { ReadinessBadge } from '@/components/custom/readiness-badge';
 import { ArticleFormDialog } from './article-form-dialog';
 import { ArticleArchiveDialog } from './article-archive-dialog';
+import { ArticlesBulkBar } from './articles-bulk-bar';
 
 function formatDate(v) {
   if (!v) return '—';
@@ -78,6 +80,7 @@ export function ArticlesTable() {
   const [categoryId, setCategoryId] = useState('all');
   const [readiness, setReadiness] = useState('all');
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
+  const [rowSelection, setRowSelection] = useState({});
 
   const { data: catJson } = useQuery({
     queryKey: ['categories'],
@@ -115,6 +118,17 @@ export function ArticlesTable() {
 
   const columns = useMemo(
     () => [
+      {
+        id: 'select',
+        header: () => <DataGridTableRowSelectAll size="sm" />,
+        cell: ({ row }) => (
+          <div onClick={(e) => e.stopPropagation()}>
+            <DataGridTableRowSelect row={row} size="sm" />
+          </div>
+        ),
+        size: 44,
+        enableSorting: false,
+      },
       {
         id: 'thumb',
         header: '',
@@ -290,13 +304,17 @@ export function ArticlesTable() {
   const table = useReactTable({
     data,
     columns,
-    state: { pagination },
+    state: { pagination, rowSelection },
     onPaginationChange: setPagination,
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getRowId: (r) => r.id,
+    enableRowSelection: true,
   });
+
+  const selectedRows = table.getSelectedRowModel().rows.map((r) => r.original);
 
   return (
     <Container>
@@ -384,6 +402,10 @@ export function ArticlesTable() {
             if (!o) setDeleting(null);
           }}
           article={deleting}
+        />
+        <ArticlesBulkBar
+          selectedRows={selectedRows}
+          onClearSelection={() => setRowSelection({})}
         />
         {loading ? (
           <div className="space-y-2">
