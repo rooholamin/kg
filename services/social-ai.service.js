@@ -366,13 +366,18 @@ async function sendSessionMessageAndParse(sessionId, message) {
   }
 }
 
-async function pollSessionCompletion(sessionId, maxWaitMs = 120000) {
+async function pollSessionCompletion(sessionId, maxWaitMs = 600000) {
   const start = Date.now();
+  let pollInterval = 3000;
+
   while (Date.now() - start < maxWaitMs) {
-    await sleep(3000);
+    await sleep(pollInterval);
+    // Back off gently after the first 30s — no need to hammer the API
+    if (Date.now() - start > 30000 && pollInterval < 8000) pollInterval = 8000;
+
     const session = await client.beta.sessions.retrieve(sessionId);
+
     if (session.status === 'completed' || session.status === 'stopped') {
-      // Get the latest events to find the assistant response
       const events = await client.beta.sessions.events.list(sessionId);
       const assistantEvents = events.data?.filter(
         (e) => e.type === 'assistant.message' || e.type === 'agent.response',
@@ -388,12 +393,18 @@ async function pollSessionCompletion(sessionId, maxWaitMs = 120000) {
         }
         return String(content || '');
       }
+      // Session ended but no assistant event found — return empty so caller can handle
+      return '';
     }
+
     if (session.status === 'failed' || session.status === 'error') {
-      throw new Error(`Approval agent session failed: ${session.status}`);
+      throw new Error(`Agent session failed with status: ${session.status}`);
     }
+    // statuses 'active', 'pending', 'running' → keep polling
   }
-  throw new Error('Approval agent session timed out');
+
+  const elapsed = Math.round((Date.now() - start) / 1000);
+  throw new Error(`Agent session timed out after ${elapsed}s (session: ${sessionId})`);
 }
 
 async function requestHandoffSummary(sessionId) {
