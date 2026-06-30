@@ -120,6 +120,10 @@ export async function createSection(data, opts = {}) {
         wpUsername: data.wpUsername?.trim() || null,
         wpAppPassword: data.wpAppPassword || null,
         wpAuthorId: data.wpAuthorId ?? null,
+        colorAccent: data.colorAccent?.trim() || null,
+        colorLight: data.colorLight?.trim() || null,
+        colorDark: data.colorDark?.trim() || null,
+        socialHashtags: Array.isArray(data.socialHashtags) ? data.socialHashtags : [],
       },
     });
     await contentLog(
