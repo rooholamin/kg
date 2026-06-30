@@ -855,6 +855,31 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const [selectedPost, setSelectedPost] = useState(null);
+
+  const weekDays = useMemo(() => {
+    if (!campaign?.weekStart) return [];
+    const days = [];
+    const start = new Date(campaign.weekStart);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }, [campaign?.weekStart]);
+
+  const postsByDay = useMemo(() => {
+    const map = {};
+    for (const post of campaign?.posts ?? []) {
+      if (!post.scheduledAt) continue;
+      const dayKey = new Date(post.scheduledAt).toDateString();
+      if (!map[dayKey]) map[dayKey] = [];
+      map[dayKey].push(post);
+    }
+    return map;
+  }, [campaign?.posts]);
+
   if (isLoading) {
     return (
       <Container>
@@ -873,30 +898,6 @@ export default function SocialCampaignPage({ params }) {
       </Container>
     );
   }
-
-  const [selectedPost, setSelectedPost] = useState(null);
-
-  const weekDays = useMemo(() => {
-    const days = [];
-    const start = new Date(campaign.weekStart);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start);
-      d.setDate(d.getDate() + i);
-      days.push(d);
-    }
-    return days;
-  }, [campaign.weekStart]);
-
-  const postsByDay = useMemo(() => {
-    const map = {};
-    for (const post of campaign.posts ?? []) {
-      if (!post.scheduledAt) continue;
-      const dayKey = new Date(post.scheduledAt).toDateString();
-      if (!map[dayKey]) map[dayKey] = [];
-      map[dayKey].push(post);
-    }
-    return map;
-  }, [campaign.posts]);
 
   const allPosts = campaign.posts ?? [];
   const uploadedPosts = allPosts.filter((p) => p.status === 'uploaded');
