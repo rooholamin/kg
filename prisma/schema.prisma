@@ -907,6 +907,7 @@ model SocialSettings {
   lookbackDays                Int      @default(30)
   // When false: pipeline auto-schedules immediately after upload (no review pause)
   requireReview               Boolean  @default(true)
+  disabledTemplates           String[] @default([])
   updatedAt                   DateTime @updatedAt
 }
 

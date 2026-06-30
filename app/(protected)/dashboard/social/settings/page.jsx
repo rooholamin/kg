@@ -23,6 +23,7 @@ import {
   EyeOff,
   AlertCircle,
   CheckCircle2,
+  LayoutGrid,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -207,6 +208,10 @@ export default function SocialSettingsPage() {
             Configure Buffer, Anthropic Agent, and pipeline defaults.
           </p>
         </div>
+        <Button variant="outline" size="sm" onClick={() => router.push('/dashboard/social/templates')} className="gap-1.5">
+          <LayoutGrid className="size-3.5" />
+          Manage Templates
+        </Button>
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
           {saveMutation.isPending ? (
             <Loader2 className="size-4 mr-1.5 animate-spin" />

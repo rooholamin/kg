@@ -65,6 +65,7 @@ export async function PATCH(req) {
       'twitterWindowEnd',
       'lookbackDays',
       'requireReview',
+      'disabledTemplates',
     ];
 
     const memoryAllowed = ['sessionRotateAfter'];

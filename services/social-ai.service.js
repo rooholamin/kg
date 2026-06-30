@@ -271,6 +271,20 @@ export async function generatePostContent({ campaignId, postId, article, section
 
   const bodyText = extractPlainText(article.content);
 
+  // Compute active templates for this platform (filtered by disabled list)
+  const platformTemplateKey = {
+    instagram_carousel: 'carousel',
+    instagram_story: 'story',
+    linkedin: 'linkedin',
+  }[platform];
+  const disabled = new Set(settings?.disabledTemplates || []);
+  const activeSlides = platformTemplateKey
+    ? (AVAILABLE_SLIDES[platformTemplateKey] || []).filter((id) => !disabled.has(id))
+    : [];
+  const slideMenu = activeSlides
+    .map((id) => `- ${id}: ${SLIDE_DESCRIPTIONS[id] || ''}`)
+    .join('\n');
+
   // Re-read the article's session ID fresh to avoid stale caller data
   const freshArticle = await prisma.article.findUnique({
     where: { id: article.id },
@@ -310,6 +324,7 @@ ${bodyText}
 
 WRITER TONE: ${section.characterTone || ''}
 WRITING STYLE: ${section.characterWritingStyle || ''}
+${slideMenu ? `\nAVAILABLE TEMPLATES (select slideIds ONLY from this list):\n${slideMenu}` : ''}
 ${instruction ? `INSTRUCTION: ${instruction}` : ''}`
     : `PLATFORM: ${platformName}
 ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for this platform.'}`;
@@ -331,6 +346,10 @@ ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for
 
   try {
     const result = JSON.parse(extractJson(responseText));
+    // Filter slideIds to only active templates
+    if (Array.isArray(result.slideIds) && activeSlides.length) {
+      result.slideIds = result.slideIds.filter((id) => activeSlides.includes(id));
+    }
     await logDone(
       aiLogId,
       `Content ready — ${(result.slideIds || []).length} slides, caption ${(result.text || '').length} chars`,
