@@ -10,7 +10,7 @@ import { Container } from '@/components/common/container';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
@@ -149,6 +149,84 @@ function PostStatusBadge({ status }) {
       {cfg.icon}
       {cfg.label}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Calendar helpers
+// ---------------------------------------------------------------------------
+const DAY_START_H = 6;
+const DAY_END_H = 22;
+const TIME_LABELS = ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+
+function topPercent(scheduledAt) {
+  if (!scheduledAt) return 10;
+  const d = new Date(scheduledAt);
+  const h = d.getHours() + d.getMinutes() / 60;
+  return Math.max(2, Math.min(94, ((h - DAY_START_H) / (DAY_END_H - DAY_START_H)) * 100));
+}
+
+const PLATFORM_BORDER_COLOR = {
+  instagram_carousel: '#ec4899',
+  instagram_story: '#a855f7',
+  linkedin: '#2563eb',
+  twitter: '#71717a',
+};
+
+function StatusDot({ status }) {
+  if (['pending', 'content_generating', 'exporting', 'scheduling'].includes(status)) {
+    return <span className="size-2 rounded-full border-2 border-amber-400 bg-transparent shrink-0" />;
+  }
+  if (['content_ready', 'uploaded'].includes(status)) {
+    return <span className="size-2 rounded-full bg-yellow-400 shrink-0" />;
+  }
+  if (['scheduled', 'done'].includes(status)) {
+    return <span className="size-2 rounded-full bg-emerald-500 shrink-0" />;
+  }
+  if (status === 'failed') {
+    return <span className="size-2 rounded-full bg-red-500 shrink-0" />;
+  }
+  return <span className="size-2 rounded-full bg-zinc-400 shrink-0" />;
+}
+
+function PostChip({ post, onClick }) {
+  const platform = PLATFORMS.find((p) => p.id === post.platform);
+  const Icon = platform?.Icon ?? Share2;
+  const borderColor = PLATFORM_BORDER_COLOR[post.platform] ?? '#71717a';
+  const timeLabel = post.scheduledAt ? format(new Date(post.scheduledAt), 'HH:mm') : '—';
+  const sectionName = post.article?.section?.name;
+  const colorAccent = post.article?.section?.colorAccent;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`${platform?.label ?? post.platform} post: ${post.article?.title ?? 'Post'} at ${timeLabel}`}
+      className="w-full text-left bg-card/90 shadow-sm hover:shadow-md transition-all duration-150 cursor-pointer rounded-md overflow-hidden"
+      style={{ borderLeft: `4px solid ${borderColor}` }}
+    >
+      <div className="px-2 py-1.5 space-y-0.5">
+        <div className="flex items-center gap-1">
+          <Icon className={`size-3 ${platform?.color ?? 'text-zinc-500'} shrink-0`} />
+          <span className="text-[10px] text-muted-foreground tabular-nums flex-1">{timeLabel}</span>
+          <StatusDot status={post.status} />
+        </div>
+        <p className="text-xs font-medium line-clamp-2 leading-tight">
+          {post.article?.title ?? 'Untitled'}
+        </p>
+        {sectionName && (
+          <span
+            className="inline-block text-[10px] px-1.5 py-0.5 rounded-full"
+            style={{
+              backgroundColor: colorAccent ? colorAccent + '22' : 'rgba(0,0,0,0.08)',
+              color: colorAccent ?? '#666',
+            }}
+          >
+            {sectionName}
+          </span>
+        )}
+      </div>
+    </button>
   );
 }
 
@@ -796,11 +874,29 @@ export default function SocialCampaignPage({ params }) {
     );
   }
 
-  const postsByPlatform = {};
-  for (const p of campaign.posts ?? []) {
-    if (!postsByPlatform[p.platform]) postsByPlatform[p.platform] = [];
-    postsByPlatform[p.platform].push(p);
-  }
+  const [selectedPost, setSelectedPost] = useState(null);
+
+  const weekDays = useMemo(() => {
+    const days = [];
+    const start = new Date(campaign.weekStart);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }, [campaign.weekStart]);
+
+  const postsByDay = useMemo(() => {
+    const map = {};
+    for (const post of campaign.posts ?? []) {
+      if (!post.scheduledAt) continue;
+      const dayKey = new Date(post.scheduledAt).toDateString();
+      if (!map[dayKey]) map[dayKey] = [];
+      map[dayKey].push(post);
+    }
+    return map;
+  }, [campaign.posts]);
 
   const allPosts = campaign.posts ?? [];
   const uploadedPosts = allPosts.filter((p) => p.status === 'uploaded');
@@ -952,93 +1048,158 @@ export default function SocialCampaignPage({ params }) {
         </div>
       </div>
 
-      {/* Platform + Logs tabs */}
-      <Tabs defaultValue="instagram_carousel">
-        <TabsList className="mb-4 h-auto flex-wrap gap-1 bg-transparent p-0">
-          {PLATFORMS.map((p) => {
-            const count = postsByPlatform[p.id]?.length ?? 0;
-            return (
-              <TabsTrigger
-                key={p.id}
-                value={p.id}
-                className={`gap-1.5 h-8 text-xs border data-[state=active]:shadow-none ${p.tabBg}`}
-              >
-                <p.Icon className={`size-3.5 ${p.color}`} />
-                {p.label}
-                {count > 0 && (
-                  <span className="ml-0.5 min-w-[18px] h-4.5 text-xs bg-background/80 border rounded-full px-1.5 flex items-center justify-center">
-                    {count}
-                  </span>
-                )}
-              </TabsTrigger>
-            );
-          })}
-          <TabsTrigger value="logs" className="gap-1.5 h-8 text-xs border data-[state=active]:shadow-none">
-            <Activity className="size-3.5" />
-            Pipeline Logs
-            {ACTIVE_STATUSES.has(campaign.status) && (
-              <span className="ml-0.5 size-2 rounded-full bg-blue-500 animate-pulse" />
-            )}
-          </TabsTrigger>
-        </TabsList>
+      {/* Week Calendar */}
+      <div className="overflow-x-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex" style={{ minWidth: `calc(3rem + 7 * 160px)` }}>
+          {/* Time axis */}
+          <div className="relative w-12 shrink-0" style={{ minHeight: 560 }}>
+            {TIME_LABELS.map((label) => {
+              const h = parseInt(label.split(':')[0], 10);
+              const top = ((h - DAY_START_H) / (DAY_END_H - DAY_START_H)) * 100;
+              return (
+                <span
+                  key={label}
+                  className="absolute right-1 text-[10px] text-muted-foreground tabular-nums -translate-y-1/2 select-none"
+                  style={{ top: `${top}%` }}
+                >
+                  {label}
+                </span>
+              );
+            })}
+          </div>
 
-        {PLATFORMS.map((platform) => {
-          const posts = postsByPlatform[platform.id] ?? [];
-          return (
-            <TabsContent key={platform.id} value={platform.id}>
-              {posts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-3 border-2 border-dashed rounded-xl">
-                  <div className={`size-10 rounded-xl ${platform.bg} flex items-center justify-center`}>
-                    <platform.Icon className={`size-5 ${platform.color}`} />
+          {/* Day columns */}
+          <div className="flex flex-1 gap-px">
+            {weekDays.map((day) => {
+              const isToday = day.toDateString() === new Date().toDateString();
+              const dayKey = day.toDateString();
+              const dayPosts = (postsByDay[dayKey] ?? []).slice().sort(
+                (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt),
+              );
+
+              // Group by 30-min window to compute stacking offsets
+              const windowGroups = {};
+              for (const post of dayPosts) {
+                const d = new Date(post.scheduledAt);
+                const wk = `${d.getHours()}:${d.getMinutes() < 30 ? '00' : '30'}`;
+                if (!windowGroups[wk]) windowGroups[wk] = [];
+                windowGroups[wk].push(post);
+              }
+              const postsWithOffset = [];
+              for (const posts of Object.values(windowGroups)) {
+                posts.forEach((post, idx) => postsWithOffset.push({ post, idx }));
+              }
+
+              return (
+                <div key={dayKey} className="flex-1 min-w-[160px] flex flex-col">
+                  {/* Day header */}
+                  <div
+                    className={`text-center py-2 border-b mb-1 rounded-t-lg border ${
+                      isToday ? 'ring-2 ring-primary' : 'border-border'
+                    }`}
+                  >
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                      {format(day, 'EEE')}
+                    </p>
+                    <p className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>
+                      {format(day, 'd')}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">{format(day, 'MMM')}</p>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    No {platform.label} posts in this campaign.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {posts.map((post) => (
-                    <PostCard
-                      key={post.id}
-                      post={post}
-                      onUpdate={(postId, data) => updateMutation.mutate({ postId, data })}
-                      onRegenerate={(postId, instruction) =>
-                        regenerateMutation.mutate({ postId, instruction })
-                      }
-                      onExport={(postId) => exportMutation.mutate(postId)}
-                      onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
-                    />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-          );
-        })}
 
-        <TabsContent value="logs">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Activity className="size-4" />
-                  Pipeline Run Log
-                </CardTitle>
-                {ACTIVE_STATUSES.has(campaign.status) ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                    <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    Live
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">{allPosts.length > 0 ? 'Pipeline complete' : 'No logs'}</span>
+                  {/* Post chip area */}
+                  <div
+                    className="relative flex-1 border border-border rounded-b-lg bg-muted/20"
+                    style={{ minHeight: 560 }}
+                  >
+                    {/* Hour grid lines */}
+                    {TIME_LABELS.map((label) => {
+                      const h = parseInt(label.split(':')[0], 10);
+                      const top = ((h - DAY_START_H) / (DAY_END_H - DAY_START_H)) * 100;
+                      return (
+                        <div
+                          key={label}
+                          className="absolute left-0 right-0 border-t border-border/30"
+                          style={{ top: `${top}%` }}
+                        />
+                      );
+                    })}
+
+                    {/* Post chips */}
+                    {postsWithOffset.map(({ post, idx }) => (
+                      <div
+                        key={post.id}
+                        className="absolute left-1 right-1"
+                        style={{ top: `calc(${topPercent(post.scheduledAt)}% + ${idx * 2}%)` }}
+                      >
+                        <PostChip post={post} onClick={() => setSelectedPost(post)} />
+                      </div>
+                    ))}
+
+                    {dayPosts.length === 0 && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <p className="text-[10px] text-muted-foreground/40 select-none">No posts</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Pipeline Logs */}
+      <details defaultOpen={ACTIVE_STATUSES.has(campaign.status)} className="mt-6">
+        <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none py-2">
+          <Activity className="size-4" />
+          Pipeline Logs
+          {ACTIVE_STATUSES.has(campaign.status) && (
+            <span className="size-2 rounded-full bg-blue-500 animate-pulse ml-1" />
+          )}
+        </summary>
+        <Card className="mt-3">
+          <CardContent className="max-h-[500px] overflow-y-auto pt-4">
+            <PipelineLogs campaignId={id} campaignStatus={campaign.status} />
+          </CardContent>
+        </Card>
+      </details>
+
+      {/* Post detail sheet */}
+      <Sheet open={!!selectedPost} onOpenChange={(open) => { if (!open) setSelectedPost(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+          {selectedPost && (
+            <>
+              <SheetHeader className="mb-4">
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    const platform = PLATFORMS.find((p) => p.id === selectedPost.platform);
+                    const Icon = platform?.Icon ?? Share2;
+                    return <Icon className={`size-4 ${platform?.color ?? 'text-zinc-500'}`} />;
+                  })()}
+                  <SheetTitle className="text-sm leading-tight line-clamp-2 text-left">
+                    {selectedPost.article?.title ?? 'Post'}
+                  </SheetTitle>
+                </div>
+                {selectedPost.scheduledAt && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {format(new Date(selectedPost.scheduledAt), 'EEEE, MMM d · h:mm a')}
+                  </p>
                 )}
-              </div>
-            </CardHeader>
-            <CardContent className="max-h-[600px] overflow-y-auto">
-              <PipelineLogs campaignId={id} campaignStatus={campaign.status} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              </SheetHeader>
+              <PostCard
+                post={selectedPost}
+                onUpdate={(postId, data) => updateMutation.mutate({ postId, data })}
+                onRegenerate={(postId, instruction) =>
+                  regenerateMutation.mutate({ postId, instruction })
+                }
+                onExport={(postId) => exportMutation.mutate(postId)}
+                onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
+              />
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </Container>
   );
 }
