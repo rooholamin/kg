@@ -151,40 +151,79 @@ export async function pullAnalytics(postId) {
 }
 
 // ---------------------------------------------------------------------------
-// computeScheduledAt — helper to calculate next available slot time
+// computeScheduledAt — distribute posts evenly across the posting window
 // ---------------------------------------------------------------------------
-export function computeScheduledAt(platform, settings, weekStart) {
-  const timeMap = {
-    instagram_carousel: settings?.instagramPostTime || '09:00',
-    instagram_story: settings?.instagramPostTime || '09:00',
-    linkedin: settings?.linkedinPostTime || '08:00',
-    twitter: settings?.twitterPostTime || '10:00',
+export function computeScheduledAt(platform, settings, weekStart, index = 0, total = 1) {
+  // Resolve per-platform config from settings
+  const cfgMap = {
+    instagram_carousel: {
+      daysMask:    settings?.instagramCarouselDays    ?? 28,
+      windowStart: settings?.instagramCarouselWindowStart ?? '10:00',
+      windowEnd:   settings?.instagramCarouselWindowEnd   ?? '10:00',
+    },
+    instagram_story: {
+      daysMask:    settings?.instagramStoryDays    ?? 62,
+      windowStart: settings?.instagramStoryWindowStart ?? '08:00',
+      windowEnd:   settings?.instagramStoryWindowEnd   ?? '20:00',
+    },
+    linkedin: {
+      daysMask:    settings?.linkedinDays    ?? 20,
+      windowStart: settings?.linkedinWindowStart ?? '09:00',
+      windowEnd:   settings?.linkedinWindowEnd   ?? '09:00',
+    },
+    twitter: {
+      daysMask:    settings?.twitterDays    ?? 42,
+      windowStart: settings?.twitterWindowStart ?? '10:00',
+      windowEnd:   settings?.twitterWindowEnd   ?? '10:00',
+    },
   };
 
-  const daysMap = {
-    instagram_carousel: settings?.instagramPostDays ?? 62,
-    instagram_story: settings?.instagramPostDays ?? 62,
-    linkedin: settings?.linkedinPostDays ?? 40,
-    twitter: settings?.twitterPostDays ?? 62,
-  };
+  const cfg = cfgMap[platform] ?? cfgMap.instagram_carousel;
+  const { daysMask, windowStart, windowEnd } = cfg;
 
-  const [hour, minute] = (timeMap[platform] || '09:00').split(':').map(Number);
-  const daysMask = daysMap[platform] ?? 62;
+  const [startH, startM] = windowStart.split(':').map(Number);
+  const [endH, endM]     = windowEnd.split(':').map(Number);
+  const windowStartMin   = startH * 60 + startM;
+  const windowEndMin     = endH   * 60 + endM;
 
-  // Find next valid day from weekStart
+  // Collect all valid days within the 7-day week window
   const base = new Date(weekStart || Date.now());
-  for (let offset = 0; offset < 14; offset++) {
+  const validDays = [];
+  for (let offset = 0; offset < 7; offset++) {
     const d = new Date(base);
     d.setDate(d.getDate() + offset);
-    const dayBit = 1 << d.getDay();
-    if (daysMask & dayBit) {
-      d.setHours(hour, minute, 0, 0);
-      return d;
+    if (daysMask & (1 << d.getDay())) {
+      validDays.push(new Date(d));
     }
   }
-  // Fallback: use tomorrow at the configured time
-  const fallback = new Date(base);
-  fallback.setDate(fallback.getDate() + 1);
-  fallback.setHours(hour, minute, 0, 0);
-  return fallback;
+
+  // Fallback: use tomorrow if no valid days found
+  if (!validDays.length) {
+    const fallback = new Date(base);
+    fallback.setDate(fallback.getDate() + 1);
+    fallback.setHours(startH, startM, 0, 0);
+    return fallback;
+  }
+
+  // Distribute: postsPerDay = ceil(total / validDays.length)
+  const postsPerDay = Math.ceil(total / validDays.length);
+
+  // Which day and which slot within that day
+  const dayIndex  = Math.floor(index / postsPerDay);
+  const slotIndex = index % postsPerDay;
+
+  const chosenDay = validDays[dayIndex % validDays.length];
+
+  // Compute minute offset within the window
+  let minuteOffset = 0;
+  if (postsPerDay > 1 && windowEndMin > windowStartMin) {
+    minuteOffset = slotIndex * ((windowEndMin - windowStartMin) / (postsPerDay - 1));
+  }
+
+  const totalMinutes = windowStartMin + minuteOffset;
+  const hour   = Math.floor(totalMinutes / 60);
+  const minute = Math.round(totalMinutes % 60);
+
+  chosenDay.setHours(hour, minute, 0, 0);
+  return chosenDay;
 }

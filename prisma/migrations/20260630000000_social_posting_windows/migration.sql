@@ -1,0 +1,23 @@
+-- Remove old scheduling fields
+ALTER TABLE "SocialSettings"
+  DROP COLUMN IF EXISTS "instagramPostTime",
+  DROP COLUMN IF EXISTS "instagramPostDays",
+  DROP COLUMN IF EXISTS "linkedinPostTime",
+  DROP COLUMN IF EXISTS "linkedinPostDays",
+  DROP COLUMN IF EXISTS "twitterPostTime",
+  DROP COLUMN IF EXISTS "twitterPostDays";
+
+-- Add new per-platform window fields
+ALTER TABLE "SocialSettings"
+  ADD COLUMN IF NOT EXISTS "instagramCarouselDays" INTEGER NOT NULL DEFAULT 28,
+  ADD COLUMN IF NOT EXISTS "instagramCarouselWindowStart" TEXT NOT NULL DEFAULT '10:00',
+  ADD COLUMN IF NOT EXISTS "instagramCarouselWindowEnd" TEXT NOT NULL DEFAULT '10:00',
+  ADD COLUMN IF NOT EXISTS "instagramStoryDays" INTEGER NOT NULL DEFAULT 62,
+  ADD COLUMN IF NOT EXISTS "instagramStoryWindowStart" TEXT NOT NULL DEFAULT '08:00',
+  ADD COLUMN IF NOT EXISTS "instagramStoryWindowEnd" TEXT NOT NULL DEFAULT '20:00',
+  ADD COLUMN IF NOT EXISTS "linkedinDays" INTEGER NOT NULL DEFAULT 20,
+  ADD COLUMN IF NOT EXISTS "linkedinWindowStart" TEXT NOT NULL DEFAULT '09:00',
+  ADD COLUMN IF NOT EXISTS "linkedinWindowEnd" TEXT NOT NULL DEFAULT '09:00',
+  ADD COLUMN IF NOT EXISTS "twitterDays" INTEGER NOT NULL DEFAULT 42,
+  ADD COLUMN IF NOT EXISTS "twitterWindowStart" TEXT NOT NULL DEFAULT '10:00',
+  ADD COLUMN IF NOT EXISTS "twitterWindowEnd" TEXT NOT NULL DEFAULT '10:00';

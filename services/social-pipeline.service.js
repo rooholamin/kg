@@ -107,10 +107,12 @@ export async function runApproval(campaignId) {
 
   for (const platform of platforms) {
     const articleIds = approvalMap[platform] || [];
-    for (const articleId of articleIds) {
+    const total = articleIds.length;
+    for (let i = 0; i < articleIds.length; i++) {
+      const articleId = articleIds[i];
       const article = articles.find((a) => a.id === articleId);
       if (!article) continue;
-      const scheduledAt = computeScheduledAt(platform, settings, campaign.weekStart);
+      const scheduledAt = computeScheduledAt(platform, settings, campaign.weekStart, i, total);
       postCreateData.push({
         campaignId,
         articleId,

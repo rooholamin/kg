@@ -52,11 +52,70 @@ const DEFAULTS_FIELDS = [
   { key: 'defaultMaxTwitter', label: 'Max Twitter / week' },
 ];
 
-const TIME_FIELDS = [
-  { key: 'instagramPostTime', label: 'Instagram post time (HH:MM)' },
-  { key: 'linkedinPostTime', label: 'LinkedIn post time (HH:MM)' },
-  { key: 'twitterPostTime', label: 'Twitter post time (HH:MM)' },
+const PLATFORM_WINDOW_CONFIG = [
+  {
+    label: 'Instagram Carousel',
+    daysKey: 'instagramCarouselDays',
+    startKey: 'instagramCarouselWindowStart',
+    endKey: 'instagramCarouselWindowEnd',
+  },
+  {
+    label: 'Instagram Story',
+    daysKey: 'instagramStoryDays',
+    startKey: 'instagramStoryWindowStart',
+    endKey: 'instagramStoryWindowEnd',
+  },
+  {
+    label: 'LinkedIn',
+    daysKey: 'linkedinDays',
+    startKey: 'linkedinWindowStart',
+    endKey: 'linkedinWindowEnd',
+  },
+  {
+    label: 'Twitter / X',
+    daysKey: 'twitterDays',
+    startKey: 'twitterWindowStart',
+    endKey: 'twitterWindowEnd',
+  },
 ];
+
+const DAY_OPTIONS = [
+  { label: 'Sun', bit: 1 },
+  { label: 'Mon', bit: 2 },
+  { label: 'Tue', bit: 4 },
+  { label: 'Wed', bit: 8 },
+  { label: 'Thu', bit: 16 },
+  { label: 'Fri', bit: 32 },
+  { label: 'Sat', bit: 64 },
+];
+
+// ---------------------------------------------------------------------------
+// DayMaskPicker
+// ---------------------------------------------------------------------------
+function DayMaskPicker({ value, onChange }) {
+  const mask = value || 0;
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {DAY_OPTIONS.map(({ label, bit }) => {
+        const active = Boolean(mask & bit);
+        return (
+          <button
+            key={label}
+            type="button"
+            onClick={() => onChange(active ? mask & ~bit : mask | bit)}
+            className={`px-2 py-1 rounded text-xs font-medium border transition-colors cursor-pointer ${
+              active
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -222,24 +281,41 @@ export default function SocialSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Post times */}
+        {/* Posting Windows */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Preferred Post Times</CardTitle>
+            <CardTitle className="text-sm">Posting Windows</CardTitle>
             <CardDescription className="text-xs">
-              Local time for scheduling via Buffer (HH:MM format).
+              Active days and time window per platform. Multiple posts are spread evenly across the
+              window. When Start = End, all posts land at the same time.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {TIME_FIELDS.map(({ key, label }) => (
-              <div key={key} className="grid grid-cols-2 gap-3 items-center">
-                <Label>{label}</Label>
-                <Input
-                  value={form[key] || ''}
-                  onChange={(e) => setField(key, e.target.value)}
-                  placeholder="09:00"
-                  maxLength={5}
+          <CardContent className="space-y-5">
+            {PLATFORM_WINDOW_CONFIG.map(({ label, daysKey, startKey, endKey }) => (
+              <div key={daysKey} className="space-y-2">
+                <p className="text-xs font-medium">{label}</p>
+                <DayMaskPicker
+                  value={form[daysKey] ?? 0}
+                  onChange={(v) => setForm((f) => ({ ...f, [daysKey]: v }))}
                 />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Window Start</Label>
+                    <Input
+                      type="time"
+                      value={form[startKey] || ''}
+                      onChange={(e) => setForm((f) => ({ ...f, [startKey]: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Window End</Label>
+                    <Input
+                      type="time"
+                      value={form[endKey] || ''}
+                      onChange={(e) => setForm((f) => ({ ...f, [endKey]: e.target.value }))}
+                    />
+                  </div>
+                </div>
               </div>
             ))}
           </CardContent>
