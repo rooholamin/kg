@@ -269,8 +269,14 @@ export async function runExport(postId) {
 
   if (!post) throw new Error(`Post not found: ${postId}`);
 
-  // Reset failed/stale state so a retry starts clean
-  if (post.status === 'failed' || post.status === 'exporting') {
+  // Reset any non-pending state so a retry starts clean.
+  // For previously uploaded posts, delete the old S3 files first.
+  const retryStatuses = ['failed', 'exporting', 'uploaded'];
+  if (retryStatuses.includes(post.status)) {
+    if (post.imageUrls?.length) {
+      const { deleteFromS3 } = await import('./social-export.service');
+      await Promise.allSettled(post.imageUrls.map(deleteFromS3));
+    }
     await prisma.socialPost.update({
       where: { id: postId },
       data: { status: 'content_ready', errorMessage: null, exportProgress: 0, imageUrls: [] },

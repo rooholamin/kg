@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { chromium } from 'playwright';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getS3ClientInstance } from '@/lib/s3-client';
 import { prisma } from '@/lib/prisma';
 import { format } from 'date-fns';
@@ -93,6 +93,31 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ---------------------------------------------------------------------------
+// S3 delete — extracts the key from a CDN/endpoint URL and removes it
+// ---------------------------------------------------------------------------
+export async function deleteFromS3(url) {
+  try {
+    const s3Client = getS3ClientInstance();
+    const bucket = process.env.STORAGE_BUCKET || 'kghub';
+    const cdnUrl = process.env.STORAGE_CDN_URL?.replace(/\/$/, '');
+    const endpoint = process.env.STORAGE_ENDPOINT?.replace(/\/$/, '');
+
+    // Strip the base URL to get the key
+    let key = url;
+    if (cdnUrl && url.startsWith(cdnUrl)) {
+      key = url.slice(cdnUrl.length + 1);
+    } else if (endpoint && url.startsWith(endpoint)) {
+      // endpoint-style: https://endpoint/bucket/key → strip bucket prefix too
+      key = url.slice(`${endpoint}/${bucket}/`.length);
+    }
+
+    await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+  } catch {
+    // Non-fatal — old file may already be gone
+  }
 }
 
 // ---------------------------------------------------------------------------

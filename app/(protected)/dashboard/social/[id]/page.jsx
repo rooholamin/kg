@@ -368,7 +368,7 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
             <RefreshCw className="size-3 mr-1" />
             Regenerate
           </Button>
-          {(post.status === 'content_ready' || post.status === 'failed' || post.status === 'exporting') && (
+          {(post.status === 'content_ready' || post.status === 'failed' || post.status === 'exporting' || post.status === 'uploaded') && (
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onExport(post.id)}>
               <Play className="size-3 mr-1" />
               {post.status === 'content_ready' ? 'Export' : 'Retry Export'}
