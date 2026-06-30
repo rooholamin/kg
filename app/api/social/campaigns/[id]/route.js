@@ -70,8 +70,8 @@ export async function DELETE(_req, { params }) {
     const allUrls = campaign.posts.flatMap((p) => p.imageUrls ?? []);
     await Promise.all(allUrls.map((url) => deleteFromS3(url)));
 
-    // Delete DB records
-    await prisma.socialPipelineLog.deleteMany({ where: { campaignId: id } });
+    // Delete DB records (cascade handles posts + logs, but be explicit)
+    await prisma.socialCampaignLog.deleteMany({ where: { campaignId: id } });
     await prisma.socialPost.deleteMany({ where: { campaignId: id } });
     await prisma.socialCampaign.delete({ where: { id } });
 
