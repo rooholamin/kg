@@ -64,6 +64,7 @@ export async function PATCH(req) {
       'twitterWindowStart',
       'twitterWindowEnd',
       'lookbackDays',
+      'timezoneOffset',
       'requireReview',
       'disabledTemplates',
     ];

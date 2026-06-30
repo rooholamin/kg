@@ -905,6 +905,8 @@ model SocialSettings {
   twitterWindowStart            String   @default("10:00")
   twitterWindowEnd              String   @default("10:00")
   lookbackDays                Int      @default(30)
+  // UTC offset for posting windows (e.g. -4 for US Eastern Daylight Time)
+  timezoneOffset              Int      @default(0)
   // When false: pipeline auto-schedules immediately after upload (no review pause)
   requireReview               Boolean  @default(true)
   disabledTemplates           String[] @default([])

@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 import { deleteFromS3 } from '@/services/social-export.service';
+import { logInfo } from '@/lib/social-logger';
 
 export async function GET(_req, { params }) {
   try {
@@ -47,6 +48,38 @@ export async function GET(_req, { params }) {
     return NextResponse.json({ data: campaign });
   } catch (e) {
     return routeError('[GET /api/social/campaigns/[id]]', e);
+  }
+}
+
+export async function PATCH(req, { params }) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    requireRole(session, 'superadmin', 'admin');
+
+    const { id } = await params;
+    const { action } = await req.json();
+
+    if (action === 'stop') {
+      // Mark remaining pending/queued posts as cancelled so the pipeline skips them
+      await prisma.socialPost.updateMany({
+        where: { campaignId: id, status: { in: ['pending', 'content_generating'] } },
+        data: { status: 'failed', errorMessage: 'Pipeline stopped by user' },
+      });
+
+      await prisma.socialCampaign.update({
+        where: { id },
+        data: { status: 'cancelled' },
+      });
+
+      await logInfo(id, 'pipeline_stopped', 'Pipeline stopped by user');
+
+      return NextResponse.json({ message: 'Pipeline stopped' });
+    }
+
+    return NextResponse.json({ message: 'Unknown action' }, { status: 400 });
+  } catch (e) {
+    return routeError('[PATCH /api/social/campaigns/[id]]', e);
   }
 }
 

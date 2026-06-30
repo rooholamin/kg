@@ -229,18 +229,27 @@ export async function exportPost(postId) {
         deviceScaleFactor: slideConf.deviceScaleFactor,
       });
       const page = await context.newPage();
+      page.setDefaultTimeout(90_000);
 
       try {
-        await page.goto(`file://${tmpHtmlPath}`, { waitUntil: 'networkidle' });
+        await page.goto(`file://${tmpHtmlPath}`, { waitUntil: 'networkidle', timeout: 60_000 });
       } finally {
         await fs.unlink(tmpHtmlPath).catch(() => {});
       }
 
-      // Wait for fonts to finish loading, then a short buffer for CSS animations
+      // Wait for fonts, then let any CSS transitions/animations settle
       await page.evaluate(() => document.fonts.ready);
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(600);
 
-      const screenshot = await page.locator('.export').screenshot({ type: 'png' });
+      // Ensure the export element is visible and stable before capturing
+      const exportEl = page.locator('.export');
+      await exportEl.waitFor({ state: 'visible', timeout: 30_000 });
+
+      const screenshot = await exportEl.screenshot({
+        type: 'png',
+        timeout: 90_000,
+        animations: 'disabled',
+      });
       await context.close();
 
       // Upload to Spaces

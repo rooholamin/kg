@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, parseISO, startOfWeek, endOfWeek } from 'date-fns';
+import {
+  format, parseISO, startOfWeek, endOfWeek,
+  startOfMonth, endOfMonth, addWeeks, isBefore,
+  differenceInDays, addMonths, min, max,
+} from 'date-fns';
 import { toast } from 'sonner';
 import { Container } from '@/components/common/container';
 import { Button } from '@/components/ui/button';
@@ -197,58 +201,147 @@ function InstagramGridPreviewDialog({ campaigns, open, onOpenChange }) {
 }
 
 // ---------------------------------------------------------------------------
-// Create Campaign Dialog (3 steps)
+// Week slot helpers
 // ---------------------------------------------------------------------------
-function StepIndicator({ current, total }) {
-  return (
-    <div className="flex items-center gap-2">
-      {Array.from({ length: total }).map((_, i) => (
-        <div
-          key={i}
-          className={`h-1.5 rounded-full transition-all duration-300 ${
-            i < current
-              ? 'bg-primary w-8'
-              : i === current - 1
-                ? 'bg-primary w-8'
-                : 'bg-muted w-4'
-          } ${i + 1 === current ? 'bg-primary' : i + 1 < current ? 'bg-primary/60' : 'bg-muted'}`}
-        />
-      ))}
-    </div>
+
+/**
+ * Returns all week slots for a given month.
+ * Each slot is clipped to the month boundary so partial weeks at the start/end
+ * show the correct day count and are used as the API date range.
+ */
+function getWeekSlotsForMonth(year, month) {
+  const monthStart = startOfMonth(new Date(year, month, 1));
+  const monthEnd = endOfMonth(new Date(year, month, 1));
+  const slots = [];
+  let weekMon = startOfWeek(monthStart, { weekStartsOn: 1 });
+  let weekNum = 1;
+
+  while (isBefore(weekMon, monthEnd) || weekMon.toDateString() === monthEnd.toDateString()) {
+    const weekSun = endOfWeek(weekMon, { weekStartsOn: 1 });
+    const slotStart = max([weekMon, monthStart]);
+    const slotEnd = min([weekSun, monthEnd]);
+    const days = differenceInDays(slotEnd, slotStart) + 1;
+
+    slots.push({
+      apiStart: format(slotStart, 'yyyy-MM-dd'),
+      apiEnd: format(slotEnd, 'yyyy-MM-dd'),
+      label:
+        slotStart.getMonth() === slotEnd.getMonth()
+          ? `${format(slotStart, 'MMM d')}–${format(slotEnd, 'd')}`
+          : `${format(slotStart, 'MMM d')}–${format(slotEnd, 'MMM d')}`,
+      weekNum,
+      days,
+      isPartial: days < 7,
+    });
+
+    weekMon = addWeeks(weekMon, 1);
+    weekNum++;
+  }
+  return slots;
+}
+
+/** Scale limits proportionally for partial weeks (rounds to nearest int, min 1 if default > 0). */
+function scaleLimits(defaults, days) {
+  if (days >= 7) return { ...defaults };
+  const factor = days / 7;
+  return Object.fromEntries(
+    Object.entries(defaults).map(([k, v]) => [k, v === 0 ? 0 : Math.max(1, Math.round(v * factor))]),
   );
 }
 
-function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
+// ---------------------------------------------------------------------------
+// Create Campaign Dialog (3 steps)
+// ---------------------------------------------------------------------------
+function CreateCampaignDialog({ open, onOpenChange, defaultSettings, existingCampaigns = [] }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
   const today = new Date();
-  const [weekStart, setWeekStart] = useState(
-    format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
-  );
-  const [weekEnd, setWeekEnd] = useState(
-    format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
-  );
-  const [maxPosts, setMaxPosts] = useState({
+
+  // Derive base limits from settings (always kept in sync)
+  const baseLimits = useMemo(() => ({
     instagram_carousel: defaultSettings?.defaultMaxInstagramCarousel ?? 3,
-    instagram_story: defaultSettings?.defaultMaxInstagramStory ?? 5,
-    linkedin: defaultSettings?.defaultMaxLinkedin ?? 3,
-    twitter: defaultSettings?.defaultMaxTwitter ?? 7,
-  });
+    instagram_story:    defaultSettings?.defaultMaxInstagramStory    ?? 5,
+    linkedin:           defaultSettings?.defaultMaxLinkedin          ?? 3,
+    twitter:            defaultSettings?.defaultMaxTwitter           ?? 7,
+  }), [defaultSettings]);
+
+  // Selected slot
+  const [selectedSlot, setSelectedSlot] = useState(null);
+
+  // Compute slots for current month + next month
+  const months = useMemo(() => {
+    const m0 = { year: today.getFullYear(), month: today.getMonth() };
+    const next = addMonths(new Date(today.getFullYear(), today.getMonth(), 1), 1);
+    const m1 = { year: next.getFullYear(), month: next.getMonth() };
+    return [m0, m1];
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const allSlots = useMemo(
+    () => months.map((m) => ({ ...m, slots: getWeekSlotsForMonth(m.year, m.month) })),
+    [months],
+  );
+
+  // Auto-select current week on first open (skip taken slots)
+  const todayStr = format(today, 'yyyy-MM-dd');
+  const defaultSlot = useMemo(() => {
+    // Try current week first
+    for (const { slots } of allSlots) {
+      const s = slots.find((sl) => sl.apiStart <= todayStr && sl.apiEnd >= todayStr);
+      if (s && !isSlotTaken(s)) return s;
+    }
+    // Fall back to first available slot
+    for (const { slots } of allSlots) {
+      const s = slots.find((sl) => !isSlotTaken(sl));
+      if (s) return s;
+    }
+    return null;
+  }, [allSlots, todayStr, existingCampaigns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const slot = selectedSlot ?? defaultSlot;
+
+  // Post limits — scaled for partial weeks, seeded from settings
+  const [maxPosts, setMaxPosts] = useState(baseLimits);
+
+  // Build a set of date ranges that already have a campaign.
+  // A slot is "taken" if any existing campaign's weekStart falls within the slot range.
+  const takenSlots = useMemo(() => {
+    const taken = new Set();
+    for (const c of existingCampaigns) {
+      const start = format(new Date(c.weekStart), 'yyyy-MM-dd');
+      taken.add(start);
+    }
+    return taken;
+  }, [existingCampaigns]);
+
+  function isSlotTaken(s) {
+    // Check if any existing campaign overlaps: campaign weekStart is within this slot's range
+    return existingCampaigns.some((c) => {
+      const cs = format(new Date(c.weekStart), 'yyyy-MM-dd');
+      const ce = format(new Date(c.weekEnd), 'yyyy-MM-dd');
+      return cs <= s.apiEnd && ce >= s.apiStart;
+    });
+  }
+
+  // Sync limits whenever settings load or selected slot changes
+  useEffect(() => {
+    if (slot) setMaxPosts(scaleLimits(baseLimits, slot.days));
+  }, [baseLimits, slot?.apiStart]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [editorsChoiceOnly, setEditorsChoiceOnly] = useState(false);
   const [campaignBrief, setCampaignBrief] = useState('');
 
   const { data: articleCount } = useQuery({
-    queryKey: ['campaign-article-count', weekStart, weekEnd],
+    queryKey: ['campaign-article-count', slot?.apiStart, slot?.apiEnd],
     queryFn: async () => {
       const res = await apiFetch(
-        `/api/articles?publishDateFrom=${weekStart}&publishDateTo=${weekEnd}&status=post_publish&countOnly=true`,
+        `/api/articles?publishDateFrom=${slot.apiStart}&publishDateTo=${slot.apiEnd}&status=post_publish&countOnly=true`,
       );
       if (!res.ok) return 0;
       const j = await res.json();
       return j.total ?? j.count ?? 0;
     },
-    enabled: Boolean(weekStart && weekEnd),
+    enabled: Boolean(slot?.apiStart && slot?.apiEnd),
   });
 
   const mutation = useMutation({
@@ -257,8 +350,8 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          weekStart: new Date(weekStart).toISOString(),
-          weekEnd: new Date(weekEnd + 'T23:59:59').toISOString(),
+          weekStart: new Date(slot.apiStart).toISOString(),
+          weekEnd: new Date(slot.apiEnd + 'T23:59:59').toISOString(),
           maxPostsPerPlatform: maxPosts,
           editorsChoiceOnly,
           campaignBrief: campaignBrief || null,
@@ -281,14 +374,15 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
 
   function reset() {
     setStep(1);
+    setSelectedSlot(null);
     setCampaignBrief('');
     setEditorsChoiceOnly(false);
   }
 
   const STEP_TITLES = ['Select Week', 'Post Limits', 'Campaign Brief'];
   const STEP_DESCRIPTIONS = [
-    'Choose the publication week for this campaign.',
-    'Set the maximum number of posts per platform.',
+    'Pick the week this campaign covers.',
+    'Maximum posts per platform for this week.',
     'Optionally guide the AI with a campaign brief.',
   ];
 
@@ -321,41 +415,95 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
 
         <DialogBody className="space-y-4">
           {step === 1 && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label>Week start</Label>
-                  <Input
-                    type="date"
-                    value={weekStart}
-                    onChange={(e) => setWeekStart(e.target.value)}
-                  />
+            <div className="space-y-4">
+              {allSlots.map(({ year, month, slots }) => (
+                <div key={`${year}-${month}`}>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    {format(new Date(year, month, 1), 'MMMM yyyy')}
+                  </p>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {slots.map((s) => {
+                      const isSelected = slot?.apiStart === s.apiStart;
+                      const taken = isSlotTaken(s);
+                      return (
+                        <button
+                          key={s.apiStart}
+                          type="button"
+                          onClick={() => !taken && setSelectedSlot(s)}
+                          disabled={taken}
+                          className={[
+                            'flex items-center justify-between rounded-lg border px-3 py-2.5 text-left transition-all duration-150',
+                            taken
+                              ? 'border-border bg-muted/30 opacity-60 cursor-not-allowed'
+                              : isSelected
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                              : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40',
+                          ].join(' ')}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                                taken
+                                  ? 'border-muted-foreground/30 bg-muted'
+                                  : isSelected
+                                  ? 'border-primary bg-primary'
+                                  : 'border-border'
+                              }`}
+                            >
+                              {isSelected && !taken && <span className="size-2 rounded-full bg-white" />}
+                              {taken && <CheckCircle2 className="size-3 text-muted-foreground/50" />}
+                            </div>
+                            <div>
+                              <span className={`text-sm font-medium ${taken ? 'text-muted-foreground' : ''}`}>
+                                Week {s.weekNum}
+                              </span>
+                              <span className="text-sm text-muted-foreground ml-2">
+                                {s.label}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            {taken && (
+                              <span className="text-xs text-muted-foreground font-medium">
+                                Campaign exists
+                              </span>
+                            )}
+                            {s.isPartial && !taken && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                {s.days} day{s.days !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Week end</Label>
-                  <Input
-                    type="date"
-                    value={weekEnd}
-                    onChange={(e) => setWeekEnd(e.target.value)}
-                  />
-                </div>
-              </div>
-              {articleCount !== undefined && (
+              ))}
+
+              {articleCount !== undefined && slot && (
                 <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/40">
                   <CalendarDays className="size-4 text-blue-600 dark:text-blue-400 shrink-0" />
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    <span className="font-semibold">{articleCount}</span> published articles in this period
+                    <span className="font-semibold">{articleCount}</span> published articles in this week
                   </p>
                 </div>
               )}
-            </>
+            </div>
           )}
 
           {step === 2 && (
             <div className="space-y-3">
+              {slot?.isPartial && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-100 dark:border-amber-900/30 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertCircle className="size-3.5 shrink-0" />
+                  Partial week ({slot.days} days) — limits scaled proportionally from your defaults.
+                </div>
+              )}
               {Object.entries(maxPosts).map(([platform, val]) => {
                 const cfg = PLATFORM_CONFIG[platform];
                 const Icon = cfg?.icon ?? Share2;
+                const defaultVal = baseLimits[platform];
                 return (
                   <div key={platform} className="flex items-center gap-3">
                     <div className={`size-8 rounded-lg ${cfg?.bg} flex items-center justify-center shrink-0`}>
@@ -364,6 +512,11 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
                     <span className="flex-1 text-sm font-medium">
                       {cfg?.label ?? platform.replace(/_/g, ' ')}
                     </span>
+                    {slot?.isPartial && (
+                      <span className="text-xs text-muted-foreground">
+                        (max {defaultVal})
+                      </span>
+                    )}
                     <Input
                       type="number"
                       min={0}
@@ -412,12 +565,12 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
             </Button>
           )}
           {step < 3 ? (
-            <Button onClick={() => setStep((s) => s + 1)}>
+            <Button onClick={() => setStep((s) => s + 1)} disabled={step === 1 && !slot}>
               Continue
               <ChevronRight className="size-3.5 ml-1" />
             </Button>
           ) : (
-            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !slot}>
               {mutation.isPending ? (
                 <Loader2 className="size-4 mr-1.5 animate-spin" />
               ) : (
@@ -699,6 +852,7 @@ export default function SocialPage() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         defaultSettings={settings}
+        existingCampaigns={campaigns}
       />
 
       <InstagramGridPreviewDialog

@@ -186,13 +186,17 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
   const windowStartMin   = startH * 60 + startM;
   const windowEndMin     = endH   * 60 + endM;
 
+  // Timezone offset in hours from UTC (e.g. -4 for US Eastern Daylight Time).
+  // Stored in SocialSettings.timezoneOffset so it can be changed from the UI.
+  const tzOffsetHours = settings?.timezoneOffset ?? 0;
+
   // Collect all valid days within the 7-day week window
   const base = new Date(weekStart || Date.now());
   const validDays = [];
   for (let offset = 0; offset < 7; offset++) {
     const d = new Date(base);
-    d.setDate(d.getDate() + offset);
-    if (daysMask & (1 << d.getDay())) {
+    d.setUTCDate(d.getUTCDate() + offset);
+    if (daysMask & (1 << d.getUTCDay())) {
       validDays.push(new Date(d));
     }
   }
@@ -200,8 +204,8 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
   // Fallback: use tomorrow if no valid days found
   if (!validDays.length) {
     const fallback = new Date(base);
-    fallback.setDate(fallback.getDate() + 1);
-    fallback.setHours(startH, startM, 0, 0);
+    fallback.setUTCDate(fallback.getUTCDate() + 1);
+    fallback.setUTCHours(startH - tzOffsetHours, startM, 0, 0);
     return fallback;
   }
 
@@ -221,9 +225,11 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
   }
 
   const totalMinutes = windowStartMin + minuteOffset;
-  const hour   = Math.floor(totalMinutes / 60);
-  const minute = Math.round(totalMinutes % 60);
+  const localHour   = Math.floor(totalMinutes / 60);
+  const localMinute = Math.round(totalMinutes % 60);
 
-  chosenDay.setHours(hour, minute, 0, 0);
+  // Convert local time to UTC: UTC = local - offset  (e.g. 10:00 EDT with offset -4 → 14:00 UTC)
+  const utcHour = localHour - tzOffsetHours;
+  chosenDay.setUTCHours(utcHour, localMinute, 0, 0);
   return chosenDay;
 }

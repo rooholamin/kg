@@ -158,19 +158,26 @@ export async function runContentGeneration(campaignId) {
 
   await logInfo(campaignId, 'content_start', `Starting content generation for ${posts.length} posts`);
 
-  // Mark all as generating
-  await prisma.socialPost.updateMany({
-    where: { id: { in: posts.map((p) => p.id) } },
-    data: { status: 'content_generating' },
-  });
-
   const settings = await getSocialSettings();
 
   let succeeded = 0;
   for (const post of posts) {
+    // Bail if the campaign was cancelled while we were mid-loop
+    const current = await prisma.socialCampaign.findUnique({
+      where: { id: campaignId },
+      select: { status: true },
+    });
+    if (current?.status === 'cancelled') break;
+
     try {
       const section = post.article.category?.section;
       if (!section) throw new Error('Article has no section');
+
+      // Mark this individual post as generating right before we start it
+      await prisma.socialPost.update({
+        where: { id: post.id },
+        data: { status: 'content_generating' },
+      });
 
       const { result } = await generatePostContent({
         campaignId,
@@ -388,7 +395,18 @@ export async function scheduleAllPosts(campaignId) {
 export async function runFullPipeline(campaignId) {
   try {
     await runApproval(campaignId);
+
+    await prisma.socialCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'content_generating' },
+    });
+
     await runContentGeneration(campaignId);
+
+    await prisma.socialCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'exporting' },
+    });
 
     // Export all content_ready posts
     const posts = await prisma.socialPost.findMany({

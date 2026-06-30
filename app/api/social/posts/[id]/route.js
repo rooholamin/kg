@@ -14,7 +14,7 @@ export async function PATCH(req, { params }) {
     const { id } = await params;
     const body = await req.json();
 
-    const allowed = ['generatedText', 'hashtags', 'slideIds', 'scheduledAt'];
+    const allowed = ['generatedText', 'hashtags', 'slideIds', 'scheduledAt', 'placeholders'];
     const data = {};
     for (const key of allowed) {
       if (key in body) data[key] = body[key];

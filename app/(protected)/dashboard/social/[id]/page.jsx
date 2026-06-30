@@ -46,6 +46,7 @@ import {
   MousePointerClick,
   Trash2,
   BrainCircuit,
+  StopCircle,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -366,12 +367,25 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
   const [editingCaption, setEditingCaption] = useState(false);
   const [caption, setCaption] = useState(post.generatedText || '');
   const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [editingPlaceholders, setEditingPlaceholders] = useState(false);
+  const [localPlaceholders, setLocalPlaceholders] = useState(post.placeholders || {});
   const [regenerateInstruction, setRegenerateInstruction] = useState('');
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
+
+  // Sync local state when post data refreshes
+  useEffect(() => {
+    if (!editingCaption) setCaption(post.generatedText || '');
+    if (!editingPlaceholders) setLocalPlaceholders(post.placeholders || {});
+  }, [post.generatedText, post.hashtags, post.placeholders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function saveCaption() {
     onUpdate(post.id, { generatedText: caption });
     setEditingCaption(false);
+  }
+
+  function savePlaceholders() {
+    onUpdate(post.id, { placeholders: localPlaceholders });
+    setEditingPlaceholders(false);
   }
 
   function handleRegenerate() {
@@ -441,19 +455,18 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
           </div>
         )}
 
-        {/* Caption */}
-        {(post.platform !== 'twitter' && post.platform !== 'instagram_story') && (
+        {/* Caption — shown for all platforms except instagram_story (stories have no text post) */}
+        {post.platform !== 'instagram_story' && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Caption</span>
-              {!editingCaption && post.generatedText && (
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {post.platform === 'twitter' ? 'Tweet' : 'Caption'}
+              </span>
+              {!editingCaption && (
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
-                  onClick={() => {
-                    setCaption(post.generatedText || '');
-                    setEditingCaption(true);
-                  }}
+                  onClick={() => setEditingCaption(true)}
                 >
                   <Pencil className="size-3" />
                   Edit
@@ -471,15 +484,13 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
                 />
                 <div className="flex gap-1.5">
                   <Button size="sm" onClick={saveCaption}>Save</Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditingCaption(false)}>
-                    Cancel
-                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditingCaption(false)}>Cancel</Button>
                 </div>
               </div>
             ) : (
               <div>
                 <p className={`text-xs text-muted-foreground leading-relaxed ${captionExpanded ? '' : 'line-clamp-3'}`}>
-                  {post.generatedText || <em>No caption yet</em>}
+                  {post.generatedText || <em className="text-muted-foreground/50">No text yet</em>}
                 </p>
                 {post.generatedText && post.generatedText.length > 180 && (
                   <button
@@ -492,6 +503,47 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Template Fields (placeholders) — what appears inside the generated images */}
+        {post.placeholders && Object.keys(post.placeholders).length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Image Text</span>
+              {!editingPlaceholders ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                  onClick={() => setEditingPlaceholders(true)}
+                >
+                  <Pencil className="size-3" />
+                  Edit
+                </button>
+              ) : (
+                <div className="flex gap-1.5">
+                  <Button size="sm" onClick={savePlaceholders}>Save</Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditingPlaceholders(false)}>Cancel</Button>
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5 rounded-lg border bg-muted/20 p-2.5">
+              {Object.entries(editingPlaceholders ? localPlaceholders : post.placeholders).map(([key, value]) => (
+                <div key={key} className="grid grid-cols-[100px_1fr] gap-2 items-start">
+                  <span className="text-[10px] font-mono font-medium text-muted-foreground pt-1 truncate">{key}</span>
+                  {editingPlaceholders ? (
+                    <input
+                      type="text"
+                      value={localPlaceholders[key] || ''}
+                      onChange={(e) => setLocalPlaceholders((p) => ({ ...p, [key]: e.target.value }))}
+                      className="w-full rounded border border-input bg-background px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  ) : (
+                    <span className="text-xs text-foreground leading-snug break-words">{value || <em className="text-muted-foreground/50">empty</em>}</span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -704,6 +756,7 @@ const SOCIAL_CHARACTER = {
   scheduling:         { emoji: '📅', label: 'Scheduling to Buffer…' },
   done:               { emoji: '🎉', label: 'Campaign ready!' },
   failed:             { emoji: '😓', label: 'Something went wrong' },
+  cancelled:          { emoji: '🛑', label: 'Pipeline stopped' },
 };
 
 function SocialStageNode({ stage, state, isLast }) {
@@ -820,9 +873,14 @@ function SocialTaskWidgets({ campaign, allPosts }) {
   const approvalDone = !['pending', 'running'].includes(status) || status === 'done';
   const platformCount = new Set(allPosts.map((p) => p.platform)).size;
 
-  // Content widget
+  // Content widget — count only posts that have finished content generation
   const contentActive = status === 'content_generating';
-  const contentDone = allPosts.filter((p) => !['pending', 'draft'].includes(p.status)).length;
+  const contentReady = allPosts.filter((p) =>
+    ['content_ready', 'exporting', 'uploaded', 'scheduled', 'reviewing'].includes(p.status),
+  ).length;
+  // While content is actively generating, show 1 as "generating" if any post is content_generating
+  const contentGenerating = allPosts.filter((p) => p.status === 'content_generating').length;
+  const contentDone = contentReady;
 
   // Images + Schedule widget
   const imagesActive = status === 'exporting' || status === 'scheduling';
@@ -846,7 +904,12 @@ function SocialTaskWidgets({ campaign, allPosts }) {
       done: ['exporting', 'scheduling', 'done'].includes(status),
       active: contentActive,
       lines: contentActive
-        ? [`${contentDone} / ${total} done`, 'Generating…']
+        ? [
+            `${contentDone} / ${total} done`,
+            contentGenerating > 0
+              ? `Generating 1 · ${total - contentDone - contentGenerating} in queue`
+              : 'Starting…',
+          ]
         : [`${contentDone} / ${total} done`],
     },
     {
@@ -891,7 +954,7 @@ function SocialTaskWidgets({ campaign, allPosts }) {
   );
 }
 
-function SocialPipelineDashboard({ campaign, allPosts }) {
+function SocialPipelineDashboard({ campaign, allPosts, onStop, isStopping }) {
   const status = campaign.status;
   const isActive = ['pending', 'running', 'content_generating', 'exporting', 'scheduling'].includes(status);
   const hasActivity = status !== 'pending' || allPosts.length > 0;
@@ -906,15 +969,32 @@ function SocialPipelineDashboard({ campaign, allPosts }) {
           <SocialCharacterCard campaignStatus={status} />
           <div className="space-y-3">
             <SocialStageProgress campaignStatus={status} />
-            {isActive && (
-              <p className="text-xs text-center text-muted-foreground">
-                {status === 'pending'            && 'Starting the pipeline…'}
-                {status === 'running'            && `Selecting posts from ${allPosts.length} articles across platforms…`}
-                {status === 'content_generating' && `Generating content for ${allPosts.length} posts…`}
-                {status === 'exporting'          && `Creating images for posts…`}
-                {status === 'scheduling'         && `Scheduling posts to Buffer…`}
-              </p>
-            )}
+            <div className="flex items-center justify-center gap-3">
+              {isActive && (
+                <p className="text-xs text-muted-foreground">
+                  {status === 'pending'            && 'Starting the pipeline…'}
+                  {status === 'running'            && `Selecting posts from ${allPosts.length} articles across platforms…`}
+                  {status === 'content_generating' && `Generating content for ${allPosts.length} posts…`}
+                  {status === 'exporting'          && `Creating images for posts…`}
+                  {status === 'scheduling'         && `Scheduling posts to Buffer…`}
+                </p>
+              )}
+              {isActive && (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  disabled={isStopping}
+                  className="ml-auto flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isStopping ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <StopCircle className="size-3" />
+                  )}
+                  Stop
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -985,6 +1065,7 @@ const CAMPAIGN_STATUS_CONFIG = {
   reviewing: { label: 'Awaiting Review', className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', dot: 'bg-amber-500' },
   done: { label: 'Complete', className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', dot: 'bg-emerald-500' },
   failed: { label: 'Failed', className: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400', dot: 'bg-red-500' },
+  cancelled: { label: 'Stopped', className: 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', dot: 'bg-orange-500' },
 };
 
 // ---------------------------------------------------------------------------
@@ -1077,6 +1158,22 @@ export default function SocialCampaignPage({ params }) {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
       toast.success(`Scheduled ${data.scheduled} posts`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/social/campaigns/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      if (!res.ok) throw new Error('Failed to stop pipeline');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
+      toast.success('Pipeline stopped');
     },
     onError: (e) => toast.error(e.message),
   });
@@ -1305,6 +1402,16 @@ export default function SocialCampaignPage({ params }) {
         </div>
       </div>
 
+      {/* Pipeline AI Dashboard */}
+      <div className="mt-6">
+        <SocialPipelineDashboard
+          campaign={campaign}
+          allPosts={allPosts}
+          onStop={() => stopMutation.mutate()}
+          isStopping={stopMutation.isPending}
+        />
+      </div>
+
       {/* Week Calendar */}
       <div className="overflow-x-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
         <div className="flex" style={{ minWidth: `calc(3rem + 7 * 160px)` }}>
@@ -1467,11 +1574,6 @@ export default function SocialCampaignPage({ params }) {
             );
           })}
         </Tabs>
-      </div>
-
-      {/* Pipeline AI Dashboard */}
-      <div className="mt-6">
-        <SocialPipelineDashboard campaign={campaign} allPosts={allPosts} />
       </div>
 
       {/* Pipeline Logs (collapsible debug) */}

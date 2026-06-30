@@ -286,6 +286,31 @@ export default function SocialSettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Timezone */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Timezone</CardTitle>
+            <CardDescription className="text-xs">
+              Your UTC offset (e.g. -4 for Eastern Daylight, -5 for Eastern Standard, 0 for UTC).
+              Posting window times you enter below are interpreted in this timezone.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>UTC Offset (hours)</Label>
+              <Input
+                type="number"
+                min={-12}
+                max={14}
+                step={0.5}
+                value={form.timezoneOffset ?? 0}
+                onChange={(e) => setField('timezoneOffset', parseFloat(e.target.value) || 0)}
+                placeholder="0"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Posting Windows */}
         <Card>
           <CardHeader>

@@ -1,0 +1,1 @@
+ALTER TABLE "SocialSettings" ADD COLUMN "timezoneOffset" INTEGER NOT NULL DEFAULT 0;
