@@ -771,9 +771,13 @@ model ArticleAutomationRun {
 enum SocialCampaignStatus {
   pending
   running
+  content_generating
+  exporting
+  scheduling
   reviewing
   done
   failed
+  cancelled
 }
 
 enum SocialPlatform {
