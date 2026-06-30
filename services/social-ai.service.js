@@ -322,10 +322,16 @@ ARTICLE SUMMARY: ${article.summary || ''}
 ARTICLE BODY:
 ${bodyText}
 
-WRITER TONE: ${section.characterTone || ''}
+WRITER TONE (for your writing style only — do not output this): ${section.characterTone || ''}
 WRITING STYLE: ${section.characterWritingStyle || ''}
 ${slideMenu ? `\nAVAILABLE TEMPLATES (select slideIds ONLY from this list):\n${slideMenu}` : ''}
-${instruction ? `INSTRUCTION: ${instruction}` : ''}`
+${instruction ? `INSTRUCTION: ${instruction}` : ''}
+
+Return JSON with these fields:
+- slideIds: array of template IDs selected from the list above
+- text: the post caption/body text
+- placeholders: object with all template placeholder values (HOOK, QUOTE, STAT_N, STAT_L, NARRATIVE, FEAT_*_LABEL, FEAT_*_DESC, STEP_*_TITLE, STEP_*_DESC, IMGBOX_CAPTION, END_CARD_BIO, ARC_TITLE)
+- label: a short 2–4 word creative eyebrow label written for this article (ALL CAPS, e.g. "RISING MARKETS", "BOLD NEW VISION", "DATA DEEP DIVE"). This appears above the article title in the image templates — make it punchy and editorial, not the writer tone.`
     : `PLATFORM: ${platformName}
 ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for this platform.'}`;
 

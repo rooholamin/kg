@@ -62,7 +62,7 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
     WRITER_PHOTO: section.characterImage || writerPhotoPath(section),
     SECTION_NAME: section.name || '',
     SECTION_NAME_UPPER: (section.name || '').toUpperCase(),
-    TONE: section.characterTone || '',
+    LABEL: p.LABEL || '',
     COLOR_ACCENT: section.colorAccent || '#CCB260',
     COLOR_LIGHT: section.colorLight || '#E0CC7A',
     COLOR_DARK: section.colorDark || '#7A5500',

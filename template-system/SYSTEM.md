@@ -36,7 +36,7 @@ Each file is a standalone HTML page containing one slide. Fill `{{PLACEHOLDER}}`
 | `{{QUOTE}}` | Pull quote from article | `In a penthouse, the city...` |
 | `{{STAT_N}}` | Stat figure | `2.4×` |
 | `{{STAT_L}}` | Stat label | `price premium on penthouse units` |
-| `{{TONE}}` | Section tone label | `LIFESTYLE` |
+| `{{LABEL}}` | Agent-written eyebrow label above the title | `RISING MARKETS` |
 | `{{SECTION_NAME}}` | Section display name | `KG Living` |
 | `{{SECTION_NAME_UPPER}}` | Section name uppercased | `KG LIVING` |
 | `{{WRITER_NAME}}` | Writer full name | `Livia Moretti` |

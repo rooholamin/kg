@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
@@ -676,6 +677,255 @@ function LogRow({ log }) {
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline AI dashboard — stage progress + character + task widgets
+// ---------------------------------------------------------------------------
+
+const SOCIAL_STAGES = [
+  { key: 'fetch',    label: 'Fetch' },
+  { key: 'approve',  label: 'Approve' },
+  { key: 'content',  label: 'Content' },
+  { key: 'images',   label: 'Images' },
+  { key: 'schedule', label: 'Schedule' },
+];
+
+const STATUS_TO_STAGE = {
+  pending:            'fetch',
+  running:            'approve',
+  content_generating: 'content',
+  exporting:          'images',
+  scheduling:         'schedule',
+};
+
+const SOCIAL_CHARACTER = {
+  pending:            { emoji: '📋', label: 'Reviewing the campaign brief…' },
+  running:            { emoji: '🤖', label: 'AI approval agent at work…' },
+  content_generating: { emoji: '✍️', label: 'Crafting social content…' },
+  exporting:          { emoji: '🎨', label: 'Creating images…' },
+  scheduling:         { emoji: '📅', label: 'Scheduling to Buffer…' },
+  done:               { emoji: '🎉', label: 'Campaign ready!' },
+  failed:             { emoji: '😓', label: 'Something went wrong' },
+};
+
+function SocialStageNode({ stage, state, isLast }) {
+  return (
+    <div className="flex items-center gap-0">
+      <div className="flex flex-col items-center gap-1.5">
+        <div className="relative flex items-center justify-center">
+          {state === 'active' && (
+            <>
+              <span className="absolute size-8 rounded-full bg-primary/20 animate-ping" />
+              <span className="absolute size-6 rounded-full bg-primary/30 animate-pulse" />
+            </>
+          )}
+          <div
+            className={[
+              'relative z-10 flex size-7 items-center justify-center rounded-full border-2 transition-all duration-500',
+              state === 'done'    && 'border-emerald-500 bg-emerald-500/10',
+              state === 'active'  && 'border-primary bg-primary/10 shadow-[0_0_10px_rgba(var(--primary),0.4)]',
+              state === 'pending' && 'border-border bg-muted/30',
+            ].filter(Boolean).join(' ')}
+          >
+            {state === 'done' ? (
+              <CheckCircle2 className="size-4 text-emerald-500" />
+            ) : state === 'active' ? (
+              <span className="size-2.5 rounded-full bg-primary animate-pulse" />
+            ) : (
+              <span className="size-2 rounded-full bg-muted-foreground/30" />
+            )}
+          </div>
+        </div>
+        <span
+          className={[
+            'text-[11px] font-medium transition-colors duration-300 whitespace-nowrap',
+            state === 'done'    && 'text-emerald-600 dark:text-emerald-400',
+            state === 'active'  && 'text-primary font-semibold',
+            state === 'pending' && 'text-muted-foreground/50',
+          ].filter(Boolean).join(' ')}
+        >
+          {stage.label}
+        </span>
+      </div>
+      {!isLast && (
+        <div
+          className={[
+            'h-0.5 w-8 sm:w-12 mb-5 transition-all duration-500',
+            state === 'done' ? 'bg-emerald-500/60' : 'bg-border/60',
+          ].join(' ')}
+        />
+      )}
+    </div>
+  );
+}
+
+function SocialStageProgress({ campaignStatus }) {
+  const activeKey = STATUS_TO_STAGE[campaignStatus] ?? null;
+  const isDone = campaignStatus === 'done';
+
+  const getState = (stageKey, stageIdx) => {
+    if (isDone) return 'done';
+    const activeIdx = SOCIAL_STAGES.findIndex((s) => s.key === activeKey);
+    if (activeIdx < 0) return 'pending';
+    if (stageIdx < activeIdx) return 'done';
+    if (stageIdx === activeIdx) return 'active';
+    return 'pending';
+  };
+
+  return (
+    <div className="flex items-start justify-center flex-wrap gap-0">
+      {SOCIAL_STAGES.map((stage, idx) => (
+        <SocialStageNode
+          key={stage.key}
+          stage={stage}
+          state={getState(stage.key, idx)}
+          isLast={idx === SOCIAL_STAGES.length - 1}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SocialCharacterCard({ campaignStatus }) {
+  const isActive = ['pending', 'running', 'content_generating', 'exporting', 'scheduling'].includes(campaignStatus);
+  const cfg = SOCIAL_CHARACTER[campaignStatus] ?? { emoji: '📋', label: '' };
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <div
+        className={[
+          'relative p-4 rounded-2xl ring-2 transition-all duration-700',
+          isActive
+            ? 'ring-emerald-500/40 bg-emerald-500/5 shadow-[0_0_20px_rgba(16,185,129,0.15)]'
+            : campaignStatus === 'done'
+            ? 'ring-emerald-500/30 bg-emerald-500/5'
+            : campaignStatus === 'failed'
+            ? 'ring-red-500/30 bg-red-500/5'
+            : 'ring-border bg-muted/20',
+        ].join(' ')}
+      >
+        {isActive && (
+          <span className="absolute inset-0 rounded-2xl ring-2 ring-emerald-500/20 animate-ping" />
+        )}
+        <span className="text-5xl select-none" role="img">{cfg.emoji}</span>
+      </div>
+      <p className="text-sm text-muted-foreground italic text-center leading-snug">{cfg.label}</p>
+    </div>
+  );
+}
+
+function SocialTaskWidgets({ campaign, allPosts }) {
+  const status = campaign.status;
+  const total = allPosts.length;
+
+  // Approval widget
+  const approvalDone = !['pending', 'running'].includes(status) || status === 'done';
+  const platformCount = new Set(allPosts.map((p) => p.platform)).size;
+
+  // Content widget
+  const contentActive = status === 'content_generating';
+  const contentDone = allPosts.filter((p) => !['pending', 'draft'].includes(p.status)).length;
+
+  // Images + Schedule widget
+  const imagesActive = status === 'exporting' || status === 'scheduling';
+  const imagesScheduled = allPosts.filter((p) => p.status === 'scheduled').length;
+  const imagesUploaded = allPosts.filter((p) => p.status === 'uploaded').length;
+  const imagesDone = imagesScheduled + imagesUploaded;
+
+  const widgets = [
+    {
+      emoji: '✅',
+      label: 'Approval',
+      done: approvalDone,
+      active: status === 'running',
+      lines: approvalDone
+        ? [`${total} posts selected`, `${platformCount} platform${platformCount !== 1 ? 's' : ''}`]
+        : ['Selecting posts…'],
+    },
+    {
+      emoji: '✍️',
+      label: 'Content',
+      done: ['exporting', 'scheduling', 'done'].includes(status),
+      active: contentActive,
+      lines: contentActive
+        ? [`${contentDone} / ${total} done`, 'Generating…']
+        : [`${contentDone} / ${total} done`],
+    },
+    {
+      emoji: '🖼️',
+      label: 'Images & Schedule',
+      done: status === 'done',
+      active: imagesActive,
+      lines: imagesActive
+        ? [`${imagesDone} / ${total} done`, status === 'scheduling' ? 'Scheduling…' : 'Creating images…']
+        : [`${imagesScheduled} scheduled`, `${imagesUploaded} uploaded`],
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {widgets.map((w) => (
+        <div
+          key={w.label}
+          className={[
+            'rounded-xl border px-3 py-3 flex flex-col gap-1.5 transition-all duration-300',
+            w.done   && 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10',
+            w.active && !w.done && 'border-primary/30 bg-primary/5',
+            !w.done && !w.active && 'border-border bg-muted/20 opacity-60',
+          ].filter(Boolean).join(' ')}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-lg" role="img">{w.emoji}</span>
+            <span className="text-xs font-semibold text-foreground">{w.label}</span>
+            {w.active && !w.done && (
+              <span className="ml-auto size-2 rounded-full bg-primary animate-pulse" />
+            )}
+            {w.done && (
+              <CheckCircle2 className="ml-auto size-3.5 text-emerald-500" />
+            )}
+          </div>
+          {w.lines.map((line, i) => (
+            <p key={i} className="text-xs text-muted-foreground leading-snug">{line}</p>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SocialPipelineDashboard({ campaign, allPosts }) {
+  const status = campaign.status;
+  const isActive = ['pending', 'running', 'content_generating', 'exporting', 'scheduling'].includes(status);
+  const hasActivity = status !== 'pending' || allPosts.length > 0;
+
+  if (!hasActivity && status === 'pending') return null;
+
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="pt-5 pb-5 space-y-5">
+        {/* Character + stage progress */}
+        <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-6 items-center">
+          <SocialCharacterCard campaignStatus={status} />
+          <div className="space-y-3">
+            <SocialStageProgress campaignStatus={status} />
+            {isActive && (
+              <p className="text-xs text-center text-muted-foreground">
+                {status === 'pending'            && 'Starting the pipeline…'}
+                {status === 'running'            && `Selecting posts from ${allPosts.length} articles across platforms…`}
+                {status === 'content_generating' && `Generating content for ${allPosts.length} posts…`}
+                {status === 'exporting'          && `Creating images for posts…`}
+                {status === 'scheduling'         && `Scheduling posts to Buffer…`}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Task widgets */}
+        <SocialTaskWidgets campaign={campaign} allPosts={allPosts} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline logs panel
 // ---------------------------------------------------------------------------
 const ACTIVE_STATUSES = new Set(['pending', 'running', 'content_generating', 'exporting', 'scheduling']);
@@ -718,7 +968,7 @@ function PipelineLogs({ campaignId, campaignStatus }) {
       {isActive && (
         <div className="flex items-center gap-2 pl-3 py-2 text-xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" />
-          Pipeline running — refreshing every 2s…
+          Pipeline running…
         </div>
       )}
       <div ref={bottomRef} />
@@ -905,6 +1155,12 @@ export default function SocialCampaignPage({ params }) {
   const failedPosts = allPosts.filter((p) => p.status === 'failed');
   const canScheduleAll = uploadedPosts.length > 0;
 
+  const postsByPlatform = {};
+  for (const p of allPosts) {
+    if (!postsByPlatform[p.platform]) postsByPlatform[p.platform] = [];
+    postsByPlatform[p.platform].push(p);
+  }
+
   const statusCfg = CAMPAIGN_STATUS_CONFIG[campaign.status] ?? CAMPAIGN_STATUS_CONFIG.pending;
 
   return (
@@ -1078,7 +1334,7 @@ export default function SocialCampaignPage({ params }) {
                 (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt),
               );
 
-              // Group by 30-min window to compute stacking offsets
+              // Group by 30-min window for column-splitting (like Google Calendar)
               const windowGroups = {};
               for (const post of dayPosts) {
                 const d = new Date(post.scheduledAt);
@@ -1088,7 +1344,7 @@ export default function SocialCampaignPage({ params }) {
               }
               const postsWithOffset = [];
               for (const posts of Object.values(windowGroups)) {
-                posts.forEach((post, idx) => postsWithOffset.push({ post, idx }));
+                posts.forEach((post, idx) => postsWithOffset.push({ post, idx, total: posts.length }));
               }
 
               return (
@@ -1126,12 +1382,16 @@ export default function SocialCampaignPage({ params }) {
                       );
                     })}
 
-                    {/* Post chips */}
-                    {postsWithOffset.map(({ post, idx }) => (
+                    {/* Post chips — column-split when multiple posts share a time window */}
+                    {postsWithOffset.map(({ post, idx, total }) => (
                       <div
                         key={post.id}
-                        className="absolute left-1 right-1"
-                        style={{ top: `calc(${topPercent(post.scheduledAt)}% + ${idx * 2}%)` }}
+                        className="absolute"
+                        style={{
+                          top: `${topPercent(post.scheduledAt)}%`,
+                          left: `calc(${(idx / total) * 100}% + 2px)`,
+                          right: `calc(${((total - idx - 1) / total) * 100}% + 2px)`,
+                        }}
                       >
                         <PostChip post={post} onClick={() => setSelectedPost(post)} />
                       </div>
@@ -1150,9 +1410,73 @@ export default function SocialCampaignPage({ params }) {
         </div>
       </div>
 
-      {/* Pipeline Logs */}
-      <details defaultOpen={ACTIVE_STATUSES.has(campaign.status)} className="mt-6">
-        <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none py-2">
+      {/* Platform Tabs */}
+      <div className="mt-6">
+        <Tabs defaultValue={PLATFORMS.find((p) => postsByPlatform[p.id]?.length > 0)?.id ?? PLATFORMS[0].id}>
+          <TabsList className="mb-4 h-auto flex-wrap gap-1 bg-transparent p-0">
+            {PLATFORMS.map((p) => {
+              const count = postsByPlatform[p.id]?.length ?? 0;
+              return (
+                <TabsTrigger
+                  key={p.id}
+                  value={p.id}
+                  className={`gap-1.5 h-8 text-xs border data-[state=active]:shadow-none ${p.tabBg}`}
+                >
+                  <p.Icon className={`size-3.5 ${p.color}`} />
+                  {p.label}
+                  {count > 0 && (
+                    <span className="ml-0.5 min-w-[18px] text-xs bg-background/80 border rounded-full px-1.5 flex items-center justify-center">
+                      {count}
+                    </span>
+                  )}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+
+          {PLATFORMS.map((platform) => {
+            const posts = postsByPlatform[platform.id] ?? [];
+            return (
+              <TabsContent key={platform.id} value={platform.id}>
+                {posts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 border-2 border-dashed rounded-xl">
+                    <div className={`size-10 rounded-xl ${platform.bg} flex items-center justify-center`}>
+                      <platform.Icon className={`size-5 ${platform.color}`} />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      No {platform.label} posts in this campaign.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {posts.map((post) => (
+                      <PostCard
+                        key={post.id}
+                        post={post}
+                        onUpdate={(postId, data) => updateMutation.mutate({ postId, data })}
+                        onRegenerate={(postId, instruction) =>
+                          regenerateMutation.mutate({ postId, instruction })
+                        }
+                        onExport={(postId) => exportMutation.mutate(postId)}
+                        onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            );
+          })}
+        </Tabs>
+      </div>
+
+      {/* Pipeline AI Dashboard */}
+      <div className="mt-6">
+        <SocialPipelineDashboard campaign={campaign} allPosts={allPosts} />
+      </div>
+
+      {/* Pipeline Logs (collapsible debug) */}
+      <details defaultOpen={false} className="mt-4">
+        <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none py-2 text-muted-foreground hover:text-foreground transition-colors">
           <Activity className="size-4" />
           Pipeline Logs
           {ACTIVE_STATUSES.has(campaign.status) && (
@@ -1166,41 +1490,49 @@ export default function SocialCampaignPage({ params }) {
         </Card>
       </details>
 
-      {/* Post detail sheet */}
-      <Sheet open={!!selectedPost} onOpenChange={(open) => { if (!open) setSelectedPost(null); }}>
-        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
-          {selectedPost && (
-            <>
-              <SheetHeader className="mb-4">
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const platform = PLATFORMS.find((p) => p.id === selectedPost.platform);
-                    const Icon = platform?.Icon ?? Share2;
-                    return <Icon className={`size-4 ${platform?.color ?? 'text-zinc-500'}`} />;
-                  })()}
-                  <SheetTitle className="text-sm leading-tight line-clamp-2 text-left">
-                    {selectedPost.article?.title ?? 'Post'}
-                  </SheetTitle>
-                </div>
-                {selectedPost.scheduledAt && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {format(new Date(selectedPost.scheduledAt), 'EEEE, MMM d · h:mm a')}
-                  </p>
-                )}
-              </SheetHeader>
-              <PostCard
-                post={selectedPost}
-                onUpdate={(postId, data) => updateMutation.mutate({ postId, data })}
-                onRegenerate={(postId, instruction) =>
-                  regenerateMutation.mutate({ postId, instruction })
-                }
-                onExport={(postId) => exportMutation.mutate(postId)}
-                onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
-              />
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* Post detail sheet — always reflects the latest query data */}
+      {(() => {
+        const livePost = selectedPost
+          ? (allPosts.find((p) => p.id === selectedPost.id) ?? selectedPost)
+          : null;
+        const platform = livePost ? PLATFORMS.find((p) => p.id === livePost.platform) : null;
+        const PlatformIcon = platform?.Icon ?? Share2;
+        return (
+          <Sheet open={!!selectedPost} onOpenChange={(open) => { if (!open) setSelectedPost(null); }}>
+            <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+              {livePost && (
+                <>
+                  <SheetHeader className="mb-4">
+                    <div className="flex items-center gap-2">
+                      <PlatformIcon className={`size-4 ${platform?.color ?? 'text-zinc-500'}`} />
+                      <SheetTitle className="text-sm leading-tight line-clamp-2 text-left">
+                        {livePost.article?.title ?? 'Post'}
+                      </SheetTitle>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {livePost.scheduledAt && (
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(livePost.scheduledAt), 'EEEE, MMM d · h:mm a')}
+                        </p>
+                      )}
+                      <PostStatusBadge status={livePost.status} />
+                    </div>
+                  </SheetHeader>
+                  <PostCard
+                    post={livePost}
+                    onUpdate={(postId, data) => updateMutation.mutate({ postId, data })}
+                    onRegenerate={(postId, instruction) =>
+                      regenerateMutation.mutate({ postId, instruction })
+                    }
+                    onExport={(postId) => exportMutation.mutate(postId)}
+                    onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
+                  />
+                </>
+              )}
+            </SheetContent>
+          </Sheet>
+        );
+      })()}
     </Container>
   );
 }
