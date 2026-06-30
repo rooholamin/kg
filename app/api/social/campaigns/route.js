@@ -17,7 +17,14 @@ export async function GET(req) {
       include: {
         _count: { select: { posts: true } },
         posts: {
-          select: { status: true, platform: true },
+          select: {
+            id: true,
+            status: true,
+            platform: true,
+            imageUrls: true,
+            scheduledAt: true,
+            article: { select: { title: true } },
+          },
         },
       },
     });
