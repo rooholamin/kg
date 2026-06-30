@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { getCalendarArticles } from '@/services/article.service';
 import { getScheduledSlotsForCalendar } from '@/services/scheduler.service';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(req) {
   try {
@@ -23,16 +24,27 @@ export async function GET(req) {
     const status = searchParams.get('status') || null;
     const includeSlots = searchParams.get('includeSlots') === 'true';
 
-    const [articles, slots] = await Promise.all([
+    const [articles, slots, socialPosts] = await Promise.all([
       getCalendarArticles({
         topicId: topicId && topicId !== 'all' ? topicId : null,
         categoryId: categoryId && categoryId !== 'all' ? categoryId : null,
         status: status && status !== 'all' ? status : null,
       }),
       includeSlots ? getScheduledSlotsForCalendar() : Promise.resolve([]),
+      prisma.socialPost.findMany({
+        where: { status: 'scheduled', scheduledAt: { not: null } },
+        select: {
+          id: true,
+          articleId: true,
+          platform: true,
+          scheduledAt: true,
+          campaignId: true,
+          article: { select: { title: true } },
+        },
+      }),
     ]);
 
-    return NextResponse.json({ data: articles, slots });
+    return NextResponse.json({ data: articles, slots, socialPosts });
   } catch (e) {
     console.error('[api/calendar]', e);
     return NextResponse.json(

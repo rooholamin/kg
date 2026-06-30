@@ -44,7 +44,143 @@ import {
   BookOpen,
   Lightbulb,
   Sparkles,
+  Share2,
+  ExternalLink,
+  Instagram,
+  Linkedin,
+  Twitter,
+  Image as ImageSolid,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+
+// ---------------------------------------------------------------------------
+// SocialTab — real social posts for this article
+// ---------------------------------------------------------------------------
+
+const PLATFORM_META = {
+  instagram_carousel: { label: 'IG Carousel', color: 'amber', Icon: Instagram },
+  instagram_story: { label: 'IG Story', color: 'amber', Icon: Instagram },
+  linkedin: { label: 'LinkedIn', color: 'sky', Icon: Linkedin },
+  twitter: { label: 'Twitter / X', color: 'slate', Icon: Twitter },
+};
+
+const POST_STATUS_COLOR = {
+  pending: 'secondary',
+  content_generating: 'default',
+  content_ready: 'default',
+  exporting: 'default',
+  uploaded: 'outline',
+  scheduling: 'default',
+  scheduled: 'default',
+  failed: 'destructive',
+};
+
+function SocialTab({ articleId }) {
+  const router = useRouter();
+  const { data, isLoading } = useQuery({
+    queryKey: ['social-posts', articleId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/social/posts?articleId=${articleId}`);
+      if (!res.ok) throw new Error('Failed to load social posts');
+      const j = await res.json();
+      return j.data ?? [];
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+        <Loader2 className="size-4 animate-spin" />
+        Loading social posts…
+      </div>
+    );
+  }
+
+  if (!data?.length) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          <Share2 className="size-8 mx-auto mb-2 opacity-30" />
+          No social posts for this article yet. Create a campaign from the{' '}
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard/social')}
+            className="underline text-foreground"
+          >
+            Social dashboard
+          </button>
+          .
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {data.map((post) => {
+        const meta = PLATFORM_META[post.platform] ?? { label: post.platform, Icon: Share2 };
+        const { Icon } = meta;
+        return (
+          <Card key={post.id}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Icon className="size-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-medium">{meta.label}</CardTitle>
+                </div>
+                <Badge variant={POST_STATUS_COLOR[post.status] ?? 'secondary'} className="text-xs">
+                  {post.status?.replace(/_/g, ' ')}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {post.scheduledAt && (
+                <p className="text-xs text-muted-foreground">
+                  Scheduled: {format(parseISO(String(post.scheduledAt)), 'MMM d, yyyy h:mm a')}
+                </p>
+              )}
+              {post.imageUrls?.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {post.imageUrls.slice(0, 4).map((url, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={i}
+                      src={url}
+                      alt={`Slide ${i + 1}`}
+                      className="h-16 w-12 object-cover rounded border shrink-0"
+                    />
+                  ))}
+                  {post.imageUrls.length > 4 && (
+                    <div className="h-16 w-12 rounded border bg-muted flex items-center justify-center text-xs text-muted-foreground shrink-0">
+                      +{post.imageUrls.length - 4}
+                    </div>
+                  )}
+                </div>
+              )}
+              {post.generatedText && (
+                <p className="text-xs text-muted-foreground line-clamp-2">{post.generatedText}</p>
+              )}
+              {post.platform === 'twitter' && !post.imageUrls?.length && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <ImageSolid className="size-3" /> Text-only tweet
+                </div>
+              )}
+              {post.campaign && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/dashboard/social/${post.campaign.id}`)}
+                  className="inline-flex items-center gap-1 text-xs text-primary underline"
+                >
+                  View campaign <ExternalLink className="size-3" />
+                </button>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Sync featured image button (FIFU second-save workaround)
@@ -2220,24 +2356,7 @@ export function ArticleDetailContent({
 
         {/* Social */}
         <TabsContent value="social" className="mt-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {['Instagram', 'X (Twitter)', 'YouTube', 'LinkedIn'].map((label) => (
-              <Card key={label}>
-                <CardHeader>
-                  <CardTitle className="text-base">{label}</CardTitle>
-                  <CardDescription>Planned in Milestone 10</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Post-publish copy and status will be tracked here.
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <MilestoneNote className="mt-4" milestone={10}>
-            Full social output workflow activates in Milestone 10.
-          </MilestoneNote>
+          <SocialTab articleId={article.id} />
         </TabsContent>
 
         {/* SEO */}

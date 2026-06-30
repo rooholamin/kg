@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { RiCheckboxCircleFill, RiErrorWarningFill } from '@remixicon/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { LoaderCircleIcon, UploadIcon, UserCircle2Icon, XIcon } from 'lucide-react';
+import { HashIcon, LoaderCircleIcon, PlusIcon, UploadIcon, UserCircle2Icon, XIcon } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
@@ -59,6 +59,10 @@ const EMPTY_DEFAULTS = {
   wpUsername: '',
   wpAppPassword: '',
   wpAuthorId: '',
+  colorAccent: '#CCB260',
+  colorLight: '#E0CC7A',
+  colorDark: '#7A5500',
+  socialHashtags: [],
 };
 
 /**
@@ -107,6 +111,10 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
         wpUsername: section.wpUsername ?? '',
         wpAppPassword: section.wpAppPassword ?? '',
         wpAuthorId: section.wpAuthorId ?? '',
+        colorAccent: section.colorAccent ?? '#CCB260',
+        colorLight: section.colorLight ?? '#E0CC7A',
+        colorDark: section.colorDark ?? '#7A5500',
+        socialHashtags: section.socialHashtags ?? [],
       });
       setAvatarPreview(section.characterImage || null);
     } else {
@@ -182,6 +190,10 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
           wpUsername: values.wpUsername || null,
           wpAppPassword: values.wpAppPassword || null,
           wpAuthorId: values.wpAuthorId ? Number(values.wpAuthorId) : null,
+          colorAccent: values.colorAccent || null,
+          colorLight: values.colorLight || null,
+          colorDark: values.colorDark || null,
+          socialHashtags: values.socialHashtags || [],
         }),
       });
       if (!response.ok) {
@@ -225,6 +237,26 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
   });
 
   const isProcessing = mutation.status === 'pending';
+  const [hashtagInput, setHashtagInput] = useState('');
+
+  function addHashtag(raw) {
+    const tag = raw.trim().replace(/^#+/, '');
+    if (!tag) return;
+    const current = form.getValues('socialHashtags') || [];
+    if (!current.includes(tag)) {
+      form.setValue('socialHashtags', [...current, tag], { shouldDirty: true });
+    }
+    setHashtagInput('');
+  }
+
+  function removeHashtag(tag) {
+    const current = form.getValues('socialHashtags') || [];
+    form.setValue(
+      'socialHashtags',
+      current.filter((h) => h !== tag),
+      { shouldDirty: true },
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -579,6 +611,121 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
                             {...field}
                             value={field.value ?? ''}
                           />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* ── Social Media ── */}
+              <div className="border-t pt-4">
+                <p className="text-sm font-semibold text-foreground mb-1">
+                  Social Media
+                </p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Template accent colors and default hashtags used when generating social media posts for this section.
+                </p>
+                <div className="space-y-4">
+                  {/* Color pickers */}
+                  <div className="grid grid-cols-3 gap-4">
+                    {[
+                      { name: 'colorAccent', label: 'Accent' },
+                      { name: 'colorLight', label: 'Light' },
+                      { name: 'colorDark', label: 'Dark' },
+                    ].map(({ name, label }) => (
+                      <FormField
+                        key={name}
+                        control={form.control}
+                        name={name}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{label} color</FormLabel>
+                            <FormControl>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="size-8 rounded border shrink-0"
+                                  style={{ backgroundColor: field.value || '#888' }}
+                                />
+                                <Input
+                                  type="text"
+                                  placeholder="#CCB260"
+                                  maxLength={20}
+                                  {...field}
+                                  value={field.value ?? ''}
+                                  className="font-mono text-sm"
+                                />
+                                <input
+                                  type="color"
+                                  value={field.value || '#888888'}
+                                  onChange={(e) =>
+                                    field.onChange(e.target.value)
+                                  }
+                                  className="size-8 rounded border cursor-pointer shrink-0"
+                                  title="Pick color"
+                                />
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Hashtag tag input */}
+                  <FormField
+                    control={form.control}
+                    name="socialHashtags"
+                    render={() => (
+                      <FormItem>
+                        <FormLabel>Default hashtags</FormLabel>
+                        <FormControl>
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <HashIcon className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                                <Input
+                                  placeholder="Add hashtag…"
+                                  value={hashtagInput}
+                                  onChange={(e) => setHashtagInput(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ',') {
+                                      e.preventDefault();
+                                      addHashtag(hashtagInput);
+                                    }
+                                  }}
+                                  className="pl-8"
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => addHashtag(hashtagInput)}
+                              >
+                                <PlusIcon className="size-4" />
+                              </Button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(form.watch('socialHashtags') || []).map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-xs font-medium text-foreground"
+                                >
+                                  #{tag}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeHashtag(tag)}
+                                    className="text-muted-foreground hover:text-destructive"
+                                  >
+                                    <XIcon className="size-3" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>

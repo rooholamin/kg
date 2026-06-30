@@ -226,6 +226,12 @@ model Section {
   wpUsername            String?
   wpAppPassword         String?
   wpAuthorId            Int?
+  // Social media template colors — fed into {{COLOR_ACCENT/LIGHT/DARK}} placeholders
+  colorAccent           String?
+  colorLight            String?
+  colorDark             String?
+  // Baseline hashtags prepended to AI-generated hashtags for social posts
+  socialHashtags        String[]      @default([])
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   categories            Category[]
@@ -313,6 +319,7 @@ model Article {
   assetRequests        ArticleAssetRequest[]
   automationRuns       ArticleAutomationRun[]
   pipelineEngineLogs   PipelineEngineLog[]
+  socialPosts          SocialPost[]
 
   @@index([topicId])
   @@index([categoryId])
@@ -755,4 +762,128 @@ model ArticleAutomationRun {
   @@index([articleId])
   @@index([workflowType])
   @@index([status])
+}
+
+// ─── Social Content Pipeline ──────────────────────────────────────────────────
+
+enum SocialCampaignStatus {
+  pending
+  running
+  reviewing
+  done
+  failed
+}
+
+enum SocialPlatform {
+  instagram_carousel
+  instagram_story
+  linkedin
+  twitter
+}
+
+enum SocialPostStatus {
+  pending
+  content_generating
+  content_ready
+  exporting
+  uploaded
+  scheduling
+  scheduled
+  failed
+}
+
+model SocialCampaign {
+  id          String               @id @default(uuid())
+  weekStart   DateTime
+  weekEnd     DateTime
+  status      SocialCampaignStatus @default(pending)
+  // Settings captured at creation time (copied from SocialSettings defaults)
+  maxPostsPerPlatform Json
+  campaignBrief       String?  @db.Text
+  editorsChoiceOnly   Boolean  @default(false)
+  includeSections     String[] @default([])
+  // Managed Agent session ID used for this campaign's approval (audit trail)
+  approvalSessionId   String?
+  posts     SocialPost[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@index([status])
+  @@index([weekStart])
+}
+
+model SocialPost {
+  id             String           @id @default(uuid())
+  campaignId     String
+  articleId      String
+  platform       SocialPlatform
+  status         SocialPostStatus @default(pending)
+  // Ordered slide IDs; carousel: 4-7 slides; story/linkedin: 1 element
+  slideIds       String[]         @default([])
+  // Caption editable by user before scheduling; AI-generated initially
+  generatedText  String?          @db.Text
+  hashtags       String[]         @default([])
+  // Ordered CDN URLs matching slideIds order (empty for Twitter)
+  imageUrls      String[]         @default([])
+  // All {{PLACEHOLDER}} values from AI (HOOK, QUOTE, STAT_N, etc.)
+  placeholders   Json?
+  // Export progress tracking (enables "slide X/Y" UI)
+  exportProgress Int              @default(0)
+  exportTotal    Int              @default(0)
+  bufferPostId   String?
+  scheduledAt    DateTime?
+  analyticsData  Json?
+  errorMessage   String?          @db.Text
+  campaign       SocialCampaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  article        Article          @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([campaignId])
+  @@index([articleId])
+  @@index([platform])
+  @@index([status])
+}
+
+/// Global defaults + Buffer profile IDs + Anthropic Managed Agent references
+model SocialSettings {
+  id                          String   @id @default("singleton")
+  // Anthropic Managed Agent IDs (created manually in Anthropic Console)
+  approvalAgentId             String?
+  approvalEnvironmentId       String?
+  // Buffer profile IDs
+  instagramCarouselProfileId  String?
+  instagramStoryProfileId     String?
+  linkedinProfileId           String?
+  twitterProfileId            String?
+  // Default max posts per platform per week (overridable per campaign)
+  defaultMaxInstagramCarousel Int      @default(3)
+  defaultMaxInstagramStory    Int      @default(5)
+  defaultMaxLinkedin          Int      @default(3)
+  defaultMaxTwitter           Int      @default(7)
+  // Preferred post times: "HH:MM"; day bitmask (bit 0=Sun … bit 6=Sat)
+  instagramPostTime           String   @default("09:00")
+  instagramPostDays           Int      @default(62)
+  linkedinPostTime            String   @default("08:00")
+  linkedinPostDays            Int      @default(40)
+  twitterPostTime             String   @default("10:00")
+  twitterPostDays             Int      @default(62)
+  lookbackDays                Int      @default(30)
+  // When false: pipeline auto-schedules immediately after upload (no review pause)
+  requireReview               Boolean  @default(true)
+  updatedAt                   DateTime @updatedAt
+}
+
+/// Runtime state for the ongoing Anthropic Managed Agent approval session
+model SocialAiMemory {
+  id                   String   @id @default("singleton")
+  // Active session ID — reused across multiple campaigns; null = create new session next run
+  activeSessionId      String?
+  // How many campaigns have been approved in this session
+  sessionCampaignCount Int      @default(0)
+  // Rotate to a new session after this many campaigns
+  sessionRotateAfter   Int      @default(10)
+  // Handoff summary written by the agent at rotation; injected as first message in new session
+  handoffSummary       String?  @db.Text
+  updatedAt            DateTime @updatedAt
 }

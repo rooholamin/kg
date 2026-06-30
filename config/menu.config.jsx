@@ -125,6 +125,11 @@ export const MENU_SIDEBAR = [
     icon: Cpu,
     path: '/dashboard/pipeline-engine',
   },
+  {
+    title: 'Social Media',
+    icon: Share2,
+    path: '/dashboard/social',
+  },
   { heading: 'Intelligence' },
   {
     title: 'SEO & Linking',

@@ -30,4 +30,10 @@ export const SectionFormSchema = z.object({
   wpUsername: z.string().max(200).optional().nullable(),
   wpAppPassword: z.string().max(500).optional().nullable(),
   wpAuthorId: z.coerce.number().int().positive().optional().nullable(),
+  // Social media colors
+  colorAccent: z.string().max(20).optional().nullable(),
+  colorLight: z.string().max(20).optional().nullable(),
+  colorDark: z.string().max(20).optional().nullable(),
+  // Social hashtags (stored as array)
+  socialHashtags: z.array(z.string().max(100)).default([]),
 });

@@ -23,6 +23,7 @@ import {
   articleRowsToCalendarEvents,
   calendarMockExcludingArticlePlan,
   scheduledSlotsToCalendarEvents,
+  socialPostsToCalendarEvents,
 } from '@/lib/calendar-article-events';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -90,7 +91,7 @@ async function fetchCalendarData() {
   const r = await apiFetch('/api/calendar?includeSlots=true');
   if (!r.ok) throw new Error('Failed to load calendar');
   const j = await r.json();
-  return { articles: j.data ?? [], slots: j.slots ?? [] };
+  return { articles: j.data ?? [], slots: j.slots ?? [], socialPosts: j.socialPosts ?? [] };
 }
 
 export function CalendarModule() {
@@ -99,13 +100,14 @@ export function CalendarModule() {
   const [source, setSource] = useState('all');
   const [riskFilter, setRiskFilter] = useState('all');
 
-  const { data: calendarData = { articles: [], slots: [] } } = useQuery({
+  const { data: calendarData = { articles: [], slots: [], socialPosts: [] } } = useQuery({
     queryKey: ['calendar', 'articles'],
     queryFn: fetchCalendarData,
   });
 
   const articleRows = calendarData.articles;
   const slotRows = calendarData.slots;
+  const socialRows = calendarData.socialPosts;
 
   const riskCount = useMemo(
     () => articleRows.filter((a) => a.readinessStatus === 'risk').length,
@@ -127,9 +129,14 @@ export function CalendarModule() {
     [slotRows],
   );
 
+  const socialEvents = useMemo(
+    () => socialPostsToCalendarEvents(socialRows),
+    [socialRows],
+  );
+
   const allEvents = useMemo(
-    () => [...articleEvents, ...slotEvents, ...nonArticleMock],
-    [articleEvents, slotEvents, nonArticleMock],
+    () => [...articleEvents, ...slotEvents, ...socialEvents, ...nonArticleMock],
+    [articleEvents, slotEvents, socialEvents, nonArticleMock],
   );
 
   const events = useMemo(() => {
@@ -141,7 +148,7 @@ export function CalendarModule() {
     } else if (source === 'scheduler') {
       list = list.filter((e) => e.source === 'scheduler');
     } else if (source === 'social') {
-      list = list.filter((e) => SOCIAL_SOURCES.has(e.source));
+      list = list.filter((e) => e.source === 'social');
     }
     if (riskFilter === 'risk') {
       list = list.filter((e) => e.readinessStatus === 'risk');
@@ -161,9 +168,9 @@ export function CalendarModule() {
       all: allEvents.length,
       content: articleEvents.length,
       scheduler: slotEvents.length,
-      social: nonArticleMock.length,
+      social: socialEvents.length,
     };
-  }, [allEvents.length, articleEvents.length, slotEvents.length, nonArticleMock.length]);
+  }, [allEvents.length, articleEvents.length, slotEvents.length, socialEvents.length]);
 
   const upcomingArticles = useMemo(() => {
     const now = startOfDay(new Date());
@@ -282,7 +289,11 @@ export function CalendarModule() {
                       type="button"
                       key={e.id}
                       onClick={() => {
-                        if (e.source === 'scheduler') {
+                        if (e.source === 'social') {
+                          if (e.campaignId) {
+                            router.push(`/dashboard/social/${e.campaignId}`);
+                          }
+                        } else if (e.source === 'scheduler') {
                           if (e.articleId) {
                             router.push(`/dashboard/articles/${e.articleId}`);
                           } else if (e.batchId) {
@@ -292,14 +303,14 @@ export function CalendarModule() {
                           router.push(`/dashboard/articles/${e.articleId}`);
                         }
                       }}
-                      disabled={!e.articleId && !e.batchId}
+                      disabled={!e.articleId && !e.batchId && !e.campaignId}
                       className={cn(
                         'relative w-full text-left rounded-md bg-muted/50 p-2 pl-6 text-sm',
                         'after:absolute after:inset-y-2 after:left-2 after:w-1 after:rounded-full',
                         stripForEvent(e),
-                        (e.articleId || e.batchId) &&
+                        (e.articleId || e.batchId || e.campaignId) &&
                           'cursor-pointer hover:bg-muted/80 transition-colors',
-                        !e.articleId && !e.batchId && 'opacity-80 cursor-default',
+                        !e.articleId && !e.batchId && !e.campaignId && 'opacity-80 cursor-default',
                       )}
                     >
                       <div className="font-medium text-foreground leading-tight">
