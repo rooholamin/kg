@@ -796,6 +796,7 @@ const SOCIAL_CHARACTER = {
   done:               { emoji: '🎉', label: 'Campaign ready!' },
   failed:             { emoji: '😓', label: 'Something went wrong' },
   cancelled:          { emoji: '🛑', label: 'Pipeline stopped' },
+  paused:             { emoji: '⏸️', label: 'Pipeline paused' },
 };
 
 function SocialStageNode({ stage, state, isLast }) {
@@ -993,9 +994,11 @@ function SocialTaskWidgets({ campaign, allPosts }) {
   );
 }
 
-function SocialPipelineDashboard({ campaign, allPosts, onStop, isStopping }) {
+function SocialPipelineDashboard({ campaign, allPosts, onPause, onStop, onResume, isStopping, isPausing, isResuming }) {
   const status = campaign.status;
   const isActive = ['pending', 'running', 'content_generating', 'exporting', 'scheduling'].includes(status);
+  const isPaused = status === 'paused';
+  const isResumable = ['paused', 'cancelled', 'failed'].includes(status);
   const hasActivity = status !== 'pending' || allPosts.length > 0;
 
   if (!hasActivity && status === 'pending') return null;
@@ -1018,19 +1021,39 @@ function SocialPipelineDashboard({ campaign, allPosts, onStop, isStopping }) {
                   {status === 'scheduling'         && `Scheduling posts to Buffer…`}
                 </p>
               )}
+              {/* Pause + Stop when running */}
               {isActive && (
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={onPause}
+                    disabled={isPausing}
+                    className="flex items-center gap-1.5 rounded-md border border-yellow-400/60 bg-yellow-50 dark:bg-yellow-900/10 px-2.5 py-1 text-xs font-medium text-yellow-700 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isPausing ? <Loader2 className="size-3 animate-spin" /> : <span className="text-[10px]">⏸</span>}
+                    Pause
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onStop}
+                    disabled={isStopping}
+                    className="flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isStopping ? <Loader2 className="size-3 animate-spin" /> : <StopCircle className="size-3" />}
+                    Stop
+                  </button>
+                </div>
+              )}
+              {/* Resume when paused / stopped / failed */}
+              {isResumable && (
                 <button
                   type="button"
-                  onClick={onStop}
-                  disabled={isStopping}
-                  className="ml-auto flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={onResume}
+                  disabled={isResuming}
+                  className="ml-auto flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isStopping ? (
-                    <Loader2 className="size-3 animate-spin" />
-                  ) : (
-                    <StopCircle className="size-3" />
-                  )}
-                  Stop
+                  {isResuming ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
+                  Resume
                 </button>
               )}
             </div>
@@ -1105,6 +1128,7 @@ const CAMPAIGN_STATUS_CONFIG = {
   done: { label: 'Complete', className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', dot: 'bg-emerald-500' },
   failed: { label: 'Failed', className: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400', dot: 'bg-red-500' },
   cancelled: { label: 'Stopped', className: 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', dot: 'bg-orange-500' },
+  paused: { label: 'Paused', className: 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', dot: 'bg-yellow-500' },
 };
 
 // ---------------------------------------------------------------------------
@@ -1201,19 +1225,30 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const pipelineAction = async (action) => {
+    const res = await apiFetch(`/api/social/campaigns/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) throw new Error(`Failed to ${action} pipeline`);
+  };
+
   const stopMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiFetch(`/api/social/campaigns/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'stop' }),
-      });
-      if (!res.ok) throw new Error('Failed to stop pipeline');
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
-      toast.success('Pipeline stopped');
-    },
+    mutationFn: () => pipelineAction('stop'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['social-campaign', id] }); toast.success('Pipeline stopped'); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const pauseMutation = useMutation({
+    mutationFn: () => pipelineAction('pause'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['social-campaign', id] }); toast.success('Pipeline paused'); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: () => pipelineAction('resume'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['social-campaign', id] }); toast.success('Pipeline resuming…'); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -1446,8 +1481,12 @@ export default function SocialCampaignPage({ params }) {
         <SocialPipelineDashboard
           campaign={campaign}
           allPosts={allPosts}
+          onPause={() => pauseMutation.mutate()}
           onStop={() => stopMutation.mutate()}
+          onResume={() => resumeMutation.mutate()}
+          isPausing={pauseMutation.isPending}
           isStopping={stopMutation.isPending}
+          isResuming={resumeMutation.isPending}
         />
       </div>
 

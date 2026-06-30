@@ -162,12 +162,12 @@ export async function runContentGeneration(campaignId) {
 
   let succeeded = 0;
   for (const post of posts) {
-    // Bail if the campaign was cancelled while we were mid-loop
+    // Bail if the campaign was paused or cancelled while we were mid-loop
     const current = await prisma.socialCampaign.findUnique({
       where: { id: campaignId },
       select: { status: true },
     });
-    if (current?.status === 'cancelled') break;
+    if (current?.status === 'cancelled' || current?.status === 'paused') break;
 
     try {
       const section = post.article.category?.section;
@@ -461,7 +461,54 @@ export async function checkAndFinalizeCampaign(campaignId) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. pullAnalyticsForCampaign
+// 8. resumePipeline
+// Recovers a paused, cancelled, or interrupted campaign by:
+//   1. Resetting stuck mid-flight posts back to their previous stable state
+//   2. Re-running content generation for any remaining pending posts
+//   3. Re-running export for any content_ready posts
+// ---------------------------------------------------------------------------
+export async function resumePipeline(campaignId) {
+  await logInfo(campaignId, 'pipeline_resume', 'Pipeline resumed by user');
+
+  // Reset any posts that were mid-flight when the pipeline was interrupted
+  await prisma.socialPost.updateMany({
+    where: { campaignId, status: 'content_generating' },
+    data: { status: 'pending', errorMessage: null },
+  });
+  await prisma.socialPost.updateMany({
+    where: { campaignId, status: 'exporting' },
+    data: { status: 'content_ready', exportProgress: 0, imageUrls: [], errorMessage: null },
+  });
+
+  const pendingCount = await prisma.socialPost.count({ where: { campaignId, status: 'pending' } });
+  const contentReadyCount = await prisma.socialPost.count({ where: { campaignId, status: 'content_ready' } });
+
+  // Resume content generation if there are pending posts
+  if (pendingCount > 0) {
+    await prisma.socialCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'content_generating' },
+    });
+    await runContentGeneration(campaignId);
+  }
+
+  // Export all content-ready posts
+  if (pendingCount > 0 || contentReadyCount > 0) {
+    await prisma.socialCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'exporting' },
+    });
+    const posts = await prisma.socialPost.findMany({
+      where: { campaignId, status: 'content_ready' },
+    });
+    await Promise.allSettled(posts.map((p) => runExport(p.id)));
+  }
+
+  await checkAndFinalizeCampaign(campaignId);
+}
+
+// ---------------------------------------------------------------------------
+// 9. pullAnalyticsForCampaign
 // ---------------------------------------------------------------------------
 export async function pullAnalyticsForCampaign(campaignId) {
   const { pullAnalytics } = await import('./buffer.service');

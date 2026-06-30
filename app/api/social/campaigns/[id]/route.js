@@ -6,6 +6,7 @@ import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 import { deleteFromS3 } from '@/services/social-export.service';
 import { logInfo } from '@/lib/social-logger';
+import { resumePipeline } from '@/services/social-pipeline.service';
 
 export async function GET(_req, { params }) {
   try {
@@ -61,20 +62,27 @@ export async function PATCH(req, { params }) {
     const { action } = await req.json();
 
     if (action === 'stop') {
-      // Mark remaining pending/queued posts as cancelled so the pipeline skips them
       await prisma.socialPost.updateMany({
         where: { campaignId: id, status: { in: ['pending', 'content_generating'] } },
         data: { status: 'failed', errorMessage: 'Pipeline stopped by user' },
       });
-
-      await prisma.socialCampaign.update({
-        where: { id },
-        data: { status: 'cancelled' },
-      });
-
+      await prisma.socialCampaign.update({ where: { id }, data: { status: 'cancelled' } });
       await logInfo(id, 'pipeline_stopped', 'Pipeline stopped by user');
-
       return NextResponse.json({ message: 'Pipeline stopped' });
+    }
+
+    if (action === 'pause') {
+      await prisma.socialCampaign.update({ where: { id }, data: { status: 'paused' } });
+      await logInfo(id, 'pipeline_paused', 'Pipeline paused by user');
+      return NextResponse.json({ message: 'Pipeline paused' });
+    }
+
+    if (action === 'resume') {
+      // Fire-and-forget resume — same pattern as initial pipeline
+      resumePipeline(id).catch((err) =>
+        console.error('[social-pipeline resume]', err),
+      );
+      return NextResponse.json({ message: 'Pipeline resuming' });
     }
 
     return NextResponse.json({ message: 'Unknown action' }, { status: 400 });

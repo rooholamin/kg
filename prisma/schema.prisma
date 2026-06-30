@@ -775,6 +775,7 @@ enum SocialCampaignStatus {
   exporting
   scheduling
   reviewing
+  paused
   done
   failed
   cancelled
