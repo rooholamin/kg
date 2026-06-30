@@ -164,42 +164,40 @@ export async function runContentGeneration(campaignId) {
 
   const settings = await getSocialSettings();
 
-  const results = await Promise.allSettled(
-    posts.map(async (post) => {
-      try {
-        const section = post.article.category?.section;
-        if (!section) throw new Error('Article has no section');
+  let succeeded = 0;
+  for (const post of posts) {
+    try {
+      const section = post.article.category?.section;
+      if (!section) throw new Error('Article has no section');
 
-        const { result } = await generatePostContent({
-          campaignId,
-          postId: post.id,
-          article: post.article,
-          section,
-          platform: post.platform,
-          settings,
-        });
+      const { result } = await generatePostContent({
+        campaignId,
+        postId: post.id,
+        article: post.article,
+        section,
+        platform: post.platform,
+        settings,
+      });
 
-        await prisma.socialPost.update({
-          where: { id: post.id },
-          data: {
-            status: 'content_ready',
-            slideIds: result.slideIds || [],
-            generatedText: result.text || '',
-            hashtags: result.hashtags || [],
-            placeholders: result.placeholders || {},
-            exportTotal: (result.slideIds || []).length,
-          },
-        });
-      } catch (error) {
-        await prisma.socialPost.update({
-          where: { id: post.id },
-          data: { status: 'failed', errorMessage: error.message },
-        });
-      }
-    }),
-  );
-
-  const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      await prisma.socialPost.update({
+        where: { id: post.id },
+        data: {
+          status: 'content_ready',
+          slideIds: result.slideIds || [],
+          generatedText: result.text || '',
+          hashtags: result.hashtags || [],
+          placeholders: result.placeholders || {},
+          exportTotal: (result.slideIds || []).length,
+        },
+      });
+      succeeded++;
+    } catch (error) {
+      await prisma.socialPost.update({
+        where: { id: post.id },
+        data: { status: 'failed', errorMessage: error.message },
+      });
+    }
+  }
   await logInfo(campaignId, 'content_done', `Content generation complete — ${succeeded}/${posts.length} succeeded`);
   return succeeded;
 }
