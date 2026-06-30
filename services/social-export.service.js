@@ -39,6 +39,19 @@ function getSlideConfig(slideId) {
 // ---------------------------------------------------------------------------
 // Placeholder resolution
 // ---------------------------------------------------------------------------
+
+/**
+ * Falls back to the bundled headshot at assets/photos/{firstname}.jpg when
+ * the Section.characterImage CDN URL is not yet populated.
+ * The path is relative to any template subdirectory (carousel/, story/, linkedin/)
+ * so that ../assets/photos/ resolves correctly when loaded via page.goto file://.
+ */
+function writerPhotoPath(section) {
+  const fullName = section.characterName || section.name || '';
+  const firstName = fullName.split(' ')[0].toLowerCase();
+  return firstName ? `../assets/photos/${firstName}.jpg` : '';
+}
+
 function buildPlaceholders(post, article, section, articleUrl, slideIndex, slideTotal) {
   const p = post.placeholders || {};
   return {
@@ -46,7 +59,7 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
     ART_TITLE: article.title || '',
     WRITER_NAME: section.characterName || section.name || '',
     WRITER_NAME_UPPER: (section.characterName || section.name || '').toUpperCase(),
-    WRITER_PHOTO: section.characterImage || '',
+    WRITER_PHOTO: section.characterImage || writerPhotoPath(section),
     SECTION_NAME: section.name || '',
     SECTION_NAME_UPPER: (section.name || '').toUpperCase(),
     TONE: section.characterTone || '',
