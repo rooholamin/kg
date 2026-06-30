@@ -172,6 +172,59 @@ Based on your editorial memory of what has already been published, select which 
 }
 
 // ---------------------------------------------------------------------------
+// Slide layout descriptions for the system prompt
+// ---------------------------------------------------------------------------
+const SLIDE_DESCRIPTIONS = {
+  // Carousel
+  'slide-01-cover':
+    'Cover slide — hero image full bleed, large article title, section name, writer name. Always use as the first carousel slide.',
+  'slide-02-statement':
+    'Bold statement slide — single powerful sentence (HOOK) displayed large on a dark background. Great for a provocative opening line.',
+  'slide-03-image-text':
+    'Image + text split — left half is an article image, right half has a short paragraph (NARRATIVE). Good for visual storytelling.',
+  'slide-04-narrative':
+    'Text-heavy slide — a 2-3 sentence narrative block (NARRATIVE) with a subtle background. Use for context or background.',
+  'slide-05-pull-quote':
+    'Pull quote slide — a single quotation (QUOTE) displayed prominently. Great for a memorable expert quote from the article.',
+  'slide-06-key-stat':
+    'Key statistic slide — one large number (STAT_N) and a short label (STAT_L). Use when the article has a standout data point.',
+  'slide-07-features':
+    'Features grid — four labelled points (FEAT_1_LABEL/DESC through FEAT_4_LABEL/DESC). Good for listicle or "reasons why" content.',
+  'slide-08-steps':
+    'Steps slide — three numbered steps (STEP_1_TITLE/DESC through STEP_3_TITLE/DESC). Use for how-to or process articles.',
+  'slide-09-full-image':
+    'Full-bleed image slide — article image fills the entire frame with a short caption (IMGBOX_CAPTION) overlay. Visual pause slide.',
+  'slide-10-image-box':
+    'Image with boxed caption — image on top, text box below (IMGBOX_CAPTION). Use for a striking image with explanatory text.',
+  'slide-11-end-card':
+    'End card — writer bio/section tagline (END_CARD_BIO), article URL, logo. Always use as the final carousel slide.',
+  // Story
+  'story-01-cover-image':
+    'Story cover — full-bleed hero image with article title overlaid. Classic opening story frame.',
+  'story-02-dark-statement':
+    'Dark statement story — bold HOOK text on a dark background. High-impact single-message frame.',
+  'story-03-split-image':
+    'Split story — image on the top half, short NARRATIVE text on the bottom half.',
+  'story-04-pull-quote':
+    'Pull quote story — QUOTE displayed large, centred, with minimal design. Great for shareable quotes.',
+  'story-05-stat-card':
+    'Stat story — STAT_N and STAT_L displayed prominently. Use when the article leads with a strong data point.',
+  'story-06-editorial-light':
+    'Editorial light story — clean, light background with article title and a 1-2 sentence teaser. Professional editorial feel.',
+  // LinkedIn
+  'linkedin-01-bottom-anchor':
+    'Bottom anchor — image fills most of the frame, title and section anchored to the bottom strip.',
+  'linkedin-02-left-panel':
+    'Left panel — dark left column with title/section, right side is the article image. Clean professional split.',
+  'linkedin-03-center-vignette':
+    'Centre vignette — hero image with dark vignette, title centred over the image. Bold editorial look.',
+  'linkedin-04-stat-overlay':
+    'Stat overlay — article image with a prominent STAT_N + STAT_L overlay. Data-forward LinkedIn format.',
+  'linkedin-05-quote-overlay':
+    'Quote overlay — article image with a QUOTE overlaid in a styled box. Great for thought-leadership posts.',
+};
+
+// ---------------------------------------------------------------------------
 // generatePostContent
 // Fresh messages.create per post — no session needed.
 // ---------------------------------------------------------------------------
@@ -196,33 +249,53 @@ export async function generatePostContent({ article, section, platform, toneSeed
   // Extract plain text from TipTap content JSON
   const bodyText = extractPlainText(article.content);
 
-  const systemPrompt = `You are a social media content creator for KG Hub, a premium real estate publication. 
-You create platform-specific social media content based on articles.
-Your tone should match the section voice: ${section.characterTone || 'professional and engaging'}.
-Writing style: ${section.characterWritingStyle || 'clear and concise'}.
-${toneSeed ? `Tone variation requested: ${toneSeed}` : ''}
+  // Build slide reference with descriptions so the AI understands each layout
+  const slideReference = availableSlides
+    .map((id) => `- ${id}: ${SLIDE_DESCRIPTIONS[id] || id}`)
+    .join('\n');
+
+  const carouselRule =
+    platform === 'instagram_carousel'
+      ? '\nSelection rule: pick 4–7 slides. Always include slide-01-cover (first) and slide-11-end-card (last). Choose the middle slides that best match the article content type.'
+      : platform === 'instagram_story' || platform === 'linkedin'
+        ? '\nSelection rule: pick exactly 1 template that best matches the article.'
+        : '';
+
+  const systemPrompt = `You are a social media content strategist for KG Hub, a premium real estate publication.
+
+Your job is to analyse an article and produce platform-optimised social media content: a caption, hashtags, and a selection of visual slide templates. Each template has specific placeholder fields that must be filled with content extracted or derived from the article.
+
+AVAILABLE SLIDE TEMPLATES:
+${slideReference}
+${carouselRule}
+
+PLATFORM: ${platformName}
+CAPTION CHARACTER LIMIT: ${charLimit} — strictly enforce this.
+${toneSeed ? `TONE VARIATION: ${toneSeed}` : ''}
 
 Always respond with ONLY valid JSON, no other text or markdown.`;
 
-  const slideGuide = availableSlides.length
-    ? `\nAvailable slides/templates: ${availableSlides.join(', ')}\nFor carousel: pick 4-7 slides; always include slide-01-cover and slide-11-end-card.\nFor story/linkedin: pick exactly 1 template.`
-    : '';
-
   const hashtagBase = section.socialHashtags?.length
-    ? `Base hashtags to always include: ${section.socialHashtags.join(' ')}`
+    ? `Base hashtags (always include these): ${section.socialHashtags.join(' ')}`
     : '';
 
-  const userMessage = `Create a ${platformName} post for this article.
+  const userMessage = `Create a ${platformName} post for the following article.
 
-Article title: ${article.title}
-Article summary: ${article.summary || ''}
-Article body: ${bodyText.slice(0, 3000)}
-Section: ${section.name}
-Writer: ${section.characterName || 'KG Hub'}
+ARTICLE TITLE: ${article.title}
+ARTICLE SUMMARY: ${article.summary || ''}
+ARTICLE BODY:
+${bodyText.slice(0, 3000)}
+
+SECTION: ${section.name}
+WRITER TONE: ${section.characterTone || 'professional and engaging'}
+WRITING STYLE: ${section.characterWritingStyle || 'clear and concise'}
 ${hashtagBase}
-${slideGuide}
 
-Character limit for caption: ${charLimit}
+Instructions:
+- Select the slide template(s) that best fit this article's content type and key messages.
+- Fill ALL placeholder fields for each selected slide using content from the article.
+- Write the caption in the writer's tone and style. Stay within ${charLimit} characters.
+- Add relevant hashtags (include the base hashtags plus topic-specific ones).
 
 Return JSON with this structure:
 {
