@@ -269,6 +269,14 @@ export async function runExport(postId) {
 
   if (!post) throw new Error(`Post not found: ${postId}`);
 
+  // Reset failed/stale state so a retry starts clean
+  if (post.status === 'failed' || post.status === 'exporting') {
+    await prisma.socialPost.update({
+      where: { id: postId },
+      data: { status: 'content_ready', errorMessage: null, exportProgress: 0, imageUrls: [] },
+    });
+  }
+
   // Twitter posts need no image export
   if (post.platform === 'twitter') {
     await logInfo(post.campaignId, 'export_skip', 'Twitter post — no image export needed', null, postId);
