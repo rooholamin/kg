@@ -437,9 +437,14 @@ function extractJson(text) {
 
 function extractPlainText(contentJson) {
   if (!contentJson) return '';
+  // Format 1: HTML wrapper { type: 'html', html: '...' }
+  if (contentJson.type === 'html' && typeof contentJson.html === 'string') {
+    return contentJson.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  // Format 2: TipTap/ProseMirror doc { type: 'doc', content: [...] }
   if (typeof contentJson === 'string') return contentJson;
   try {
-    const doc = typeof contentJson === 'string' ? JSON.parse(contentJson) : contentJson;
+    const doc = contentJson;
     const texts = [];
     function traverse(node) {
       if (node.type === 'text') texts.push(node.text || '');
