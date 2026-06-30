@@ -203,18 +203,29 @@ export async function exportPost(postId) {
       const rawHtml = await fs.readFile(templatePath, 'utf-8');
       const filledHtml = fillTemplate(rawHtml, placeholders);
 
+      // Write filled HTML to a temp file inside the template directory so that
+      // page.goto('file://...') establishes a proper file:// origin. This is
+      // required because page.setContent() with a file:// baseURL doesn't give
+      // the page a real file origin, which causes Chromium to block both
+      // @font-face files in parent directories AND external image requests.
+      const tmpHtmlPath = path.join(templateDir, `_tmp-export-${Date.now()}-${i}.html`);
+      await fs.writeFile(tmpHtmlPath, filledHtml);
+
       const context = await browser.newContext({
         viewport: slideConf.viewport,
         deviceScaleFactor: slideConf.deviceScaleFactor,
       });
       const page = await context.newPage();
 
-      await page.setContent(filledHtml, {
-        baseURL: `file://${templateDir}/`,
-        waitUntil: 'networkidle',
-      });
-      // Extra buffer for custom fonts / late-rendering CSS animations
-      await page.waitForTimeout(500);
+      try {
+        await page.goto(`file://${tmpHtmlPath}`, { waitUntil: 'networkidle' });
+      } finally {
+        await fs.unlink(tmpHtmlPath).catch(() => {});
+      }
+
+      // Wait for fonts to finish loading, then a short buffer for CSS animations
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(300);
 
       const screenshot = await page.locator('.export').screenshot({ type: 'png' });
       await context.close();
