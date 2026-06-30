@@ -182,10 +182,10 @@ export async function exportPost(postId) {
 
       await page.setContent(filledHtml, {
         baseURL: `file://${templateDir}/`,
-        waitUntil: 'domcontentloaded',
+        waitUntil: 'networkidle',
       });
-      // Wait for fonts to load
-      await page.waitForTimeout(3000);
+      // Extra buffer for custom fonts / late-rendering CSS animations
+      await page.waitForTimeout(500);
 
       const screenshot = await page.locator('.export').screenshot({ type: 'png' });
       await context.close();
