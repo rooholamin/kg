@@ -304,7 +304,10 @@ export default function SocialSettingsPage() {
                 max={14}
                 step={0.5}
                 value={form.timezoneOffset ?? 0}
-                onChange={(e) => setField('timezoneOffset', parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  setField('timezoneOffset', isNaN(v) ? 0 : v);
+                }}
                 placeholder="0"
               />
             </div>

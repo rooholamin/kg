@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
@@ -363,30 +364,128 @@ function LightboxViewer({ urls }) {
 // ---------------------------------------------------------------------------
 // Post card
 // ---------------------------------------------------------------------------
-function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
-  const [editingCaption, setEditingCaption] = useState(false);
+function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
   const [caption, setCaption] = useState(post.generatedText || '');
-  const [captionExpanded, setCaptionExpanded] = useState(false);
-  const [editingPlaceholders, setEditingPlaceholders] = useState(false);
   const [localPlaceholders, setLocalPlaceholders] = useState(post.placeholders || {});
   const [regenerateInstruction, setRegenerateInstruction] = useState('');
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
 
-  // Sync local state when post data refreshes
   useEffect(() => {
-    if (!editingCaption) setCaption(post.generatedText || '');
-    if (!editingPlaceholders) setLocalPlaceholders(post.placeholders || {});
-  }, [post.generatedText, post.hashtags, post.placeholders]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (open) {
+      setCaption(post.generatedText || '');
+      setLocalPlaceholders(post.placeholders || {});
+      setRegenerateInstruction('');
+      setShowRegeneratePrompt(false);
+    }
+  }, [open, post.generatedText, post.placeholders]);
 
-  function saveCaption() {
-    onUpdate(post.id, { generatedText: caption });
-    setEditingCaption(false);
+  function handleSave() {
+    const updates = { placeholders: localPlaceholders };
+    if (post.platform !== 'instagram_story') updates.generatedText = caption;
+    onUpdate(post.id, updates);
+    onClose();
   }
 
-  function savePlaceholders() {
-    onUpdate(post.id, { placeholders: localPlaceholders });
-    setEditingPlaceholders(false);
+  function handleRegenerate() {
+    onRegenerate(post.id, regenerateInstruction || undefined);
+    setShowRegeneratePrompt(false);
+    setRegenerateInstruction('');
+    onClose();
   }
+
+  const hasContent = post.generatedText || (post.placeholders && Object.keys(post.placeholders).length > 0);
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-sm leading-snug pr-6">{post.article?.title || 'Edit post'}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-1">
+          {/* Caption / Tweet */}
+          {post.platform !== 'instagram_story' && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {post.platform === 'twitter' ? 'Tweet' : 'Caption'}
+              </span>
+              <Textarea
+                rows={5}
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                className="text-sm resize-none"
+                placeholder="No caption yet"
+              />
+            </div>
+          )}
+
+          {/* Template fields */}
+          {post.placeholders && Object.keys(post.placeholders).length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Image Text</span>
+              <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                {Object.keys(localPlaceholders).map((key) => (
+                  <div key={key} className="grid grid-cols-[110px_1fr] gap-2 items-center">
+                    <span className="text-[10px] font-mono font-medium text-muted-foreground truncate">{key}</span>
+                    <input
+                      type="text"
+                      value={localPlaceholders[key] || ''}
+                      onChange={(e) => setLocalPlaceholders((p) => ({ ...p, [key]: e.target.value }))}
+                      className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Regenerate */}
+          {!showRegeneratePrompt ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowRegeneratePrompt(true)}
+            >
+              <Sparkles className="size-3" />
+              Regenerate with instructions…
+            </button>
+          ) : (
+            <div className="space-y-2 rounded-xl border p-3 bg-muted/40">
+              <p className="text-xs font-medium">What should the agent change?</p>
+              <Textarea
+                rows={2}
+                className="text-xs resize-none"
+                placeholder='e.g. "make it more concise" or "focus on the stat"'
+                value={regenerateInstruction}
+                onChange={(e) => setRegenerateInstruction(e.target.value)}
+              />
+              <div className="flex gap-1.5">
+                <Button size="sm" onClick={handleRegenerate}>
+                  <Sparkles className="size-3 mr-1" />
+                  Send
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowRegeneratePrompt(false)}>Cancel</Button>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          {!showRegeneratePrompt && (
+            <div className="flex gap-2 pt-1 border-t">
+              <Button size="sm" onClick={handleSave} disabled={!hasContent}>Save</Button>
+              <Button size="sm" variant="outline" onClick={onClose}>Cancel</Button>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [regenerateInstruction, setRegenerateInstruction] = useState('');
+  const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
 
   function handleRegenerate() {
     onRegenerate(post.id, regenerateInstruction || undefined);
@@ -399,7 +498,19 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
     post.status === 'exporting' ||
     post.status === 'scheduling';
 
+  const hasEditableContent = post.status === 'content_ready' || post.status === 'uploaded' ||
+    post.generatedText || (post.placeholders && Object.keys(post.placeholders).length > 0);
+
   return (
+    <>
+      <PostEditModal
+        post={post}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onUpdate={onUpdate}
+        onRegenerate={onRegenerate}
+      />
+
     <Card className={`overflow-hidden transition-all duration-200 ${post.status === 'failed' ? 'border-red-200 dark:border-red-900/50' : ''}`}>
       {/* Card top accent bar */}
       <div className={`h-0.5 w-full ${
@@ -455,96 +566,11 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
           </div>
         )}
 
-        {/* Caption — shown for all platforms except instagram_story (stories have no text post) */}
-        {post.platform !== 'instagram_story' && (
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {post.platform === 'twitter' ? 'Tweet' : 'Caption'}
-              </span>
-              {!editingCaption && (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
-                  onClick={() => setEditingCaption(true)}
-                >
-                  <Pencil className="size-3" />
-                  Edit
-                </button>
-              )}
-            </div>
-
-            {editingCaption ? (
-              <div className="space-y-2">
-                <Textarea
-                  rows={4}
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  className="text-sm resize-none"
-                />
-                <div className="flex gap-1.5">
-                  <Button size="sm" onClick={saveCaption}>Save</Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditingCaption(false)}>Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <p className={`text-xs text-muted-foreground leading-relaxed ${captionExpanded ? '' : 'line-clamp-3'}`}>
-                  {post.generatedText || <em className="text-muted-foreground/50">No text yet</em>}
-                </p>
-                {post.generatedText && post.generatedText.length > 180 && (
-                  <button
-                    type="button"
-                    className="text-xs text-primary mt-0.5 hover:underline"
-                    onClick={() => setCaptionExpanded((v) => !v)}
-                  >
-                    {captionExpanded ? 'Show less' : 'Show more'}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Template Fields (placeholders) — what appears inside the generated images */}
-        {post.placeholders && Object.keys(post.placeholders).length > 0 && (
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Image Text</span>
-              {!editingPlaceholders ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
-                  onClick={() => setEditingPlaceholders(true)}
-                >
-                  <Pencil className="size-3" />
-                  Edit
-                </button>
-              ) : (
-                <div className="flex gap-1.5">
-                  <Button size="sm" onClick={savePlaceholders}>Save</Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditingPlaceholders(false)}>Cancel</Button>
-                </div>
-              )}
-            </div>
-            <div className="space-y-1.5 rounded-lg border bg-muted/20 p-2.5">
-              {Object.entries(editingPlaceholders ? localPlaceholders : post.placeholders).map(([key, value]) => (
-                <div key={key} className="grid grid-cols-[100px_1fr] gap-2 items-start">
-                  <span className="text-[10px] font-mono font-medium text-muted-foreground pt-1 truncate">{key}</span>
-                  {editingPlaceholders ? (
-                    <input
-                      type="text"
-                      value={localPlaceholders[key] || ''}
-                      onChange={(e) => setLocalPlaceholders((p) => ({ ...p, [key]: e.target.value }))}
-                      className="w-full rounded border border-input bg-background px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
-                  ) : (
-                    <span className="text-xs text-foreground leading-snug break-words">{value || <em className="text-muted-foreground/50">empty</em>}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Caption preview — read-only, truncated */}
+        {post.platform !== 'instagram_story' && post.generatedText && (
+          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+            {post.generatedText}
+          </p>
         )}
 
         {/* Error */}
@@ -574,7 +600,7 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
           </div>
         )}
 
-        {/* Regenerate instruction prompt */}
+        {/* Regenerate inline prompt (kept for quick access from action button) */}
         {showRegeneratePrompt && (
           <div className="space-y-2 rounded-xl border p-3 bg-muted/40">
             <p className="text-xs font-medium">What should the agent change?</p>
@@ -606,6 +632,18 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
 
         {/* Actions */}
         <div className="flex flex-wrap gap-1.5 pt-1 border-t">
+          {hasEditableContent && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => setEditOpen(true)}
+              disabled={isProcessing}
+            >
+              <Pencil className="size-3 mr-1" />
+              Edit
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -631,6 +669,7 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
         </div>
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -1413,7 +1452,7 @@ export default function SocialCampaignPage({ params }) {
       </div>
 
       {/* Week Calendar */}
-      <div className="overflow-x-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div className="overflow-x-auto pb-2 mt-6" style={{ WebkitOverflowScrolling: 'touch' }}>
         <div className="flex" style={{ minWidth: `calc(3rem + 7 * 160px)` }}>
           {/* Time axis */}
           <div className="relative w-12 shrink-0" style={{ minHeight: 560 }}>
