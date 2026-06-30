@@ -58,9 +58,8 @@ export async function schedulePost({ postId, settings }) {
       ? Math.floor(new Date(post.scheduledAt).getTime() / 1000)
       : null;
 
-    // Build caption: generatedText + hashtags
-    const hashtags = (post.hashtags || []).join(' ');
-    const caption = [post.generatedText, hashtags].filter(Boolean).join('\n\n');
+    // Stories are image-only; other platforms use generatedText as caption
+    const caption = post.platform === 'instagram_story' ? '' : (post.generatedText || '');
 
     const body = new URLSearchParams({
       access_token: getToken(),

@@ -36,7 +36,6 @@ import {
   ImageIcon,
   Eye,
   Pencil,
-  Hash,
   Clock,
   CheckCircle2,
   XCircle,
@@ -364,7 +363,7 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
         )}
 
         {/* Caption */}
-        {(post.platform !== 'twitter' || post.generatedText) && (
+        {(post.platform !== 'twitter' && post.platform !== 'instagram_story') && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Caption</span>
@@ -414,26 +413,6 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
                 )}
               </div>
             )}
-          </div>
-        )}
-
-        {/* Hashtags */}
-        {post.hashtags?.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Hash className="size-3" />
-              <span>{post.hashtags.length} hashtags</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {post.hashtags.map((h) => (
-                <span
-                  key={h}
-                  className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
-                >
-                  #{h}
-                </span>
-              ))}
-            </div>
           </div>
         )}
 
