@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, use, useEffect, useRef, useMemo } from 'react';
+import { useState, use, useEffect, useRef, useMemo, useCallback } from 'react';
+import useEmblaCarousel from 'embla-carousel-react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
@@ -30,6 +31,8 @@ import {
   Activity,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
+  X as XIcon,
   ImageIcon,
   Eye,
   Pencil,
@@ -138,6 +141,134 @@ function PostStatusBadge({ status }) {
 }
 
 // ---------------------------------------------------------------------------
+// CarouselViewer — Embla slider for instagram_carousel posts
+// ---------------------------------------------------------------------------
+function CarouselViewer({ urls }) {
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false });
+  const [current, setCurrent] = useState(0);
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setCurrent(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    emblaApi.on('select', onSelect);
+    return () => emblaApi.off('select', onSelect);
+  }, [emblaApi, onSelect]);
+
+  return (
+    <div className="space-y-2">
+      <div className="relative overflow-hidden rounded-lg" ref={emblaRef}>
+        <div className="flex">
+          {urls.map((url, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={i}
+              src={url}
+              alt={`Slide ${i + 1}`}
+              className="flex-[0_0_100%] w-full object-cover rounded-lg"
+              style={{ aspectRatio: '4/5' }}
+            />
+          ))}
+        </div>
+        {/* Prev / Next */}
+        {urls.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={() => emblaApi?.scrollPrev()}
+              disabled={current === 0}
+              className="absolute left-1.5 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 disabled:opacity-30 transition-opacity"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => emblaApi?.scrollNext()}
+              disabled={current === urls.length - 1}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 disabled:opacity-30 transition-opacity"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </>
+        )}
+        {/* Counter badge */}
+        <span className="absolute bottom-2 right-2 bg-black/60 text-white text-xs font-medium px-2 py-0.5 rounded-full">
+          {current + 1}/{urls.length}
+        </span>
+      </div>
+      {/* Dot indicators */}
+      {urls.length > 1 && (
+        <div className="flex justify-center gap-1">
+          {urls.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => emblaApi?.scrollTo(i)}
+              className={`size-1.5 rounded-full transition-colors ${i === current ? 'bg-foreground' : 'bg-muted-foreground/30'}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LightboxViewer — click to open full-size for story / linkedin posts
+// ---------------------------------------------------------------------------
+function LightboxViewer({ urls }) {
+  const [open, setOpen] = useState(null); // index of open image
+
+  return (
+    <>
+      <div className="flex gap-1.5 flex-wrap">
+        {urls.map((url, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={i}
+            src={url}
+            alt={`Image ${i + 1}`}
+            onClick={() => setOpen(i)}
+            className="h-24 w-auto object-cover rounded-lg border cursor-zoom-in hover:opacity-90 transition-opacity"
+          />
+        ))}
+      </div>
+
+      {/* Lightbox overlay */}
+      {open !== null && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setOpen(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={urls[open]}
+            alt={`Image ${open + 1}`}
+            className="max-h-full max-w-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setOpen(null)}
+            className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5 transition-colors"
+          >
+            <XIcon className="size-5" />
+          </button>
+          {urls.length > 1 && (
+            <span className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-3 py-1 rounded-full">
+              {open + 1} / {urls.length}
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Post card
 // ---------------------------------------------------------------------------
 function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
@@ -204,24 +335,18 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
           </div>
         )}
 
-        {/* Slide thumbnails */}
+        {/* Image viewer — slider for carousel, lightbox for others */}
         {post.imageUrls?.length > 0 && (
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ImageIcon className="size-3" />
-              <span>{post.imageUrls.length} slide{post.imageUrls.length > 1 ? 's' : ''}</span>
+              <span>{post.imageUrls.length} {post.platform === 'instagram_carousel' ? 'slide' : 'image'}{post.imageUrls.length > 1 ? 's' : ''}</span>
             </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-              {post.imageUrls.map((url, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={i}
-                  src={url}
-                  alt={`Slide ${i + 1}`}
-                  className="h-24 w-[68px] shrink-0 object-cover rounded-lg border ring-1 ring-border"
-                />
-              ))}
-            </div>
+            {post.platform === 'instagram_carousel' ? (
+              <CarouselViewer urls={post.imageUrls} />
+            ) : (
+              <LightboxViewer urls={post.imageUrls} />
+            )}
           </div>
         )}
 
