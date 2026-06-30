@@ -391,7 +391,7 @@ export async function syncTopicToWordPress(topicId, userId = null) {
 
 /**
  * Publish an article to WordPress using its section's credentials.
- * Sets article.wordpressPostId and advances status to 'publishing'.
+ * Sets article.wordpressPostId and advances status to 'post_publish'.
  * On failure, logs the error and leaves status as 'scheduling' (retryable).
  * @param {string} articleId
  * @param {string | null} [userId]
@@ -498,7 +498,7 @@ export async function publishArticleToWordPress(articleId, userId = null) {
 
     await prisma.article.update({
       where: { id: articleId },
-      data: { wordpressPostId, status: 'publishing' },
+      data: { wordpressPostId, status: 'post_publish' },
     });
 
     await contentLog({

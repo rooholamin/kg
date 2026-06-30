@@ -54,6 +54,9 @@ export async function GET(req) {
     const status = searchParams.get('status') || null;
     const approvedBy = searchParams.get('approvedBy') || null;
     const rejectedBy = searchParams.get('rejectedBy') || null;
+    const publishDateFrom = searchParams.get('publishDateFrom') || null;
+    const publishDateTo = searchParams.get('publishDateTo') || null;
+    const countOnly = searchParams.get('countOnly') === 'true';
 
     const rows = await getArticles({
       topicId: topicId && topicId !== 'all' ? topicId : null,
@@ -61,7 +64,13 @@ export async function GET(req) {
       status: status && status !== 'all' ? status : null,
       approvedBySet: approvedBy === 'set',
       rejectedBySet: rejectedBy === 'set',
+      publishDateFrom,
+      publishDateTo,
     });
+
+    if (countOnly) {
+      return NextResponse.json({ total: rows.length });
+    }
 
     const data = rows.map(mapArticle);
 

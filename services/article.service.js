@@ -169,7 +169,7 @@ export async function getArticleVersions(articleId) {
  * @param {{ topicId?: string | null; categoryId?: string | null; status?: string | null }} [filters]
  */
 export async function getArticles(filters = {}) {
-  const { topicId, categoryId, status, approvedBySet, rejectedBySet } = filters;
+  const { topicId, categoryId, status, approvedBySet, rejectedBySet, publishDateFrom, publishDateTo } = filters;
 
   const where = {
     ...(topicId ? { topicId } : {}),
@@ -177,6 +177,12 @@ export async function getArticles(filters = {}) {
     ...(status && status !== 'all' ? { status } : {}),
     ...(approvedBySet ? { approvedById: { not: null } } : {}),
     ...(rejectedBySet ? { rejectedById: { not: null } } : {}),
+    ...(publishDateFrom || publishDateTo ? {
+      publishDate: {
+        ...(publishDateFrom ? { gte: new Date(publishDateFrom) } : {}),
+        ...(publishDateTo ? { lte: new Date(publishDateTo + 'T23:59:59.999Z') } : {}),
+      },
+    } : {}),
   };
 
   return prisma.article.findMany({

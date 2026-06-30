@@ -7,6 +7,7 @@ import {
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
+  getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
@@ -81,6 +82,7 @@ export function ArticlesTable() {
   const [readiness, setReadiness] = useState('all');
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
   const [rowSelection, setRowSelection] = useState({});
+  const [sorting, setSorting] = useState([{ id: 'publish', desc: false }]);
 
   const { data: catJson } = useQuery({
     queryKey: ['categories'],
@@ -214,8 +216,12 @@ export function ArticlesTable() {
       },
       {
         id: 'publish',
-        header: 'Publish',
+        accessorFn: (row) => row.publishDate ? new Date(row.publishDate) : null,
+        header: ({ column }) => (
+          <DataGridColumnHeader title="Publish" column={column} />
+        ),
         cell: ({ row }) => formatDate(row.original.publishDate),
+        sortingFn: 'datetime',
         size: 100,
       },
       {
@@ -304,11 +310,13 @@ export function ArticlesTable() {
   const table = useReactTable({
     data,
     columns,
-    state: { pagination, rowSelection },
+    state: { pagination, rowSelection, sorting },
     onPaginationChange: setPagination,
     onRowSelectionChange: setRowSelection,
+    onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getRowId: (r) => r.id,
     enableRowSelection: true,

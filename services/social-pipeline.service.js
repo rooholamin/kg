@@ -41,9 +41,10 @@ export async function runApproval(campaignId) {
   const settings = await getSocialSettings();
   const memory = await getSocialAiMemory();
 
-  // Fetch eligible articles for the week
+  // Fetch eligible articles for the week — must be fully published to WP
   const articles = await prisma.article.findMany({
     where: {
+      status: 'post_publish',
       publishDate: {
         gte: campaign.weekStart,
         lte: campaign.weekEnd,
