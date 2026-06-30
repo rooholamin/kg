@@ -2,7 +2,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/prisma';
 import { logStart, logDone, logError } from '@/lib/social-logger';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  defaultHeaders: { 'anthropic-beta': 'managed-agents-2026-04-01' },
+});
 
 // ---------------------------------------------------------------------------
 // Platform character limits
@@ -345,10 +348,6 @@ ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for
 // ---------------------------------------------------------------------------
 
 async function sendSessionMessage(sessionId, message) {
-  // Snapshot event count before sending so we can detect the NEW response
-  const before = await client.beta.sessions.events.list(sessionId);
-  const eventsBefore = (before.data || []).length;
-
   await client.beta.sessions.events.send(sessionId, {
     events: [
       {
@@ -358,8 +357,7 @@ async function sendSessionMessage(sessionId, message) {
     ],
   });
 
-  // Sessions stay 'active' between turns — poll for new events, not session status
-  return pollForNewAssistantEvent(sessionId, eventsBefore);
+  return streamAgentResponse(sessionId);
 }
 
 // Convenience wrapper that parses JSON from the response
@@ -372,44 +370,51 @@ async function sendSessionMessageAndParse(sessionId, message) {
   }
 }
 
-async function pollForNewAssistantEvent(sessionId, eventsBefore, maxWaitMs = 600000) {
-  const start = Date.now();
-  let pollInterval = 1500;
+/**
+ * Stream events from the session until the agent signals end_turn.
+ * The correct event types per the Managed Agents API are:
+ *   - agent.message          → the agent's text response
+ *   - session.status_idle    → fired when the turn is complete; stop_reason.type === 'end_turn'
+ *   - session.status_terminated / session.deleted / session.error → terminal states
+ */
+async function streamAgentResponse(sessionId) {
+  const textParts = [];
+  let done = false;
 
-  while (Date.now() - start < maxWaitMs) {
-    await sleep(pollInterval);
-    // Gentle backoff: 1.5s → 4s after 20s
-    if (Date.now() - start > 20000 && pollInterval < 4000) pollInterval = 4000;
+  while (!done) {
+    const stream = await client.beta.sessions.events.stream(sessionId);
 
-    const events = await client.beta.sessions.events.list(sessionId);
-    const allEvents = events.data || [];
+    for await (const event of stream) {
+      const evType = event.type;
 
-    // Any new event after our user message that contains an assistant reply
-    const newAssistantEvents = allEvents
-      .slice(eventsBefore)
-      .filter((e) => e.type === 'assistant.message' || e.type === 'agent.response');
-
-    if (newAssistantEvents.length > 0) {
-      const latest = newAssistantEvents[newAssistantEvents.length - 1];
-      const content = latest.content || latest.message?.content;
-      if (Array.isArray(content)) {
-        return content
-          .filter((c) => c.type === 'text')
-          .map((c) => c.text)
-          .join('');
+      if (evType === 'agent.message') {
+        const content = event.content ?? [];
+        for (const block of content) {
+          if (block.type === 'text' && block.text) {
+            textParts.push(block.text);
+          }
+        }
+      } else if (evType === 'session.status_idle') {
+        if (event.stop_reason?.type === 'end_turn') {
+          done = true;
+          break;
+        }
+        // stop_reason 'requires_action' means a tool call was dispatched —
+        // social-ai sessions don't use custom tools so this shouldn't happen,
+        // but fall through and keep streaming to be safe.
+      } else if (
+        evType === 'session.status_terminated' ||
+        evType === 'session.deleted'
+      ) {
+        done = true;
+        break;
+      } else if (evType === 'session.error') {
+        throw new Error(`Agent session error: ${JSON.stringify(event)}`);
       }
-      return String(content || '');
-    }
-
-    // Also check for hard failure statuses
-    const session = await client.beta.sessions.retrieve(sessionId);
-    if (session.status === 'failed' || session.status === 'error') {
-      throw new Error(`Agent session failed: ${session.status}`);
     }
   }
 
-  const elapsed = Math.round((Date.now() - start) / 1000);
-  throw new Error(`Agent did not respond within ${elapsed}s (session: ${sessionId})`);
+  return textParts.join('').trim();
 }
 
 async function requestHandoffSummary(sessionId) {
