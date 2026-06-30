@@ -345,6 +345,10 @@ ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for
 // ---------------------------------------------------------------------------
 
 async function sendSessionMessage(sessionId, message) {
+  // Snapshot event count before sending so we can detect the NEW response
+  const before = await client.beta.sessions.events.list(sessionId);
+  const eventsBefore = (before.data || []).length;
+
   await client.beta.sessions.events.send(sessionId, {
     events: [
       {
@@ -353,7 +357,9 @@ async function sendSessionMessage(sessionId, message) {
       },
     ],
   });
-  return pollSessionCompletion(sessionId);
+
+  // Sessions stay 'active' between turns — poll for new events, not session status
+  return pollForNewAssistantEvent(sessionId, eventsBefore);
 }
 
 // Convenience wrapper that parses JSON from the response
@@ -366,45 +372,44 @@ async function sendSessionMessageAndParse(sessionId, message) {
   }
 }
 
-async function pollSessionCompletion(sessionId, maxWaitMs = 600000) {
+async function pollForNewAssistantEvent(sessionId, eventsBefore, maxWaitMs = 600000) {
   const start = Date.now();
-  let pollInterval = 3000;
+  let pollInterval = 1500;
 
   while (Date.now() - start < maxWaitMs) {
     await sleep(pollInterval);
-    // Back off gently after the first 30s — no need to hammer the API
-    if (Date.now() - start > 30000 && pollInterval < 8000) pollInterval = 8000;
+    // Gentle backoff: 1.5s → 4s after 20s
+    if (Date.now() - start > 20000 && pollInterval < 4000) pollInterval = 4000;
 
-    const session = await client.beta.sessions.retrieve(sessionId);
+    const events = await client.beta.sessions.events.list(sessionId);
+    const allEvents = events.data || [];
 
-    if (session.status === 'completed' || session.status === 'stopped') {
-      const events = await client.beta.sessions.events.list(sessionId);
-      const assistantEvents = events.data?.filter(
-        (e) => e.type === 'assistant.message' || e.type === 'agent.response',
-      );
-      if (assistantEvents?.length) {
-        const latest = assistantEvents[assistantEvents.length - 1];
-        const content = latest.content || latest.message?.content;
-        if (Array.isArray(content)) {
-          return content
-            .filter((c) => c.type === 'text')
-            .map((c) => c.text)
-            .join('');
-        }
-        return String(content || '');
+    // Any new event after our user message that contains an assistant reply
+    const newAssistantEvents = allEvents
+      .slice(eventsBefore)
+      .filter((e) => e.type === 'assistant.message' || e.type === 'agent.response');
+
+    if (newAssistantEvents.length > 0) {
+      const latest = newAssistantEvents[newAssistantEvents.length - 1];
+      const content = latest.content || latest.message?.content;
+      if (Array.isArray(content)) {
+        return content
+          .filter((c) => c.type === 'text')
+          .map((c) => c.text)
+          .join('');
       }
-      // Session ended but no assistant event found — return empty so caller can handle
-      return '';
+      return String(content || '');
     }
 
+    // Also check for hard failure statuses
+    const session = await client.beta.sessions.retrieve(sessionId);
     if (session.status === 'failed' || session.status === 'error') {
-      throw new Error(`Agent session failed with status: ${session.status}`);
+      throw new Error(`Agent session failed: ${session.status}`);
     }
-    // statuses 'active', 'pending', 'running' → keep polling
   }
 
   const elapsed = Math.round((Date.now() - start) / 1000);
-  throw new Error(`Agent session timed out after ${elapsed}s (session: ${sessionId})`);
+  throw new Error(`Agent did not respond within ${elapsed}s (session: ${sessionId})`);
 }
 
 async function requestHandoffSummary(sessionId) {
