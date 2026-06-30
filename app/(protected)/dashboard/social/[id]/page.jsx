@@ -44,7 +44,20 @@ import {
   TrendingUp,
   Heart,
   MousePointerClick,
+  Trash2,
+  BrainCircuit,
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // ---------------------------------------------------------------------------
 // Platform config
@@ -761,6 +774,30 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/social/campaigns/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete campaign');
+    },
+    onSuccess: () => {
+      toast.success('Campaign deleted');
+      router.push('/dashboard/social');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const clearSessionsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/social/campaigns/${id}/clear-sessions`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to clear sessions');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast.success(data.message ?? 'Sessions cleared');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   if (isLoading) {
     return (
       <Container>
@@ -831,20 +868,93 @@ export default function SocialCampaignPage({ params }) {
             </div>
           </div>
 
-          {canScheduleAll && (
-            <Button
-              onClick={() => scheduleAllMutation.mutate()}
-              disabled={scheduleAllMutation.isPending}
-              className="shrink-0"
-            >
-              {scheduleAllMutation.isPending ? (
-                <Loader2 className="size-4 mr-1.5 animate-spin" />
-              ) : (
-                <CalendarCheck className="size-4 mr-1.5" />
-              )}
-              Schedule All ({uploadedPosts.length})
-            </Button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Clear article AI sessions */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  disabled={clearSessionsMutation.isPending}
+                >
+                  {clearSessionsMutation.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <BrainCircuit className="size-3.5" />
+                  )}
+                  Clear Sessions
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear article AI sessions?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will remove the Anthropic session ID from all articles in this campaign. The content agent will start a fresh session next time content is generated or regenerated — it will lose memory of previous edits for these articles.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => clearSessionsMutation.mutate()}>
+                    Clear Sessions
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Schedule all */}
+            {canScheduleAll && (
+              <Button
+                onClick={() => scheduleAllMutation.mutate()}
+                disabled={scheduleAllMutation.isPending}
+                size="sm"
+                className="h-8 text-xs"
+              >
+                {scheduleAllMutation.isPending ? (
+                  <Loader2 className="size-3.5 mr-1 animate-spin" />
+                ) : (
+                  <CalendarCheck className="size-3.5 mr-1" />
+                )}
+                Schedule All ({uploadedPosts.length})
+              </Button>
+            )}
+
+            {/* Delete campaign */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-3.5" />
+                  )}
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this campaign?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete the campaign and all its posts and pipeline logs. Exported images in storage will not be removed. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => deleteMutation.mutate()}
+                  >
+                    Delete Campaign
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
 
         {/* Stats row */}

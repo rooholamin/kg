@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogBody,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -119,63 +120,79 @@ function StatusPill({ status }) {
 }
 
 // ---------------------------------------------------------------------------
-// Instagram Grid Preview
+// Instagram Grid Preview Dialog
 // ---------------------------------------------------------------------------
-function InstagramGridPreview({ campaigns }) {
+function InstagramGridPreviewDialog({ campaigns, open, onOpenChange }) {
+  // Only carousel cover images (first slide of each carousel post), newest first
   const images = useMemo(() => {
     const all = [];
-    for (const c of campaigns) {
+    for (const c of [...campaigns].reverse()) {
       for (const p of c.posts ?? []) {
-        if (p.platform === 'instagram_carousel' || p.platform === 'instagram_story') {
-          if (p.imageUrls?.[0]) all.push({ url: p.imageUrls[0], campaignId: c.id, postId: p.id });
+        if (p.platform === 'instagram_carousel' && p.imageUrls?.[0]) {
+          all.push({
+            url: p.imageUrls[0],
+            campaignId: c.id,
+            postId: p.id,
+            articleTitle: p.article?.title,
+          });
         }
       }
     }
     return all.slice(0, 9);
   }, [campaigns]);
 
-  if (!images.length) return null;
-
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
           <div className="flex items-center gap-2">
-            <div className="size-7 rounded-lg bg-gradient-to-br from-pink-500 via-purple-500 to-orange-400 flex items-center justify-center">
+            <div className="size-7 rounded-lg bg-gradient-to-br from-pink-500 via-purple-500 to-orange-400 flex items-center justify-center shrink-0">
               <Instagram className="size-3.5 text-white" />
             </div>
             <div>
-              <CardTitle className="text-sm">Instagram Grid Preview</CardTitle>
-              <CardDescription className="text-xs">Most recent {images.length} posts</CardDescription>
+              <DialogTitle className="text-sm leading-tight">Instagram Grid Preview</DialogTitle>
+              <DialogDescription className="text-xs">
+                Carousel cover images — most recent {images.length}
+              </DialogDescription>
             </div>
           </div>
-          <Badge variant="outline" className="text-xs">
-            <Grid3x3 className="size-3 mr-1" />
-            {images.length}/9
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="px-4 pb-4">
-        <div className="grid grid-cols-3 gap-1 rounded-xl overflow-hidden ring-1 ring-border">
-          {Array.from({ length: 9 }).map((_, i) => {
-            const img = images[i];
-            return img ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={img.postId}
-                src={img.url}
-                alt={`Instagram grid ${i + 1}`}
-                className="aspect-square w-full object-cover hover:opacity-90 transition-opacity cursor-pointer"
-              />
-            ) : (
-              <div key={i} className="aspect-square bg-muted flex items-center justify-center">
-                <ImageIcon className="size-4 text-muted-foreground/30" />
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+        </DialogHeader>
+
+        {images.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-3 text-muted-foreground">
+            <div className="size-12 rounded-xl bg-muted flex items-center justify-center">
+              <ImageIcon className="size-5 opacity-40" />
+            </div>
+            <p className="text-sm text-center">
+              No exported carousel images yet.<br />Export some posts first.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-0.5 rounded-xl overflow-hidden ring-1 ring-border">
+            {Array.from({ length: 9 }).map((_, i) => {
+              const img = images[i];
+              return img ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={img.postId}
+                  src={img.url}
+                  alt={img.articleTitle || `Grid post ${i + 1}`}
+                  title={img.articleTitle}
+                  className="aspect-square w-full object-cover hover:opacity-90 transition-opacity cursor-pointer"
+                />
+              ) : (
+                <div
+                  key={i}
+                  className="aspect-square bg-muted/60 flex items-center justify-center"
+                >
+                  <ImageIcon className="size-3.5 text-muted-foreground/20" />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -575,6 +592,7 @@ function CampaignCard({ campaign }) {
 export default function SocialPage() {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
+  const [gridPreviewOpen, setGridPreviewOpen] = useState(false);
 
   const { data: settings } = useQuery({
     queryKey: ['social-settings'],
@@ -608,6 +626,16 @@ export default function SocialPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {campaigns.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setGridPreviewOpen(true)}
+            >
+              <Grid3x3 className="size-4 mr-1.5" />
+              Grid Preview
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -625,13 +653,6 @@ export default function SocialPage() {
 
       {/* Stats */}
       {campaigns.length > 0 && <SummaryStats campaigns={campaigns} />}
-
-      {/* Instagram grid preview */}
-      {campaigns.length > 0 && (
-        <div className="mb-6">
-          <InstagramGridPreview campaigns={campaigns} />
-        </div>
-      )}
 
       {/* Campaigns list */}
       <div className="space-y-2">
@@ -678,6 +699,12 @@ export default function SocialPage() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         defaultSettings={settings}
+      />
+
+      <InstagramGridPreviewDialog
+        campaigns={campaigns}
+        open={gridPreviewOpen}
+        onOpenChange={setGridPreviewOpen}
       />
     </Container>
   );
