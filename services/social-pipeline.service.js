@@ -186,7 +186,10 @@ export async function runContentGeneration(campaignId) {
           slideIds: result.slideIds || [],
           generatedText: result.text || '',
           hashtags: result.hashtags || [],
-          placeholders: result.placeholders || {},
+          placeholders: {
+            ...(result.placeholders || {}),
+            ...(result.arc_title ? { ARC_TITLE: result.arc_title } : {}),
+          },
           exportTotal: (result.slideIds || []).length,
         },
       });
@@ -243,7 +246,10 @@ export async function regeneratePostContent(postId, instruction) {
         slideIds: result.slideIds || [],
         generatedText: result.text || '',
         hashtags: result.hashtags || [],
-        placeholders: result.placeholders || {},
+        placeholders: {
+          ...(result.placeholders || {}),
+          ...(result.arc_title ? { ARC_TITLE: result.arc_title } : {}),
+        },
         exportTotal: (result.slideIds || []).length,
       },
     });

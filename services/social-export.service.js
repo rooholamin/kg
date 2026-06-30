@@ -56,7 +56,7 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
   const p = post.placeholders || {};
   return {
     HERO_IMAGE: article.featuredImage || '',
-    ART_TITLE: article.title || '',
+    ART_TITLE: p.ARC_TITLE || article.title || '',
     WRITER_NAME: section.characterName || section.name || '',
     WRITER_NAME_UPPER: (section.characterName || section.name || '').toUpperCase(),
     WRITER_PHOTO: section.characterImage || writerPhotoPath(section),
