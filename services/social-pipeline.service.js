@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { selectApprovedPlatforms, generatePostContent } from './social-ai.service';
 import { exportPost } from './social-export.service';
 import { schedulePost as bufferSchedulePost, computeScheduledAt } from './buffer.service';
+import { logStart, logDone, logError, logInfo } from '@/lib/social-logger';
 
 // ---------------------------------------------------------------------------
 // getSocialSettings + getSocialAiMemory helpers
@@ -38,10 +39,13 @@ export async function runApproval(campaignId) {
     data: { status: 'running' },
   });
 
+  await logInfo(campaignId, 'pipeline_start', 'Pipeline started');
+
   const settings = await getSocialSettings();
   const memory = await getSocialAiMemory();
 
   // Fetch eligible articles for the week — must be fully published to WP
+  const fetchLogId = await logStart(campaignId, 'approval_fetch', 'Fetching published articles for the week');
   const articles = await prisma.article.findMany({
     where: {
       status: 'post_publish',
@@ -67,12 +71,19 @@ export async function runApproval(campaignId) {
   });
 
   if (!articles.length) {
+    await logError(fetchLogId, 'No eligible published articles found for this week');
     await prisma.socialCampaign.update({
       where: { id: campaignId },
       data: { status: 'failed' },
     });
     throw new Error('No eligible articles found for this week');
   }
+
+  await logDone(
+    fetchLogId,
+    `Found ${articles.length} article${articles.length !== 1 ? 's' : ''}`,
+    { titles: articles.map((a) => a.title) },
+  );
 
   // Enrich articles with section names for the AI
   const articlesForAI = articles.map((a) => ({
@@ -114,6 +125,14 @@ export async function runApproval(campaignId) {
     await prisma.socialPost.createMany({ data: postCreateData });
   }
 
+  await logInfo(
+    campaignId, 'approval_posts_created',
+    `Created ${postCreateData.length} social post${postCreateData.length !== 1 ? 's' : ''} from approval`,
+    {
+      breakdown: platforms.map((p) => ({ platform: p, count: (approvalMap[p] || []).length })),
+    },
+  );
+
   return postCreateData.length;
 }
 
@@ -135,6 +154,8 @@ export async function runContentGeneration(campaignId) {
 
   if (!posts.length) return 0;
 
+  await logInfo(campaignId, 'content_start', `Starting content generation for ${posts.length} posts`);
+
   // Mark all as generating
   await prisma.socialPost.updateMany({
     where: { id: { in: posts.map((p) => p.id) } },
@@ -150,13 +171,14 @@ export async function runContentGeneration(campaignId) {
         if (!section) throw new Error('Article has no section');
 
         const { result } = await generatePostContent({
+          campaignId,
+          postId: post.id,
           article: post.article,
           section,
           platform: post.platform,
           settings,
         });
 
-        // Session ID is saved inside generatePostContent; update content fields here
         await prisma.socialPost.update({
           where: { id: post.id },
           data: {
@@ -178,6 +200,7 @@ export async function runContentGeneration(campaignId) {
   );
 
   const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+  await logInfo(campaignId, 'content_done', `Content generation complete — ${succeeded}/${posts.length} succeeded`);
   return succeeded;
 }
 
@@ -206,6 +229,8 @@ export async function regeneratePostContent(postId, instruction) {
 
   try {
     const { result } = await generatePostContent({
+      campaignId: post.campaignId,
+      postId,
       article: post.article,
       section,
       platform: post.platform,
@@ -248,6 +273,7 @@ export async function runExport(postId) {
 
   // Twitter posts need no image export
   if (post.platform === 'twitter') {
+    await logInfo(post.campaignId, 'export_skip', 'Twitter post — no image export needed', null, postId);
     await prisma.socialPost.update({
       where: { id: postId },
       data: { status: 'uploaded' },
@@ -258,7 +284,25 @@ export async function runExport(postId) {
     return [];
   }
 
-  const imageUrls = await exportPost(postId);
+  const exportLogId = await logStart(
+    post.campaignId, 'export_start',
+    `Exporting ${post.platform} images via Playwright`,
+    { platform: post.platform, slideCount: post.slideIds?.length },
+    postId,
+  );
+
+  let imageUrls;
+  try {
+    imageUrls = await exportPost(postId);
+    await logDone(
+      exportLogId,
+      `Exported and uploaded ${imageUrls.length} image${imageUrls.length !== 1 ? 's' : ''}`,
+      { imageUrls },
+    );
+  } catch (err) {
+    await logError(exportLogId, err.message);
+    throw err;
+  }
 
   if (!settings.requireReview) {
     await schedulePost(postId);
@@ -273,7 +317,23 @@ export async function runExport(postId) {
 // ---------------------------------------------------------------------------
 export async function schedulePost(postId) {
   const settings = await getSocialSettings();
-  return bufferSchedulePost({ postId, settings });
+  const post = await prisma.socialPost.findUnique({ where: { id: postId }, select: { campaignId: true, platform: true, scheduledAt: true } });
+
+  const logId = await logStart(
+    post?.campaignId, 'schedule_buffer',
+    `Scheduling ${post?.platform} post via Buffer`,
+    { scheduledAt: post?.scheduledAt },
+    postId,
+  );
+
+  try {
+    const result = await bufferSchedulePost({ postId, settings });
+    await logDone(logId, `Scheduled — Buffer post ID: ${result?.bufferPostId || 'unknown'}`, { bufferPostId: result?.bufferPostId });
+    return result;
+  } catch (err) {
+    await logError(logId, err.message);
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -285,9 +345,12 @@ export async function scheduleAllPosts(campaignId) {
     where: { campaignId, status: 'uploaded' },
   });
 
+  await logInfo(campaignId, 'schedule_all_start', `Scheduling ${posts.length} posts via Buffer`);
+
   const results = await Promise.allSettled(posts.map((p) => schedulePost(p.id)));
 
   const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+  await logInfo(campaignId, 'schedule_all_done', `Scheduled ${succeeded}/${posts.length} posts`);
 
   // Check if all posts are done
   await checkAndFinalizeCampaign(campaignId);
@@ -315,6 +378,7 @@ export async function runFullPipeline(campaignId) {
     await checkAndFinalizeCampaign(campaignId);
   } catch (error) {
     console.error('[social-pipeline.runFullPipeline]', error);
+    await logInfo(campaignId, 'pipeline_error', `Pipeline failed: ${error.message}`);
     await prisma.socialCampaign.update({
       where: { id: campaignId },
       data: { status: 'failed' },
@@ -338,9 +402,11 @@ export async function checkAndFinalizeCampaign(campaignId) {
   const anyScheduled = posts.some((p) => p.status === 'scheduled');
 
   if (allDone) {
+    const finalStatus = anyScheduled ? 'done' : 'failed';
+    await logInfo(campaignId, 'pipeline_complete', `Campaign finalized as "${finalStatus}"`);
     await prisma.socialCampaign.update({
       where: { id: campaignId },
-      data: { status: anyScheduled ? 'done' : 'failed' },
+      data: { status: finalStatus },
     });
   } else {
     // Still has pending/uploading posts

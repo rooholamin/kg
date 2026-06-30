@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useState, use, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { Container } from '@/components/common/container';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,9 @@ import {
   Check,
   AlertCircle,
   Play,
+  Activity,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -280,6 +283,145 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
 }
 
 // ---------------------------------------------------------------------------
+// Log step config
+// ---------------------------------------------------------------------------
+const STEP_LABEL = {
+  pipeline_start:           'Pipeline started',
+  pipeline_error:           'Pipeline error',
+  pipeline_complete:        'Pipeline complete',
+  approval_fetch:           'Fetching articles',
+  approval_session:         'Approval agent session',
+  approval_handoff:         'Injecting handoff context',
+  approval_handoff_write:   'Writing handoff summary',
+  approval_ai_send:         'Sending to approval agent',
+  approval_posts_created:   'Posts created from approval',
+  content_start:            'Content generation started',
+  content_done:             'Content generation complete',
+  content_session:          'Content agent session',
+  content_ai_send:          'Sending to content agent',
+  export_start:             'Exporting images',
+  export_skip:              'Export skipped (Twitter)',
+  schedule_buffer:          'Scheduling via Buffer',
+  schedule_all_start:       'Scheduling all posts',
+  schedule_all_done:        'All posts scheduled',
+};
+
+const STEP_ICON = {
+  running: <Loader2 className="size-3.5 animate-spin text-blue-500 shrink-0" />,
+  done:    <Check className="size-3.5 text-emerald-500 shrink-0" />,
+  error:   <AlertCircle className="size-3.5 text-destructive shrink-0" />,
+};
+
+// ---------------------------------------------------------------------------
+// Single log row
+// ---------------------------------------------------------------------------
+function LogRow({ log }) {
+  const [open, setOpen] = useState(false);
+  const hasData = log.input || log.output;
+
+  return (
+    <div className="border-l-2 pl-3 py-1 text-xs space-y-0.5"
+      style={{ borderColor: log.status === 'error' ? 'hsl(var(--destructive))' : log.status === 'running' ? 'hsl(var(--primary))' : 'hsl(var(--border))' }}
+    >
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5">{STEP_ICON[log.status] ?? STEP_ICON.done}</span>
+        <div className="flex-1 min-w-0">
+          <span className="font-medium text-foreground">
+            {STEP_LABEL[log.step] ?? log.step}
+          </span>
+          {log.message && (
+            <span className="ml-1.5 text-muted-foreground">{log.message}</span>
+          )}
+        </div>
+        <span className="text-muted-foreground shrink-0">
+          {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+        </span>
+        {hasData && (
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground shrink-0"
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          </button>
+        )}
+      </div>
+
+      {open && hasData && (
+        <div className="mt-1 space-y-1">
+          {log.input && (
+            <details open className="group">
+              <summary className="cursor-pointer text-muted-foreground select-none">Input</summary>
+              <pre className="mt-1 text-xs bg-muted rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
+                {JSON.stringify(log.input, null, 2)}
+              </pre>
+            </details>
+          )}
+          {log.output && (
+            <details open className="group">
+              <summary className="cursor-pointer text-muted-foreground select-none">Output</summary>
+              <pre className="mt-1 text-xs bg-muted rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
+                {JSON.stringify(log.output, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline logs panel
+// ---------------------------------------------------------------------------
+const ACTIVE_STATUSES = new Set(['pending', 'running', 'content_generating', 'exporting', 'scheduling']);
+
+function PipelineLogs({ campaignId, campaignStatus }) {
+  const isActive = ACTIVE_STATUSES.has(campaignStatus);
+  const bottomRef = useRef(null);
+
+  const { data: logs = [] } = useQuery({
+    queryKey: ['social-campaign-logs', campaignId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/social/campaigns/${campaignId}/logs`);
+      if (!res.ok) throw new Error('Failed to load logs');
+      const j = await res.json();
+      return j.data ?? [];
+    },
+    refetchInterval: isActive ? 2000 : false,
+  });
+
+  // Auto-scroll to bottom as new logs arrive
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs.length]);
+
+  if (!logs.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+        <Activity className="size-8 opacity-30" />
+        <p className="text-sm">No pipeline logs yet. Logs appear as the pipeline runs.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-0.5 font-mono">
+      {logs.map((log) => (
+        <LogRow key={log.id} log={log} />
+      ))}
+      {isActive && (
+        <div className="flex items-center gap-2 pl-3 py-2 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+          Pipeline running — refreshing every 2s…
+        </div>
+      )}
+      <div ref={bottomRef} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 export default function SocialCampaignPage({ params }) {
@@ -443,7 +585,7 @@ export default function SocialCampaignPage({ params }) {
         )}
       </div>
 
-      {/* Platform tabs */}
+      {/* Platform + Logs tabs */}
       <Tabs defaultValue="instagram_carousel">
         <TabsList className="mb-4">
           {PLATFORMS.map((p) => {
@@ -458,6 +600,13 @@ export default function SocialCampaignPage({ params }) {
               </TabsTrigger>
             );
           })}
+          <TabsTrigger value="logs" className="gap-1.5">
+            <Activity className="size-3.5" />
+            Logs
+            {ACTIVE_STATUSES.has(campaign.status) && (
+              <span className="ml-0.5 size-2 rounded-full bg-blue-500 animate-pulse" />
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {PLATFORMS.map((platform) => {
@@ -489,6 +638,26 @@ export default function SocialCampaignPage({ params }) {
             </TabsContent>
           );
         })}
+
+        <TabsContent value="logs">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Activity className="size-4" />
+                Pipeline Run Log
+                {ACTIVE_STATUSES.has(campaign.status) && (
+                  <Badge variant="default" className="text-xs gap-1">
+                    <Loader2 className="size-2.5 animate-spin" />
+                    Live
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-[600px] overflow-y-auto">
+              <PipelineLogs campaignId={id} campaignStatus={campaign.status} />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </Container>
   );

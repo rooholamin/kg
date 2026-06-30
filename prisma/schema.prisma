@@ -807,6 +807,7 @@ model SocialCampaign {
   // Managed Agent session ID used for this campaign's approval (audit trail)
   approvalSessionId   String?
   posts     SocialPost[]
+  logs      SocialCampaignLog[]
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
@@ -845,6 +846,30 @@ model SocialPost {
   @@index([articleId])
   @@index([platform])
   @@index([status])
+}
+
+/// Detailed trace of every pipeline step — used for the live run log UI
+model SocialCampaignLog {
+  id         String   @id @default(uuid())
+  campaignId String
+  postId     String?
+  // e.g. 'approval_fetch', 'approval_ai_send', 'approval_ai_receive', 'content_session',
+  //      'content_ai_send', 'content_ai_receive', 'export_slide', 'export_upload', 'schedule_buffer'
+  step       String
+  // 'running' | 'done' | 'error'
+  status     String   @default("running")
+  // Human-readable summary shown in the UI
+  message    String?  @db.Text
+  // Raw input data (message sent to AI, export params, Buffer payload…)
+  input      Json?
+  // Raw output data (AI response, S3 URL, Buffer post ID…)
+  output     Json?
+  campaign   SocialCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([postId])
+  @@index([step])
 }
 
 /// Global defaults + Buffer profile IDs + Anthropic Managed Agent references

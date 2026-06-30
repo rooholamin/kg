@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/prisma';
+import { logStart, logDone, logError } from '@/lib/social-logger';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -62,11 +63,13 @@ export async function selectApprovedPlatforms({ articles, campaign, settings, me
       );
     }
 
+    const sessionLogId = await logStart(campaign.id, 'approval_session', 'Creating new approval agent session');
     const session = await client.beta.sessions.create({
       agent: settings.approvalAgentId,
       environment_id: settings.approvalEnvironmentId,
     });
     sessionId = session.id;
+    await logDone(sessionLogId, `Session created: ${sessionId}`, { sessionId });
 
     // Persist the new session ID
     await prisma.socialAiMemory.upsert({
@@ -77,6 +80,7 @@ export async function selectApprovedPlatforms({ articles, campaign, settings, me
 
     // 2. If there's a handoff summary from a previous session, inject it first
     if (memory.handoffSummary) {
+      const handoffLogId = await logStart(campaign.id, 'approval_handoff', 'Injecting handoff context from previous session', { summary: memory.handoffSummary });
       await client.beta.sessions.events.send(sessionId, {
         events: [
           {
@@ -90,7 +94,10 @@ export async function selectApprovedPlatforms({ articles, campaign, settings, me
           },
         ],
       });
+      await logDone(handoffLogId, 'Handoff context injected');
     }
+  } else {
+    await logStart(campaign.id, 'approval_session', `Reusing existing session: ${sessionId}`, { sessionId });
   }
 
   // 3. Build campaign task message
@@ -139,8 +146,21 @@ Based on your editorial memory of what has already been published, select which 
   "twitter": ["article-id-1", "article-id-2", "article-id-3"]
 }`;
 
-  // 4. Send the task and stream the response
-  const approvalMap = await sendSessionMessageAndParse(sessionId, taskMessage);
+  // 4. Send the task and get the response
+  const aiSendLogId = await logStart(
+    campaign.id, 'approval_ai_send',
+    `Sending ${articles.length} articles to approval agent`,
+    { message: taskMessage, sessionId },
+  );
+  let approvalMap;
+  try {
+    approvalMap = await sendSessionMessageAndParse(sessionId, taskMessage);
+    const totalApproved = Object.values(approvalMap).reduce((s, arr) => s + arr.length, 0);
+    await logDone(aiSendLogId, `Agent approved ${totalApproved} posts across platforms`, { approvalMap });
+  } catch (err) {
+    await logError(aiSendLogId, err.message);
+    throw err;
+  }
 
   // 5. Save session ID on the campaign + update memory counter
   const newCount = (memory.sessionCampaignCount || 0) + 1;
@@ -152,7 +172,9 @@ Based on your editorial memory of what has already been published, select which 
   // 6. Check if session should rotate
   const rotateAfter = memory.sessionRotateAfter || 10;
   if (newCount >= rotateAfter) {
+    const summaryLogId = await logStart(campaign.id, 'approval_handoff_write', 'Session limit reached — requesting handoff summary');
     const summary = await requestHandoffSummary(sessionId);
+    await logDone(summaryLogId, 'Handoff summary written, session will rotate on next campaign', { summary });
     await prisma.socialAiMemory.update({
       where: { id: 'singleton' },
       update: {
@@ -230,7 +252,7 @@ const SLIDE_DESCRIPTIONS = {
 // The session is stored on Article.socialContentSessionId so the agent remembers
 // context when a second platform post is generated or any post is regenerated.
 // ---------------------------------------------------------------------------
-export async function generatePostContent({ article, section, platform, settings, instruction }) {
+export async function generatePostContent({ campaignId, postId, article, section, platform, settings, instruction }) {
   const platformName = {
     instagram_carousel: 'Instagram Carousel',
     instagram_story: 'Instagram Story',
@@ -252,21 +274,24 @@ export async function generatePostContent({ article, section, platform, settings
     select: { socialContentSessionId: true },
   });
   let sessionId = freshArticle?.socialContentSessionId;
-
   const isFirstCall = !sessionId;
 
   if (isFirstCall) {
+    const sessionLogId = await logStart(campaignId, 'content_session', `Creating content agent session for "${article.title}"`, null, postId);
     const session = await client.beta.sessions.create({
       agent: settings.contentAgentId,
       environment_id: settings.contentEnvironmentId,
     });
     sessionId = session.id;
+    await logDone(sessionLogId, `Session created: ${sessionId}`, { sessionId });
 
     // Persist immediately so concurrent posts for the same article reuse it
     await prisma.article.update({
       where: { id: article.id },
       data: { socialContentSessionId: sessionId },
     });
+  } else {
+    await logStart(campaignId, 'content_session', `Reusing article session for "${article.title}" (${platformName})`, { sessionId }, postId);
   }
 
   // First call: send full article context alongside the platform request.
@@ -286,11 +311,31 @@ ${instruction ? `INSTRUCTION: ${instruction}` : ''}`
     : `PLATFORM: ${platformName}
 ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for this platform.'}`;
 
-  const responseText = await sendSessionMessage(sessionId, message);
+  const aiLogId = await logStart(
+    campaignId, 'content_ai_send',
+    `${instruction ? 'Regenerating' : 'Generating'} ${platformName} content for "${article.title}"`,
+    { message, sessionId, isFirstCall },
+    postId,
+  );
+
+  let responseText;
+  try {
+    responseText = await sendSessionMessage(sessionId, message);
+  } catch (err) {
+    await logError(aiLogId, err.message);
+    throw err;
+  }
 
   try {
-    return { result: JSON.parse(extractJson(responseText)), sessionId };
+    const result = JSON.parse(extractJson(responseText));
+    await logDone(
+      aiLogId,
+      `Content ready — ${(result.slideIds || []).length} slides, caption ${(result.text || '').length} chars`,
+      { response: responseText, parsed: result },
+    );
+    return { result, sessionId };
   } catch {
+    await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
     throw new Error(`Content agent returned invalid JSON: ${responseText.slice(0, 200)}`);
   }
 }
