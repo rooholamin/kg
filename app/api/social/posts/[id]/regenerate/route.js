@@ -4,7 +4,7 @@ import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
-import { generatePostContent } from '@/services/social-ai.service';
+import { regeneratePostContent } from '@/services/social-pipeline.service';
 
 export async function POST(req, { params }) {
   try {
@@ -14,48 +14,19 @@ export async function POST(req, { params }) {
 
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    const toneSeed = body.toneSeed || null;
-
-    const post = await prisma.socialPost.findUnique({
-      where: { id },
-      include: {
-        article: {
-          include: { category: { include: { section: true } } },
-        },
-      },
-    });
-    if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });
-
-    const section = post.article.category?.section;
-    if (!section) return NextResponse.json({ message: 'Article has no section' }, { status: 400 });
+    // instruction: optional natural-language change request, e.g. "make it more concise"
+    const instruction = body.instruction || body.toneSeed || null;
 
     await prisma.socialPost.update({
       where: { id },
-      data: { status: 'content_generating', errorMessage: null },
+      data: { status: 'content_generating', errorMessage: null, exportProgress: 0, imageUrls: [] },
     });
 
-    const content = await generatePostContent({
-      article: post.article,
-      section,
-      platform: post.platform,
-      toneSeed,
-    });
+    // Continues the existing content session so the agent has memory of what it generated
+    const result = await regeneratePostContent(id, instruction);
 
-    const updated = await prisma.socialPost.update({
-      where: { id },
-      data: {
-        status: 'content_ready',
-        slideIds: content.slideIds || [],
-        generatedText: content.text || '',
-        hashtags: content.hashtags || [],
-        placeholders: content.placeholders || {},
-        exportTotal: (content.slideIds || []).length,
-        exportProgress: 0,
-        imageUrls: [],
-      },
-    });
-
-    return NextResponse.json({ data: updated });
+    const updated = await prisma.socialPost.findUnique({ where: { id } });
+    return NextResponse.json({ data: updated, result });
   } catch (e) {
     return routeError('[POST /api/social/posts/[id]/regenerate]', e);
   }

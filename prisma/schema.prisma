@@ -309,6 +309,8 @@ model Article {
   inlineImagePrompts   Json?
   videoIdea            String?       @db.Text
   metaDescription      String?       @db.Text
+  // Shared Managed Agent session for social content generation across all platforms
+  socialContentSessionId String?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   topic                Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
@@ -851,6 +853,9 @@ model SocialSettings {
   // Anthropic Managed Agent IDs (created manually in Anthropic Console)
   approvalAgentId             String?
   approvalEnvironmentId       String?
+  // Content generation agent — separate agent, one session per post
+  contentAgentId              String?
+  contentEnvironmentId        String?
   // Buffer profile IDs
   instagramCarouselProfileId  String?
   instagramStoryProfileId     String?

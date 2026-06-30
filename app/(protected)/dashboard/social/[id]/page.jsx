@@ -69,10 +69,18 @@ const STATUS_ICON = {
 function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
   const [editingCaption, setEditingCaption] = useState(false);
   const [caption, setCaption] = useState(post.generatedText || '');
+  const [regenerateInstruction, setRegenerateInstruction] = useState('');
+  const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
 
   function saveCaption() {
     onUpdate(post.id, { generatedText: caption });
     setEditingCaption(false);
+  }
+
+  function handleRegenerate() {
+    onRegenerate(post.id, regenerateInstruction || undefined);
+    setShowRegeneratePrompt(false);
+    setRegenerateInstruction('');
   }
 
   return (
@@ -211,12 +219,43 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
           </div>
         )}
 
+        {/* Regenerate instruction prompt */}
+        {showRegeneratePrompt && (
+          <div className="space-y-2 rounded border p-2 bg-muted/40">
+            <p className="text-xs font-medium">
+              What should the agent change? (leave blank to regenerate)
+            </p>
+            <Textarea
+              rows={2}
+              className="text-xs"
+              placeholder='e.g. "make it more concise" or "focus on the stat"'
+              value={regenerateInstruction}
+              onChange={(e) => setRegenerateInstruction(e.target.value)}
+            />
+            <div className="flex gap-1.5">
+              <Button size="sm" onClick={handleRegenerate}>
+                Send
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setShowRegeneratePrompt(false);
+                  setRegenerateInstruction('');
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex flex-wrap gap-1.5 pt-1">
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onRegenerate(post.id)}
+            onClick={() => setShowRegeneratePrompt((v) => !v)}
             disabled={post.status === 'content_generating' || post.status === 'scheduled'}
           >
             <RefreshCw className="size-3 mr-1" />
@@ -282,13 +321,17 @@ export default function SocialCampaignPage({ params }) {
   });
 
   const regenerateMutation = useMutation({
-    mutationFn: async (postId) => {
-      const res = await apiFetch(`/api/social/posts/${postId}/regenerate`, { method: 'POST' });
+    mutationFn: async ({ postId, instruction }) => {
+      const res = await apiFetch(`/api/social/posts/${postId}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction }),
+      });
       if (!res.ok) throw new Error('Failed to regenerate');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
-      toast.success('Regeneration started');
+      toast.success('Regeneration started — session memory preserved');
     },
     onError: (e) => toast.error(e.message),
   });
@@ -434,7 +477,9 @@ export default function SocialCampaignPage({ params }) {
                       onUpdate={(postId, data) =>
                         updateMutation.mutate({ postId, data })
                       }
-                      onRegenerate={(postId) => regenerateMutation.mutate(postId)}
+                      onRegenerate={(postId, instruction) =>
+                        regenerateMutation.mutate({ postId, instruction })
+                      }
                       onExport={(postId) => exportMutation.mutate(postId)}
                       onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
                     />

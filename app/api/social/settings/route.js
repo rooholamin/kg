@@ -41,6 +41,8 @@ export async function PATCH(req) {
     const settingsAllowed = [
       'approvalAgentId',
       'approvalEnvironmentId',
+      'contentAgentId',
+      'contentEnvironmentId',
       'instagramCarouselProfileId',
       'instagramStoryProfileId',
       'linkedinProfileId',

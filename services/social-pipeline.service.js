@@ -140,27 +140,31 @@ export async function runContentGeneration(campaignId) {
     data: { status: 'content_generating' },
   });
 
+  const settings = await getSocialSettings();
+
   const results = await Promise.allSettled(
     posts.map(async (post) => {
       try {
         const section = post.article.category?.section;
         if (!section) throw new Error('Article has no section');
 
-        const content = await generatePostContent({
+        const { result } = await generatePostContent({
           article: post.article,
           section,
           platform: post.platform,
+          settings,
         });
 
+        // Session ID is saved inside generatePostContent; update content fields here
         await prisma.socialPost.update({
           where: { id: post.id },
           data: {
             status: 'content_ready',
-            slideIds: content.slideIds || [],
-            generatedText: content.text || '',
-            hashtags: content.hashtags || [],
-            placeholders: content.placeholders || {},
-            exportTotal: (content.slideIds || []).length,
+            slideIds: result.slideIds || [],
+            generatedText: result.text || '',
+            hashtags: result.hashtags || [],
+            placeholders: result.placeholders || {},
+            exportTotal: (result.slideIds || []).length,
           },
         });
       } catch (error) {
@@ -174,6 +178,60 @@ export async function runContentGeneration(campaignId) {
 
   const succeeded = results.filter((r) => r.status === 'fulfilled').length;
   return succeeded;
+}
+
+// ---------------------------------------------------------------------------
+// 2b. regeneratePostContent
+// Continues the existing content session for a post so the agent remembers
+// what it generated before and can make targeted revisions.
+// ---------------------------------------------------------------------------
+export async function regeneratePostContent(postId, instruction) {
+  const post = await prisma.socialPost.findUnique({
+    where: { id: postId },
+    include: {
+      article: { include: { category: { include: { section: true } } } },
+    },
+  });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+
+  const settings = await getSocialSettings();
+  const section = post.article.category?.section;
+  if (!section) throw new Error('Article has no section');
+
+  await prisma.socialPost.update({
+    where: { id: postId },
+    data: { status: 'content_generating' },
+  });
+
+  try {
+    const { result } = await generatePostContent({
+      article: post.article,
+      section,
+      platform: post.platform,
+      settings,
+      instruction: instruction || undefined,
+    });
+
+    await prisma.socialPost.update({
+      where: { id: postId },
+      data: {
+        status: 'content_ready',
+        slideIds: result.slideIds || [],
+        generatedText: result.text || '',
+        hashtags: result.hashtags || [],
+        placeholders: result.placeholders || {},
+        exportTotal: (result.slideIds || []).length,
+      },
+    });
+
+    return result;
+  } catch (error) {
+    await prisma.socialPost.update({
+      where: { id: postId },
+      data: { status: 'failed', errorMessage: error.message },
+    });
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------

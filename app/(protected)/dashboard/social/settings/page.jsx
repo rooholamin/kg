@@ -35,9 +35,14 @@ const BUFFER_FIELDS = [
   { key: 'twitterProfileId', label: 'Twitter Profile ID' },
 ];
 
-const AGENT_FIELDS = [
+const APPROVAL_AGENT_FIELDS = [
   { key: 'approvalAgentId', label: 'Approval Agent ID' },
   { key: 'approvalEnvironmentId', label: 'Environment ID' },
+];
+
+const CONTENT_AGENT_FIELDS = [
+  { key: 'contentAgentId', label: 'Content Agent ID' },
+  { key: 'contentEnvironmentId', label: 'Content Environment ID' },
 ];
 
 const DEFAULTS_FIELDS = [
@@ -240,18 +245,21 @@ export default function SocialSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Anthropic Managed Agent */}
+        {/* Anthropic Managed Agents */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
               <Brain className="size-4" />
-              Anthropic Managed Agent
+              Anthropic Managed Agents
             </CardTitle>
             <CardDescription className="text-xs">
-              Create the agent manually in the Anthropic Console, then paste the IDs here.
+              Create both agents in the Anthropic Console and paste their IDs here. The{' '}
+              <strong>Approval Agent</strong> runs once per campaign and maintains editorial memory
+              across sessions. The <strong>Content Agent</strong> runs per post and opens one
+              persistent session per post for edits and regenerations.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             <div className="flex justify-end">
               <Button
                 type="button"
@@ -267,7 +275,35 @@ export default function SocialSettingsPage() {
                 {showPasswords ? 'Hide' : 'Show'} IDs
               </Button>
             </div>
-            {AGENT_FIELDS.map(({ key, label }) => (
+
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Approval Agent
+              </p>
+            </div>
+            {APPROVAL_AGENT_FIELDS.map(({ key, label }) => (
+              <div key={key} className="grid grid-cols-2 gap-3 items-center">
+                <Label>{label}</Label>
+                <Input
+                  type={showPasswords ? 'text' : 'password'}
+                  value={form[key] || ''}
+                  onChange={(e) => setField(key, e.target.value)}
+                  placeholder="ant_xxxxxxxx"
+                />
+              </div>
+            ))}
+
+            <Separator />
+
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Content Agent
+              </p>
+              <p className="text-xs text-muted-foreground">
+                One session is created per post and reused on every regeneration or edit.
+              </p>
+            </div>
+            {CONTENT_AGENT_FIELDS.map(({ key, label }) => (
               <div key={key} className="grid grid-cols-2 gap-3 items-center">
                 <Label>{label}</Label>
                 <Input

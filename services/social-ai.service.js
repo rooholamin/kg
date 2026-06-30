@@ -226,10 +226,11 @@ const SLIDE_DESCRIPTIONS = {
 
 // ---------------------------------------------------------------------------
 // generatePostContent
-// Fresh messages.create per post — no session needed.
+// One Managed Agent session per article — shared across all platform posts.
+// The session is stored on Article.socialContentSessionId so the agent remembers
+// context when a second platform post is generated or any post is regenerated.
 // ---------------------------------------------------------------------------
-export async function generatePostContent({ article, section, platform, toneSeed }) {
-  const charLimit = CHAR_LIMITS[platform] || 2200;
+export async function generatePostContent({ article, section, platform, settings, instruction }) {
   const platformName = {
     instagram_carousel: 'Instagram Carousel',
     instagram_story: 'Instagram Story',
@@ -237,115 +238,60 @@ export async function generatePostContent({ article, section, platform, toneSeed
     twitter: 'Twitter',
   }[platform];
 
-  const availableSlides =
-    platform === 'instagram_carousel'
-      ? AVAILABLE_SLIDES.carousel
-      : platform === 'instagram_story'
-        ? AVAILABLE_SLIDES.story
-        : platform === 'linkedin'
-          ? AVAILABLE_SLIDES.linkedin
-          : [];
+  if (!settings?.contentAgentId || !settings?.contentEnvironmentId) {
+    throw new Error(
+      'Content Agent IDs not configured. Set contentAgentId and contentEnvironmentId in Social Settings.',
+    );
+  }
 
-  // Extract plain text from TipTap content JSON
   const bodyText = extractPlainText(article.content);
 
-  // Build slide reference with descriptions so the AI understands each layout
-  const slideReference = availableSlides
-    .map((id) => `- ${id}: ${SLIDE_DESCRIPTIONS[id] || id}`)
-    .join('\n');
+  // Re-read the article's session ID fresh to avoid stale caller data
+  const freshArticle = await prisma.article.findUnique({
+    where: { id: article.id },
+    select: { socialContentSessionId: true },
+  });
+  let sessionId = freshArticle?.socialContentSessionId;
 
-  const carouselRule =
-    platform === 'instagram_carousel'
-      ? '\nSelection rule: pick 4–7 slides. Always include slide-01-cover (first) and slide-11-end-card (last). Choose the middle slides that best match the article content type.'
-      : platform === 'instagram_story' || platform === 'linkedin'
-        ? '\nSelection rule: pick exactly 1 template that best matches the article.'
-        : '';
+  const isFirstCall = !sessionId;
 
-  const systemPrompt = `You are a social media content strategist for KG Hub, a premium real estate publication.
+  if (isFirstCall) {
+    const session = await client.beta.sessions.create({
+      agent: settings.contentAgentId,
+      environment_id: settings.contentEnvironmentId,
+    });
+    sessionId = session.id;
 
-Your job is to analyse an article and produce platform-optimised social media content: a caption, hashtags, and a selection of visual slide templates. Each template has specific placeholder fields that must be filled with content extracted or derived from the article.
+    // Persist immediately so concurrent posts for the same article reuse it
+    await prisma.article.update({
+      where: { id: article.id },
+      data: { socialContentSessionId: sessionId },
+    });
+  }
 
-AVAILABLE SLIDE TEMPLATES:
-${slideReference}
-${carouselRule}
-
-PLATFORM: ${platformName}
-CAPTION CHARACTER LIMIT: ${charLimit} — strictly enforce this.
-${toneSeed ? `TONE VARIATION: ${toneSeed}` : ''}
-
-Always respond with ONLY valid JSON, no other text or markdown.`;
-
-  const hashtagBase = section.socialHashtags?.length
-    ? `Base hashtags (always include these): ${section.socialHashtags.join(' ')}`
-    : '';
-
-  const userMessage = `Create a ${platformName} post for the following article.
+  // First call: send full article context alongside the platform request.
+  // Subsequent calls (other platforms or regenerations): the agent already has
+  // the article so we only send what changed.
+  const message = isFirstCall
+    ? `PLATFORM: ${platformName}
 
 ARTICLE TITLE: ${article.title}
 ARTICLE SUMMARY: ${article.summary || ''}
 ARTICLE BODY:
-${bodyText.slice(0, 3000)}
+${bodyText}
 
-SECTION: ${section.name}
-WRITER TONE: ${section.characterTone || 'professional and engaging'}
-WRITING STYLE: ${section.characterWritingStyle || 'clear and concise'}
-${hashtagBase}
+WRITER TONE: ${section.characterTone || ''}
+WRITING STYLE: ${section.characterWritingStyle || ''}
+${instruction ? `INSTRUCTION: ${instruction}` : ''}`
+    : `PLATFORM: ${platformName}
+${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for this platform.'}`;
 
-Instructions:
-- Select the slide template(s) that best fit this article's content type and key messages.
-- Fill ALL placeholder fields for each selected slide using content from the article.
-- Write the caption in the writer's tone and style. Stay within ${charLimit} characters.
-- Add relevant hashtags (include the base hashtags plus topic-specific ones).
+  const responseText = await sendSessionMessage(sessionId, message);
 
-Return JSON with this structure:
-{
-  "slideIds": ${availableSlides.length ? '["slide-id-1", "slide-id-2"]' : '[]'},
-  "text": "caption text within ${charLimit} chars",
-  "hashtags": ["#tag1", "#tag2"],
-  "placeholders": {
-    "HOOK": "one strong opening sentence",
-    "QUOTE": "memorable quote from article",
-    "STAT_N": "key statistic number",
-    "STAT_L": "statistic label",
-    "NARRATIVE": "2-3 sentence narrative combining hook and context",
-    "FEAT_1_LABEL": "feature 1 title",
-    "FEAT_1_DESC": "feature 1 description",
-    "FEAT_2_LABEL": "feature 2 title",
-    "FEAT_2_DESC": "feature 2 description",
-    "FEAT_3_LABEL": "feature 3 title",
-    "FEAT_3_DESC": "feature 3 description",
-    "FEAT_4_LABEL": "feature 4 title",
-    "FEAT_4_DESC": "feature 4 description",
-    "STEP_1_TITLE": "step 1 title",
-    "STEP_1_DESC": "step 1 description",
-    "STEP_2_TITLE": "step 2 title",
-    "STEP_2_DESC": "step 2 description",
-    "STEP_3_TITLE": "step 3 title",
-    "STEP_3_DESC": "step 3 description",
-    "IMGBOX_CAPTION": "caption for boxed image",
-    "END_CARD_BIO": "short writer bio / section tagline",
-    "ARTICLE_URL": "https://kghub.ai/placeholder"
-  }
-}`;
-
-  const response = await client.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 2000,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
-  });
-
-  const raw = response.content[0]?.text || '{}';
   try {
-    const result = JSON.parse(extractJson(raw));
-    // Prepend section hashtags to AI-generated ones
-    if (section.socialHashtags?.length) {
-      const baseHashes = section.socialHashtags.map((h) => (h.startsWith('#') ? h : `#${h}`));
-      result.hashtags = [...new Set([...baseHashes, ...(result.hashtags || [])])];
-    }
-    return result;
+    return { result: JSON.parse(extractJson(responseText)), sessionId };
   } catch {
-    throw new Error(`AI returned invalid JSON for post content: ${raw.slice(0, 200)}`);
+    throw new Error(`Content agent returned invalid JSON: ${responseText.slice(0, 200)}`);
   }
 }
 
@@ -353,8 +299,7 @@ Return JSON with this structure:
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function sendSessionMessageAndParse(sessionId, message) {
-  // Send the user message
+async function sendSessionMessage(sessionId, message) {
   await client.beta.sessions.events.send(sessionId, {
     events: [
       {
@@ -363,13 +308,16 @@ async function sendSessionMessageAndParse(sessionId, message) {
       },
     ],
   });
+  return pollSessionCompletion(sessionId);
+}
 
-  // Poll for the session to complete and get the response
-  const responseText = await pollSessionCompletion(sessionId);
+// Convenience wrapper that parses JSON from the response
+async function sendSessionMessageAndParse(sessionId, message) {
+  const text = await sendSessionMessage(sessionId, message);
   try {
-    return JSON.parse(extractJson(responseText));
+    return JSON.parse(extractJson(text));
   } catch {
-    throw new Error(`Approval agent returned invalid JSON: ${responseText.slice(0, 300)}`);
+    throw new Error(`Agent returned invalid JSON: ${text.slice(0, 300)}`);
   }
 }
 
