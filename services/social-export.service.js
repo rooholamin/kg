@@ -39,7 +39,7 @@ function getSlideConfig(slideId) {
 // ---------------------------------------------------------------------------
 // Placeholder resolution
 // ---------------------------------------------------------------------------
-function buildPlaceholders(post, article, section, articleUrl) {
+function buildPlaceholders(post, article, section, articleUrl, slideIndex, slideTotal) {
   const p = post.placeholders || {};
   return {
     HERO_IMAGE: article.featuredImage || '',
@@ -54,6 +54,8 @@ function buildPlaceholders(post, article, section, articleUrl) {
     COLOR_LIGHT: section.colorLight || '#E0CC7A',
     COLOR_DARK: section.colorDark || '#7A5500',
     ARTICLE_URL: articleUrl,
+    SLIDE_INDEX: slideIndex != null ? String(slideIndex) : '',
+    SLIDE_TOTAL: slideTotal != null ? String(slideTotal) : '',
     // AI-generated placeholders
     HOOK: p.HOOK || '',
     QUOTE: p.QUOTE || '',
@@ -147,7 +149,7 @@ export async function exportPost(postId) {
     .replace(/^-|-$/g, '');
   const articleUrl = `https://kghub.ai/${section.slug}/${articleSlug}`;
 
-  const placeholders = buildPlaceholders(post, article, section, articleUrl);
+  const slideTotal = post.slideIds.length;
   const dateStr = format(new Date(), 'yyyy-MM-dd');
   const platformDir = post.platform.replace('_', '/');
 
@@ -171,6 +173,8 @@ export async function exportPost(postId) {
       const templatePath = path.join(TEMPLATE_ROOT, slideConf.subdir, `${slideId}.html`);
       const templateDir = path.join(TEMPLATE_ROOT, slideConf.subdir);
 
+      // Build placeholders with correct position for this slide
+      const placeholders = buildPlaceholders(post, article, section, articleUrl, i + 1, slideTotal);
       const rawHtml = await fs.readFile(templatePath, 'utf-8');
       const filledHtml = fillTemplate(rawHtml, placeholders);
 
