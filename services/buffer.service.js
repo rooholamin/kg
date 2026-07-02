@@ -130,7 +130,12 @@ export async function schedulePost({ postId, settings }) {
     // Instagram-specific metadata
     if (post.platform === 'instagram_carousel' || post.platform === 'instagram_story') {
       const igType = post.platform === 'instagram_story' ? 'story' : 'post';
-      input.metadata = { instagram: { type: igType } };
+      input.metadata = {
+        instagram: {
+          type: igType,
+          shouldShareToFeed: false,
+        },
+      };
 
       if (post.platform === 'instagram_story') {
         const section = post.article?.category?.section;
