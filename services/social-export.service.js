@@ -70,6 +70,7 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
     ARTICLE_URL: articleUrl,
     SLIDE_INDEX: slideIndex != null ? String(slideIndex) : '',
     SLIDE_TOTAL: slideTotal != null ? String(slideTotal) : '',
+    SLIDE_PROGRESS: (slideIndex != null && slideTotal) ? String(Math.round((slideIndex / slideTotal) * 100)) : '0',
     // AI-generated placeholders
     HOOK: p.HOOK || '',
     QUOTE: p.QUOTE || '',
