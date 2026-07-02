@@ -197,7 +197,6 @@ export async function runContentGeneration(campaignId) {
           hashtags: result.hashtags || [],
           placeholders: {
             ...(result.placeholders || {}),
-            ...(result.arc_title ? { ARC_TITLE: result.arc_title } : {}),
             ...(result.label ? { LABEL: result.label } : {}),
           },
           exportTotal: (result.slideIds || []).length,
@@ -258,7 +257,6 @@ export async function regeneratePostContent(postId, instruction) {
         hashtags: result.hashtags || [],
         placeholders: {
           ...(result.placeholders || {}),
-          ...(result.arc_title ? { ARC_TITLE: result.arc_title } : {}),
           ...(result.label ? { LABEL: result.label } : {}),
         },
         exportTotal: (result.slideIds || []).length,
