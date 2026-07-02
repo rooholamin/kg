@@ -25,8 +25,6 @@ import {
   CheckCircle2,
   LayoutGrid,
   RefreshCw,
-  Copy,
-  Check,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -123,43 +121,46 @@ function DayMaskPicker({ value, onChange }) {
 // ---------------------------------------------------------------------------
 // BufferChannelsCard
 // ---------------------------------------------------------------------------
-function CopyButton({ text }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className="ml-1 text-muted-foreground hover:text-foreground transition-colors"
-    >
-      {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
-    </button>
-  );
-}
+
+// Maps Buffer service names to our settings field keys
+const SERVICE_TO_FIELD = {
+  instagram: 'instagramChannelId',
+  linkedin:  'linkedinChannelId',
+  twitter:   'twitterChannelId',
+};
 
 function BufferChannelsCard({ form, setField }) {
-  const [channels, setChannels] = useState(null);
   const [fetching, setFetching] = useState(false);
 
-  async function fetchChannels() {
+  async function fetchAndPopulate() {
     setFetching(true);
     try {
       const res = await apiFetch('/api/social/buffer-channels');
-      if (!res.ok) throw new Error('Failed to fetch channels');
+      if (!res.ok) throw new Error('Failed to fetch channels from Buffer');
       const json = await res.json();
-      setChannels(json.channels ?? []);
+      const channels = json.channels ?? [];
+
+      if (!channels.length) {
+        toast.error('No channels found in your Buffer account');
+        return;
+      }
+
+      let populated = 0;
+      for (const ch of channels) {
+        const fieldKey = SERVICE_TO_FIELD[ch.service];
+        if (fieldKey) {
+          setField(fieldKey, ch.id);
+          populated++;
+        }
+      }
+
+      toast.success(`Populated ${populated} channel ID${populated !== 1 ? 's' : ''} — click Save to apply`);
     } catch (e) {
       toast.error(e.message);
     } finally {
       setFetching(false);
     }
   }
-
-  const SERVICE_LABELS = { instagram: 'Instagram', linkedin: 'LinkedIn', twitter: 'Twitter / X' };
 
   return (
     <Card>
@@ -168,15 +169,14 @@ function BufferChannelsCard({ form, setField }) {
           <div>
             <CardTitle className="text-sm">Buffer Channel IDs</CardTitle>
             <CardDescription className="text-xs">
-              Channel IDs from your Buffer account. Each platform uses one channel.
-              Instagram stories and carousels share the same channel.
+              Channel IDs from your Buffer account. Instagram stories and carousels share the same channel.
             </CardDescription>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={fetchChannels}
+            onClick={fetchAndPopulate}
             disabled={fetching}
             className="shrink-0"
           >
@@ -185,7 +185,7 @@ function BufferChannelsCard({ form, setField }) {
             ) : (
               <RefreshCw className="size-3.5 mr-1.5" />
             )}
-            Fetch Channels
+            Auto-fill from Buffer
           </Button>
         </div>
       </CardHeader>
@@ -196,43 +196,11 @@ function BufferChannelsCard({ form, setField }) {
             <Input
               value={form[key] || ''}
               onChange={(e) => setField(key, e.target.value)}
-              placeholder="channel_id"
+              placeholder="auto-filled or paste manually"
               className="font-mono text-xs"
             />
           </div>
         ))}
-
-        {channels !== null && (
-          <>
-            <Separator />
-            <p className="text-xs text-muted-foreground font-medium">
-              Connected channels — click an ID to copy, then paste above:
-            </p>
-            {channels.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No channels found.</p>
-            ) : (
-              <div className="space-y-1.5">
-                {channels.map((ch) => (
-                  <div
-                    key={ch.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-[10px] py-0 capitalize">
-                        {ch.service}
-                      </Badge>
-                      <span className="font-medium">{ch.displayName || ch.name}</span>
-                    </div>
-                    <div className="flex items-center gap-1 font-mono text-muted-foreground">
-                      {ch.id}
-                      <CopyButton text={ch.id} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
       </CardContent>
     </Card>
   );
