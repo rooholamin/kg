@@ -107,6 +107,14 @@ export async function schedulePost({ postId, settings }) {
     const caption =
       post.platform === 'instagram_story' ? '' : (post.generatedText || '');
 
+    // Reject if caption still contains unfilled {{PLACEHOLDER}} tokens
+    const unfilledTokens = caption.match(/\{\{[^}]+\}\}/g);
+    if (unfilledTokens) {
+      throw new Error(
+        `Caption contains unfilled placeholders: ${[...new Set(unfilledTokens)].join(', ')}. Edit the post before sending to Buffer.`,
+      );
+    }
+
     const input = {
       channelId,
       text: caption,
