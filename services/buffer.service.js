@@ -174,26 +174,30 @@ export async function schedulePost({ postId, settings }) {
 // pullAnalytics
 // ---------------------------------------------------------------------------
 
-const GET_POST_METRICS_QUERY = /* GraphQL */ `
-  query GetPostMetrics($id: PostId!) {
-    post(input: { id: $id }) {
-      metrics {
-        type
-        name
-        value
-        unit
+// Note: Buffer uses custom scalars (PostId, etc.) — embed IDs directly in
+// queries rather than using typed variables to avoid scalar type mismatches.
+function buildGetPostMetricsQuery(bufferPostId) {
+  return /* GraphQL */ `
+    query {
+      post(input: { id: "${bufferPostId}" }) {
+        metrics {
+          type
+          name
+          value
+          unit
+        }
+        metricsUpdatedAt
       }
-      metricsUpdatedAt
     }
-  }
-`;
+  `;
+}
 
 export async function pullAnalytics(postId) {
   const post = await prisma.socialPost.findUnique({ where: { id: postId } });
   if (!post?.bufferPostId) return null;
 
   try {
-    const data = await bufferQuery(GET_POST_METRICS_QUERY, { id: post.bufferPostId });
+    const data = await bufferQuery(buildGetPostMetricsQuery(post.bufferPostId));
     const metrics = data?.post?.metrics ?? [];
 
     const find = (type) => metrics.find((m) => m.type === type)?.value ?? 0;

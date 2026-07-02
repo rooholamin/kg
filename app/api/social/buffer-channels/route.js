@@ -56,11 +56,13 @@ export async function GET() {
     }
 
     // Step 2: fetch channels for all organizations
+    // Note: org ID is embedded directly — Buffer uses a custom OrganizationId scalar,
+    // not String, so typed GraphQL variables cause a type mismatch.
     const allChannels = [];
     for (const org of organizations) {
       const channelData = await bufferQuery(
-        `query GetChannels($orgId: String!) {
-          channels(input: { organizationId: $orgId }) {
+        `query {
+          channels(input: { organizationId: "${org.id}" }) {
             id
             name
             displayName
@@ -68,7 +70,6 @@ export async function GET() {
             avatar
           }
         }`,
-        { orgId: org.id },
       );
       const channels = channelData?.channels ?? [];
       channels.forEach((ch) => allChannels.push({ ...ch, organizationId: org.id, organizationName: org.name }));
