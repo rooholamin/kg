@@ -24,9 +24,9 @@ export async function POST(_req, { params }) {
         { status: 409 },
       );
     }
-    if (post.status !== 'uploaded') {
+    if (post.status !== 'uploaded' && post.status !== 'failed') {
       return NextResponse.json(
-        { message: `Post must be in "uploaded" status to schedule (current: ${post.status})` },
+        { message: `Post must be in "uploaded" or "failed" status to schedule (current: ${post.status})` },
         { status: 422 },
       );
     }

@@ -660,7 +660,7 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onPullAn
               {post.status === 'content_ready' ? 'Export' : 'Retry Export'}
             </Button>
           )}
-          {post.status === 'uploaded' && !post.bufferPostId && (
+          {(post.status === 'uploaded' || post.status === 'failed') && !post.bufferPostId && (
             <Button
               size="sm"
               variant="default"
