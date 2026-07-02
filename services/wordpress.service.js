@@ -520,3 +520,32 @@ export async function publishArticleToWordPress(articleId, userId = null) {
     return { ok: false, error: err.message };
   }
 }
+
+// ---------------------------------------------------------------------------
+// getArticlePermalink
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the canonical permalink for an article from the WordPress REST API.
+ * Returns the URL string on success, or null on any failure (missing WP post
+ * ID, unreachable site, non-200 response, etc.) — callers must handle null.
+ *
+ * @param {{ wordpressPostId?: number | null }} article
+ * @param {{ wpSiteUrl?: string | null }} section
+ * @returns {Promise<string | null>}
+ */
+export async function getArticlePermalink(article, section) {
+  if (!article?.wordpressPostId || !section?.wpSiteUrl) return null;
+  try {
+    const base = normaliseUrl(section.wpSiteUrl);
+    const res = await fetch(
+      `${base}/wp-json/wp/v2/posts/${article.wordpressPostId}`,
+      { headers: { Accept: 'application/json' } },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.link ?? null;
+  } catch {
+    return null;
+  }
+}

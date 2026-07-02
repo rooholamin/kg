@@ -5,6 +5,7 @@ import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getS3ClientInstance } from '@/lib/s3-client';
 import { prisma } from '@/lib/prisma';
 import { format } from 'date-fns';
+import { getArticlePermalink } from '@/services/wordpress.service';
 
 // ---------------------------------------------------------------------------
 // Template configuration
@@ -180,12 +181,8 @@ export async function exportPost(postId) {
   const section = article.category?.section;
   if (!section) throw new Error(`Article ${article.id} has no section`);
 
-  // Build article URL
-  const articleSlug = article.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-  const articleUrl = `https://kghub.ai/${section.slug}/${articleSlug}`;
+  // Fetch real article permalink from WordPress; fall back to empty string
+  const articleUrl = (await getArticlePermalink(article, section)) ?? '';
 
   const slideTotal = post.slideIds.length;
   const dateStr = format(new Date(), 'yyyy-MM-dd');

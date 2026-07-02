@@ -24,16 +24,18 @@ import {
   AlertCircle,
   CheckCircle2,
   LayoutGrid,
+  RefreshCw,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Settings fields config
 // ---------------------------------------------------------------------------
 const BUFFER_FIELDS = [
-  { key: 'instagramCarouselProfileId', label: 'Instagram Carousel Profile ID' },
-  { key: 'instagramStoryProfileId', label: 'Instagram Story Profile ID' },
-  { key: 'linkedinProfileId', label: 'LinkedIn Profile ID' },
-  { key: 'twitterProfileId', label: 'Twitter Profile ID' },
+  { key: 'instagramChannelId', label: 'Instagram Channel ID', service: 'instagram' },
+  { key: 'linkedinChannelId',  label: 'LinkedIn Channel ID',  service: 'linkedin'  },
+  { key: 'twitterChannelId',   label: 'Twitter / X Channel ID', service: 'twitter' },
 ];
 
 const APPROVAL_AGENT_FIELDS = [
@@ -115,6 +117,124 @@ function DayMaskPicker({ value, onChange }) {
         );
       })}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BufferChannelsCard
+// ---------------------------------------------------------------------------
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="ml-1 text-muted-foreground hover:text-foreground transition-colors"
+    >
+      {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+    </button>
+  );
+}
+
+function BufferChannelsCard({ form, setField }) {
+  const [channels, setChannels] = useState(null);
+  const [fetching, setFetching] = useState(false);
+
+  async function fetchChannels() {
+    setFetching(true);
+    try {
+      const res = await apiFetch('/api/social/buffer-channels');
+      if (!res.ok) throw new Error('Failed to fetch channels');
+      const json = await res.json();
+      setChannels(json.channels ?? []);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setFetching(false);
+    }
+  }
+
+  const SERVICE_LABELS = { instagram: 'Instagram', linkedin: 'LinkedIn', twitter: 'Twitter / X' };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-sm">Buffer Channel IDs</CardTitle>
+            <CardDescription className="text-xs">
+              Channel IDs from your Buffer account. Each platform uses one channel.
+              Instagram stories and carousels share the same channel.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={fetchChannels}
+            disabled={fetching}
+            className="shrink-0"
+          >
+            {fetching ? (
+              <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5 mr-1.5" />
+            )}
+            Fetch Channels
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {BUFFER_FIELDS.map(({ key, label }) => (
+          <div key={key} className="grid grid-cols-2 gap-3 items-center">
+            <Label>{label}</Label>
+            <Input
+              value={form[key] || ''}
+              onChange={(e) => setField(key, e.target.value)}
+              placeholder="channel_id"
+              className="font-mono text-xs"
+            />
+          </div>
+        ))}
+
+        {channels !== null && (
+          <>
+            <Separator />
+            <p className="text-xs text-muted-foreground font-medium">
+              Connected channels — click an ID to copy, then paste above:
+            </p>
+            {channels.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No channels found.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {channels.map((ch) => (
+                  <div
+                    key={ch.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-[10px] py-0 capitalize">
+                        {ch.service}
+                      </Badge>
+                      <span className="font-medium">{ch.displayName || ch.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1 font-mono text-muted-foreground">
+                      {ch.id}
+                      <CopyButton text={ch.id} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -243,27 +363,8 @@ export default function SocialSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Buffer profile IDs */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Buffer Profile IDs</CardTitle>
-            <CardDescription className="text-xs">
-              Profile IDs from your Buffer account for each platform.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {BUFFER_FIELDS.map(({ key, label }) => (
-              <div key={key} className="grid grid-cols-2 gap-3 items-center">
-                <Label>{label}</Label>
-                <Input
-                  value={form[key] || ''}
-                  onChange={(e) => setField(key, e.target.value)}
-                  placeholder="buf_xxxxxxxx"
-                />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        {/* Buffer channel IDs */}
+        <BufferChannelsCard form={form} setField={setField} />
 
         {/* Defaults */}
         <Card>

@@ -1,6 +1,11 @@
 import { prisma } from '@/lib/prisma';
+import { getArticlePermalink } from '@/services/wordpress.service';
 
-const BUFFER_API = 'https://api.bufferapp.com/1';
+const BUFFER_GRAPHQL = 'https://api.buffer.com';
+
+// ---------------------------------------------------------------------------
+// Core GraphQL helper
+// ---------------------------------------------------------------------------
 
 function getToken() {
   const token = process.env.BUFFER_ACCESS_TOKEN;
@@ -8,41 +13,85 @@ function getToken() {
   return token;
 }
 
-// ---------------------------------------------------------------------------
-// Profile ID resolution
-// ---------------------------------------------------------------------------
-const PROFILE_ENV_MAP = {
-  instagram_carousel: 'BUFFER_INSTAGRAM_CAROUSEL_PROFILE_ID',
-  instagram_story: 'BUFFER_INSTAGRAM_STORY_PROFILE_ID',
-  linkedin: 'BUFFER_LINKEDIN_PROFILE_ID',
-  twitter: 'BUFFER_TWITTER_PROFILE_ID',
-};
+async function bufferQuery(query, variables = {}) {
+  const res = await fetch(BUFFER_GRAPHQL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
 
-function getProfileId(platform, settings) {
-  // Check settings first (from DB), then fall back to env vars
-  const settingsMap = {
-    instagram_carousel: settings?.instagramCarouselProfileId,
-    instagram_story: settings?.instagramStoryProfileId,
-    linkedin: settings?.linkedinProfileId,
-    twitter: settings?.twitterProfileId,
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Buffer API HTTP ${res.status}: ${text}`);
+  }
+
+  const json = await res.json();
+
+  if (json.errors?.length) {
+    throw new Error(`Buffer GraphQL error: ${json.errors.map((e) => e.message).join('; ')}`);
+  }
+
+  return json.data;
+}
+
+// ---------------------------------------------------------------------------
+// Channel ID resolution (DB only — no env var fallback)
+// ---------------------------------------------------------------------------
+
+function getChannelId(platform, settings) {
+  const map = {
+    instagram_carousel: settings?.instagramChannelId,
+    instagram_story:    settings?.instagramChannelId,
+    linkedin:           settings?.linkedinChannelId,
+    twitter:            settings?.twitterChannelId,
   };
-  const fromSettings = settingsMap[platform];
-  if (fromSettings) return fromSettings;
 
-  const envVar = PROFILE_ENV_MAP[platform];
-  const fromEnv = process.env[envVar];
-  if (fromEnv) return fromEnv;
+  const channelId = map[platform];
+  if (!channelId) {
+    throw new Error(
+      `No Buffer channel ID configured for platform "${platform}". ` +
+      `Go to Social → Settings and fill in the channel IDs.`,
+    );
+  }
 
-  throw new Error(`No Buffer profile ID configured for platform: ${platform}`);
+  return channelId;
 }
 
 // ---------------------------------------------------------------------------
 // schedulePost
 // ---------------------------------------------------------------------------
+
+const CREATE_POST_MUTATION = /* GraphQL */ `
+  mutation CreatePost($input: CreatePostInput!) {
+    createPost(input: $input) {
+      ... on PostActionSuccess {
+        post {
+          id
+          dueAt
+        }
+      }
+      ... on MutationError {
+        message
+      }
+    }
+  }
+`;
+
 export async function schedulePost({ postId, settings }) {
   const post = await prisma.socialPost.findUnique({
     where: { id: postId },
-    include: { article: true },
+    include: {
+      article: {
+        include: {
+          category: {
+            include: { section: true },
+          },
+        },
+      },
+    },
   });
 
   if (!post) throw new Error(`SocialPost not found: ${postId}`);
@@ -53,54 +102,61 @@ export async function schedulePost({ postId, settings }) {
   });
 
   try {
-    const profileId = getProfileId(post.platform, settings);
-    const scheduledAt = post.scheduledAt
-      ? Math.floor(new Date(post.scheduledAt).getTime() / 1000)
-      : null;
+    const channelId = getChannelId(post.platform, settings);
 
-    // Stories are image-only; other platforms use generatedText as caption
-    const caption = post.platform === 'instagram_story' ? '' : (post.generatedText || '');
+    const caption =
+      post.platform === 'instagram_story' ? '' : (post.generatedText || '');
 
-    const body = new URLSearchParams({
-      access_token: getToken(),
-      profile_ids: profileId,
+    const input = {
+      channelId,
       text: caption,
-    });
+      schedulingType: 'automatic',
+      assets: [],
+    };
 
-    if (scheduledAt) {
-      body.append('scheduled_at', String(scheduledAt));
+    // Scheduling mode
+    if (post.scheduledAt) {
+      input.mode = 'customScheduled';
+      input.dueAt = new Date(post.scheduledAt).toISOString();
+    } else {
+      input.mode = 'addToQueue';
     }
 
-    // Attach media for non-Twitter platforms
+    // Media assets (not for Twitter)
     if (post.platform !== 'twitter' && post.imageUrls?.length) {
-      post.imageUrls.forEach((url, idx) => {
-        body.append(`media[photo]`, url);
-        // For carousel: Buffer accepts multiple photos as an album
-        if (idx > 0 && post.platform === 'instagram_carousel') {
-          body.append(`media[photo_${idx}]`, url);
+      input.assets = post.imageUrls.map((url) => ({ image: { url } }));
+    }
+
+    // Instagram-specific metadata
+    if (post.platform === 'instagram_carousel' || post.platform === 'instagram_story') {
+      const igType = post.platform === 'instagram_story' ? 'story' : 'post';
+      input.metadata = { instagram: { type: igType } };
+
+      if (post.platform === 'instagram_story') {
+        const section = post.article?.category?.section;
+        const permalink = await getArticlePermalink(post.article, section);
+        if (permalink) {
+          input.metadata.instagram.link = permalink;
         }
-      });
+      }
     }
 
-    const res = await fetch(`${BUFFER_API}/updates/create.json`, {
-      method: 'POST',
-      body,
-    });
+    const data = await bufferQuery(CREATE_POST_MUTATION, { input });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Buffer API error ${res.status}: ${err}`);
+    const result = data?.createPost;
+    if (result?.message) {
+      throw new Error(`Buffer rejected post: ${result.message}`);
     }
 
-    const data = await res.json();
-    const bufferPostId = data.updates?.[0]?.id || data.update?.id;
+    const bufferPostId = result?.post?.id;
+    const dueAt = result?.post?.dueAt;
 
     await prisma.socialPost.update({
       where: { id: postId },
       data: {
         status: 'scheduled',
         bufferPostId,
-        scheduledAt: scheduledAt ? new Date(scheduledAt * 1000) : post.scheduledAt,
+        scheduledAt: dueAt ? new Date(dueAt) : post.scheduledAt,
       },
     });
 
@@ -117,25 +173,39 @@ export async function schedulePost({ postId, settings }) {
 // ---------------------------------------------------------------------------
 // pullAnalytics
 // ---------------------------------------------------------------------------
+
+const GET_POST_METRICS_QUERY = /* GraphQL */ `
+  query GetPostMetrics($id: PostId!) {
+    post(input: { id: $id }) {
+      metrics {
+        type
+        name
+        value
+        unit
+      }
+      metricsUpdatedAt
+    }
+  }
+`;
+
 export async function pullAnalytics(postId) {
   const post = await prisma.socialPost.findUnique({ where: { id: postId } });
   if (!post?.bufferPostId) return null;
 
   try {
-    const res = await fetch(
-      `${BUFFER_API}/updates/${post.bufferPostId}.json?access_token=${getToken()}`,
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
+    const data = await bufferQuery(GET_POST_METRICS_QUERY, { id: post.bufferPostId });
+    const metrics = data?.post?.metrics ?? [];
+
+    const find = (type) => metrics.find((m) => m.type === type)?.value ?? 0;
 
     const analyticsData = {
-      impressions: data.statistics?.impressions ?? 0,
-      reach: data.statistics?.reach ?? 0,
-      clicks: data.statistics?.clicks ?? 0,
-      likes: data.statistics?.likes ?? 0,
-      comments: data.statistics?.comments ?? 0,
-      shares: data.statistics?.shares ?? 0,
-      pulledAt: new Date().toISOString(),
+      impressions: find('impressions'),
+      reach:       find('reach'),
+      likes:       find('reactions'),
+      comments:    find('comments'),
+      shares:      find('reposts'),
+      clicks:      0,
+      pulledAt:    new Date().toISOString(),
     };
 
     await prisma.socialPost.update({
@@ -152,9 +222,10 @@ export async function pullAnalytics(postId) {
 
 // ---------------------------------------------------------------------------
 // computeScheduledAt — distribute posts evenly across the posting window
+// (unchanged from previous version)
 // ---------------------------------------------------------------------------
+
 export function computeScheduledAt(platform, settings, weekStart, index = 0, total = 1) {
-  // Resolve per-platform config from settings
   const cfgMap = {
     instagram_carousel: {
       daysMask:    settings?.instagramCarouselDays    ?? 28,
@@ -186,11 +257,8 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
   const windowStartMin   = startH * 60 + startM;
   const windowEndMin     = endH   * 60 + endM;
 
-  // Timezone offset in hours from UTC (e.g. -4 for US Eastern Daylight Time).
-  // Stored in SocialSettings.timezoneOffset so it can be changed from the UI.
   const tzOffsetHours = settings?.timezoneOffset ?? 0;
 
-  // Collect all valid days within the 7-day week window
   const base = new Date(weekStart || Date.now());
   const validDays = [];
   for (let offset = 0; offset < 7; offset++) {
@@ -201,7 +269,6 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
     }
   }
 
-  // Fallback: use tomorrow if no valid days found
   if (!validDays.length) {
     const fallback = new Date(base);
     fallback.setUTCDate(fallback.getUTCDate() + 1);
@@ -209,27 +276,21 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
     return fallback;
   }
 
-  // Distribute: postsPerDay = ceil(total / validDays.length)
   const postsPerDay = Math.ceil(total / validDays.length);
+  const dayIndex    = Math.floor(index / postsPerDay);
+  const slotIndex   = index % postsPerDay;
+  const chosenDay   = validDays[dayIndex % validDays.length];
 
-  // Which day and which slot within that day
-  const dayIndex  = Math.floor(index / postsPerDay);
-  const slotIndex = index % postsPerDay;
-
-  const chosenDay = validDays[dayIndex % validDays.length];
-
-  // Compute minute offset within the window
   let minuteOffset = 0;
   if (postsPerDay > 1 && windowEndMin > windowStartMin) {
     minuteOffset = slotIndex * ((windowEndMin - windowStartMin) / (postsPerDay - 1));
   }
 
   const totalMinutes = windowStartMin + minuteOffset;
-  const localHour   = Math.floor(totalMinutes / 60);
-  const localMinute = Math.round(totalMinutes % 60);
+  const localHour    = Math.floor(totalMinutes / 60);
+  const localMinute  = Math.round(totalMinutes % 60);
+  const utcHour      = localHour - tzOffsetHours;
 
-  // Convert local time to UTC: UTC = local - offset  (e.g. 10:00 EDT with offset -4 → 14:00 UTC)
-  const utcHour = localHour - tzOffsetHours;
   chosenDay.setUTCHours(utcHour, localMinute, 0, 0);
   return chosenDay;
 }

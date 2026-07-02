@@ -482,7 +482,7 @@ function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
   );
 }
 
-function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
+function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onPullAnalytics }) {
   const [editOpen, setEditOpen] = useState(false);
   const [regenerateInstruction, setRegenerateInstruction] = useState('');
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
@@ -658,6 +658,17 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onPullAnalytics }) {
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onExport(post.id)}>
               <Play className="size-3 mr-1" />
               {post.status === 'content_ready' ? 'Export' : 'Retry Export'}
+            </Button>
+          )}
+          {post.status === 'uploaded' && !post.bufferPostId && (
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 text-xs"
+              onClick={() => onSchedule(post.id)}
+            >
+              <Share2 className="size-3 mr-1" />
+              Send to Buffer
             </Button>
           )}
           {post.status === 'scheduled' && post.bufferPostId && (
@@ -1212,6 +1223,20 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const schedulePostMutation = useMutation({
+    mutationFn: async (postId) => {
+      const res = await apiFetch(`/api/social/posts/${postId}/schedule`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Failed to schedule');
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
+      toast.success('Post sent to Buffer');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const scheduleAllMutation = useMutation({
     mutationFn: async () => {
       const res = await apiFetch(`/api/social/campaigns/${id}/schedule-all`, { method: 'POST' });
@@ -1643,6 +1668,7 @@ export default function SocialCampaignPage({ params }) {
                           regenerateMutation.mutate({ postId, instruction })
                         }
                         onExport={(postId) => exportMutation.mutate(postId)}
+                        onSchedule={(postId) => schedulePostMutation.mutate(postId)}
                         onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
                       />
                     ))}
@@ -1705,6 +1731,7 @@ export default function SocialCampaignPage({ params }) {
                       regenerateMutation.mutate({ postId, instruction })
                     }
                     onExport={(postId) => exportMutation.mutate(postId)}
+                    onSchedule={(postId) => schedulePostMutation.mutate(postId)}
                     onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
                   />
                 </>
