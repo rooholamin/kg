@@ -364,9 +364,18 @@ function LightboxViewer({ urls }) {
 // ---------------------------------------------------------------------------
 // Post card
 // ---------------------------------------------------------------------------
+// Convert an ISO datetime string to the value expected by <input type="datetime-local">
+function toDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
   const [caption, setCaption] = useState(post.generatedText || '');
   const [localPlaceholders, setLocalPlaceholders] = useState(post.placeholders || {});
+  const [scheduledAt, setScheduledAt] = useState(toDatetimeLocal(post.scheduledAt));
   const [regenerateInstruction, setRegenerateInstruction] = useState('');
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
 
@@ -374,14 +383,16 @@ function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
     if (open) {
       setCaption(post.generatedText || '');
       setLocalPlaceholders(post.placeholders || {});
+      setScheduledAt(toDatetimeLocal(post.scheduledAt));
       setRegenerateInstruction('');
       setShowRegeneratePrompt(false);
     }
-  }, [open, post.generatedText, post.placeholders]);
+  }, [open, post.generatedText, post.placeholders, post.scheduledAt]);
 
   function handleSave() {
     const updates = { placeholders: localPlaceholders };
     if (post.platform !== 'instagram_story') updates.generatedText = caption;
+    if (scheduledAt) updates.scheduledAt = new Date(scheduledAt).toISOString();
     onUpdate(post.id, updates);
     onClose();
   }
@@ -438,6 +449,19 @@ function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
               </div>
             </div>
           )}
+
+          {/* Publish date */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Publish Date &amp; Time
+            </span>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
 
           {/* Regenerate */}
           {!showRegeneratePrompt ? (
