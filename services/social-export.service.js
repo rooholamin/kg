@@ -249,8 +249,9 @@ export async function exportPost(postId) {
       });
       await context.close();
 
-      // Upload to Spaces
-      const s3Key = `social/${platformDir}/${dateStr}/${article.id}-${slideId}.png`;
+      // Upload to Spaces — include a random suffix so re-exports never hit cached URLs
+      const rand = Math.random().toString(36).slice(2, 7);
+      const s3Key = `social/${platformDir}/${dateStr}/${article.id}-${slideId}-${rand}.png`;
       const url = await uploadBufferToS3(screenshot, s3Key);
       imageUrls.push(url);
 
