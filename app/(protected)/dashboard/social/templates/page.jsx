@@ -28,7 +28,7 @@ const TEMPLATE_REGISTRY = {
     { id: '06-key-stat',   name: 'Key Stat',       description: 'One large number with a short label.' },
     { id: '07-features',  name: 'Features Grid',  description: 'Four labelled feature points.' },
     { id: '08-how-to',     name: 'How To',         description: 'Three numbered steps for how-to content.' },
-    { id: '09-full-image', name: 'Full Image',     description: 'Full-bleed image, visual pause slide.' },
+    { id: '09-full-image', name: 'Full Image',     description: 'Full-bleed image with a short caption overlay, visual pause slide.' },
     { id: '10-image-box',  name: 'Image Box',      description: 'Image on top, boxed caption below.' },
     { id: '11-end-card',   name: 'End Card',       description: 'Writer bio and logo. Always last.' },
   ],

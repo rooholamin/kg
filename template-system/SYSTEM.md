@@ -47,7 +47,7 @@ IDs are just the filename without `.html`. There are no `slide-`/`story-`/`linke
 | `06-key-stat` | One large number with a short label. |
 | `07-features` | Four labelled feature points. |
 | `08-how-to` | Three numbered steps (formerly "steps"). |
-| `09-full-image` | Full-bleed image, visual pause slide. Needs an image. |
+| `09-full-image` | Full-bleed image with a short caption overlay near the bottom. Visual pause slide. Needs an image. |
 | `10-image-box` | Boxed image with caption below. Needs an image. |
 | `11-end-card` | Always last. Writer headshot required. |
 
@@ -116,7 +116,7 @@ position, vignette style, etc).
 | `{{FEAT_1_DESC}}` … `{{FEAT_4_DESC}}` | `07-features` | Feature row descriptions |
 | `{{STEP_1_TITLE}}` … `{{STEP_3_TITLE}}` | `08-how-to` | Step titles |
 | `{{STEP_1_DESC}}` … `{{STEP_3_DESC}}` | `08-how-to` | Step descriptions |
-| `{{IMGBOX_CAPTION}}` | `10-image-box` | Caption under the boxed image |
+| `{{IMGBOX_CAPTION}}` | `09-full-image`, `10-image-box` | Caption overlaid on/under the image |
 | `{{END_CARD_BIO}}` | `11-end-card` | Short writer bio / section tagline |
 
 There is no `{{ARTICLE_URL}}` placeholder in the new templates — the "insights.kghub.ca"

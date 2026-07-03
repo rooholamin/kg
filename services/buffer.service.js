@@ -61,6 +61,39 @@ function getChannelId(platform, settings) {
 }
 
 // ---------------------------------------------------------------------------
+// Article CTA — appended to the caption only for platforms with no native
+// visual context for the article (Twitter, LinkedIn). Instagram Carousel and
+// Instagram Story captions stay CTA-free per the content agent's tone rules.
+// ---------------------------------------------------------------------------
+
+const CTA_PREFIX = {
+  linkedin: 'Read the full article on KG Hub:',
+  twitter: 'Read more:',
+};
+
+async function appendArticleCta(caption, platform, article, section) {
+  const prefix = CTA_PREFIX[platform];
+  if (!prefix) return caption;
+
+  const permalink = await getArticlePermalink(article, section);
+  if (!permalink) return caption;
+
+  const ctaLine = `${prefix} ${permalink}`;
+
+  if (platform === 'twitter') {
+    const maxLen = 280;
+    const available = maxLen - ctaLine.length - 2; // 2 chars for the blank-line separator
+    let trimmed = caption;
+    if (trimmed.length > available) {
+      trimmed = available > 1 ? `${trimmed.slice(0, available - 1).trimEnd()}…` : '';
+    }
+    return trimmed ? `${trimmed}\n\n${ctaLine}` : ctaLine;
+  }
+
+  return `${caption}\n\n${ctaLine}`;
+}
+
+// ---------------------------------------------------------------------------
 // schedulePost
 // ---------------------------------------------------------------------------
 
@@ -103,14 +136,20 @@ export async function schedulePost({ postId, settings }) {
 
   try {
     const channelId = getChannelId(post.platform, settings);
+    const section = post.article?.category?.section;
 
     const caption =
       post.platform === 'instagram_story' ? '' : (post.generatedText || '');
 
     // Fill any remaining {{PLACEHOLDER}} tokens from post.placeholders before sending
-    const filledCaption = caption.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => {
+    let filledCaption = caption.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => {
       return post.placeholders?.[key] ?? '';
     });
+
+    // Twitter and LinkedIn have no visual "read more" affordance like the
+    // Instagram templates do, so append a link to the full article here
+    // rather than asking the content agent to write one into the caption.
+    filledCaption = await appendArticleCta(filledCaption, post.platform, post.article, section);
 
     const input = {
       channelId,
@@ -143,7 +182,6 @@ export async function schedulePost({ postId, settings }) {
       };
 
       if (post.platform === 'instagram_story') {
-        const section = post.article?.category?.section;
         const permalink = await getArticlePermalink(post.article, section);
         if (permalink) {
           input.metadata.instagram.link = permalink;

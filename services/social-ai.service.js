@@ -222,7 +222,7 @@ const SLIDE_DESCRIPTIONS = {
   '08-how-to':
     'How-to slide — three numbered steps (STEP_1_TITLE/DESC through STEP_3_TITLE/DESC). Use for how-to or process articles.',
   '09-full-image':
-    'Full-bleed image slide — article image fills the entire frame. Visual pause slide. Needs an image.',
+    'Full-bleed image slide with a short caption (IMGBOX_CAPTION) overlaid near the bottom. Visual pause slide. Needs an image.',
   '10-image-box':
     'Image with boxed caption — image on top, text box below (IMGBOX_CAPTION). Use for a striking image with explanatory text. Needs an image.',
   '11-end-card':
