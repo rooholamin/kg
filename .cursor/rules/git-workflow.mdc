@@ -1,0 +1,15 @@
+---
+description: Git workflow rules — commit and push policy
+alwaysApply: true
+---
+
+# Git Workflow
+
+## Push Policy
+
+**NEVER run `git push` without explicit user approval.**
+
+- Committing locally is fine.
+- Always stop after `git commit` and show the commit hash/message.
+- Only push after the user explicitly says "push", "go ahead", "deploy", or similar confirmation.
+- If the user asks to "commit and push" in the same message, still stop before the push and confirm.

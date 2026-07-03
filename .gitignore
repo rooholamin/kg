@@ -55,3 +55,4 @@ coverage/
 
 # Local diagnostics / WP plugin source (not part of the app)
 _wpdiagnose/
+/kghub_prod_backup_20260625_000937.sql.gz
