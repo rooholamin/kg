@@ -199,7 +199,19 @@ export async function exportPost(postId) {
   });
 
   if (!post) throw new Error(`SocialPost not found: ${postId}`);
-  if (post.slideIds.length === 0) throw new Error(`Post ${postId} has no slideIds`);
+  if (post.slideIds.length === 0) {
+    // Can happen when the content agent returns a slideId that doesn't match
+    // this platform's valid template list (e.g. a carousel-style ID for a
+    // Story post) — the defensive filter in generatePostContent then strips
+    // it, leaving an empty array. Mark the post failed here (rather than just
+    // throwing) so it doesn't sit silently stuck at "content_ready" forever.
+    const message = `Post ${postId} has no slideIds — content generation returned an empty or invalid slide selection. Try Regenerate.`;
+    await prisma.socialPost.update({
+      where: { id: postId },
+      data: { status: 'failed', errorMessage: message },
+    });
+    throw new Error(message);
+  }
 
   const article = post.article;
   const section = article.category?.section;
