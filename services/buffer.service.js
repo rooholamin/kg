@@ -151,10 +151,13 @@ export async function schedulePost({ postId, settings }) {
     // rather than asking the content agent to write one into the caption.
     filledCaption = await appendArticleCta(filledCaption, post.platform, post.article, section);
 
+    // Instagram Stories can't be auto-published via the API for all account
+    // types, so use Buffer's notification (reminder) publishing instead —
+    // Buffer pings the mobile app and the user finishes posting manually.
     const input = {
       channelId,
       text: filledCaption,
-      schedulingType: 'automatic',
+      schedulingType: post.platform === 'instagram_story' ? 'notification' : 'automatic',
       assets: [],
     };
 
