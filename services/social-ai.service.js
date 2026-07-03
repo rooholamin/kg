@@ -290,6 +290,9 @@ export async function generatePostContent({ campaignId, postId, article, section
 
   // Build the pool of real images the agent may assign to image-bearing slides:
   // the article's featured image plus every completed featured/inline asset generated for it.
+  // The agent's session has no tool access, so it cannot fetch or view the images
+  // themselves — we surface each image's original generation prompt (the text used
+  // to create it) as a stand-in description so the agent can pick sensibly by content.
   const assetRequests = await prisma.articleAssetRequest.findMany({
     where: {
       articleId: article.id,
@@ -297,21 +300,32 @@ export async function generatePostContent({ campaignId, postId, article, section
       status: 'completed',
       imageUrl: { not: null },
     },
-    select: { imageUrl: true, type: true },
+    select: { imageUrl: true, type: true, prompt: true },
   });
+  const promptByUrl = new Map(assetRequests.filter((r) => r.imageUrl).map((r) => [r.imageUrl, r.prompt]));
   const imagePool = [];
   const seenUrls = new Set();
   if (article.featuredImage) {
-    imagePool.push({ url: article.featuredImage, type: 'featured' });
+    imagePool.push({
+      url: article.featuredImage,
+      type: 'featured',
+      prompt: promptByUrl.get(article.featuredImage) || article.featuredImagePrompt || '',
+    });
     seenUrls.add(article.featuredImage);
   }
   for (const req of assetRequests) {
     if (!req.imageUrl || seenUrls.has(req.imageUrl)) continue;
     seenUrls.add(req.imageUrl);
-    imagePool.push({ url: req.imageUrl, type: req.type === 'featured_image' ? 'featured' : 'inline' });
+    imagePool.push({
+      url: req.imageUrl,
+      type: req.type === 'featured_image' ? 'featured' : 'inline',
+      prompt: req.prompt || '',
+    });
   }
   const imagePoolUrls = new Set(imagePool.map((img) => img.url));
-  const imageMenu = imagePool.map((img) => `- ${img.url} (${img.type})`).join('\n');
+  const imageMenu = imagePool
+    .map((img) => `- ${img.url} (${img.type})${img.prompt ? ` — depicts: "${img.prompt}"` : ''}`)
+    .join('\n');
 
   // Re-read the article's session ID fresh to avoid stale caller data
   const freshArticle = await prisma.article.findUnique({
@@ -354,7 +368,7 @@ WRITER TONE (for your writing style only — do not output this): ${section.char
 WRITING STYLE: ${section.characterWritingStyle || ''}
 ${slideMenu ? `\nAVAILABLE TEMPLATES (select slideIds ONLY from this list):\n${slideMenu}` : ''}
 ${usageMenu ? `\nTEMPLATE USAGE THIS CAMPAIGN SO FAR (balance your selection — favor templates used less often, avoid picking the same one every time):\n${usageMenu}` : ''}
-${imageMenu ? `\nAVAILABLE IMAGES (assign ONLY these URLs to image-bearing slides; vary the image across slides where sensible):\n${imageMenu}` : ''}
+${imageMenu ? `\nAVAILABLE IMAGES (assign ONLY these URLs to image-bearing slides; you cannot view the images directly, so use each one's "depicts" description to judge fit; vary the image across slides where sensible):\n${imageMenu}` : ''}
 ${instruction ? `INSTRUCTION: ${instruction}` : ''}
 
 Return JSON with these fields:
