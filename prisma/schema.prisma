@@ -835,6 +835,8 @@ model SocialPost {
   imageUrls      String[]         @default([])
   // All {{PLACEHOLDER}} values from AI (HOOK, QUOTE, STAT_N, etc.)
   placeholders   Json?
+  // Per-slide HERO_IMAGE assignment chosen by the content agent: { "<slideId>": "<url>" }
+  slideImages    Json?
   // Export progress tracking (enables "slide X/Y" UI)
   exportProgress Int              @default(0)
   exportTotal    Int              @default(0)

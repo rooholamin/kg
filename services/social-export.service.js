@@ -12,29 +12,51 @@ import { getArticlePermalink } from '@/services/wordpress.service';
 // ---------------------------------------------------------------------------
 const TEMPLATE_ROOT = path.join(process.cwd(), 'template-system');
 
-const SLIDE_CONFIG = {
-  'slide-': {
+// Export format is now determined by platform, not by slide-ID prefix —
+// LinkedIn reuses the exact same carousel dimensions/templates as Instagram Carousel.
+const PLATFORM_EXPORT_CONFIG = {
+  instagram_carousel: {
     subdir: 'carousel',
     viewport: { width: 420, height: 525 },
     deviceScaleFactor: 1080 / 420,
   },
-  'story-': {
+  linkedin: {
+    subdir: 'carousel',
+    viewport: { width: 420, height: 525 },
+    deviceScaleFactor: 1080 / 420,
+  },
+  instagram_story: {
     subdir: 'story',
     viewport: { width: 420, height: 747 },
     deviceScaleFactor: 1080 / 420,
   },
-  'linkedin-': {
-    subdir: 'linkedin',
-    viewport: { width: 600, height: 314 },
-    deviceScaleFactor: 2.0,
-  },
 };
 
-function getSlideConfig(slideId) {
-  for (const [prefix, config] of Object.entries(SLIDE_CONFIG)) {
-    if (slideId.startsWith(prefix)) return config;
+function getPlatformExportConfig(platform) {
+  const config = PLATFORM_EXPORT_CONFIG[platform];
+  if (!config) throw new Error(`No export config for platform: ${platform}`);
+  return config;
+}
+
+// The content agent only ever selects the logical slide "01-cover" — the actual
+// visual variant is resolved here, either randomly assigned at content-generation
+// time (see social-pipeline.service.js) or overridden by a human via the edit modal.
+const COVER_VARIANTS = {
+  default: '01-cover.html',
+  'bottom-anchor': '01-cover-bottom-anchor.html',
+  'center-vignette': '01-cover-center-vignette.html',
+  'left-panel': '01-cover-left-panel.html',
+};
+
+/**
+ * Resolves a slide ID to its physical template filename, handling the
+ * multi-variant cover slide.
+ */
+function resolveTemplateFilename(slideId, placeholders) {
+  if (slideId === '01-cover') {
+    return COVER_VARIANTS[placeholders.COVER_VARIANT] || COVER_VARIANTS.default;
   }
-  throw new Error(`Unknown slide prefix for: ${slideId}`);
+  return `${slideId}.html`;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,21 +64,22 @@ function getSlideConfig(slideId) {
 // ---------------------------------------------------------------------------
 
 /**
- * Falls back to the bundled headshot at assets/photos/{firstname}.jpg when
- * the Section.characterImage CDN URL is not yet populated.
- * The path is relative to any template subdirectory (carousel/, story/, linkedin/)
- * so that ../assets/photos/ resolves correctly when loaded via page.goto file://.
+ * Falls back to the bundled headshot at assets/{firstname}.jpg when the
+ * Section.characterImage CDN URL is not yet populated. The path is relative
+ * to any template subdirectory (carousel/, story/) so that ../assets/ resolves
+ * correctly when loaded via page.goto file://.
  */
 function writerPhotoPath(section) {
   const fullName = section.characterName || section.name || '';
   const firstName = fullName.split(' ')[0].toLowerCase();
-  return firstName ? `../assets/photos/${firstName}.jpg` : '';
+  return firstName ? `../assets/${firstName}.jpg` : '';
 }
 
-function buildPlaceholders(post, article, section, articleUrl, slideIndex, slideTotal) {
+function buildPlaceholders(post, article, section, articleUrl, slideIndex, slideTotal, slideId) {
   const p = post.placeholders || {};
+  const slideImages = post.slideImages || {};
   return {
-    HERO_IMAGE: article.featuredImage || '',
+    HERO_IMAGE: slideImages[slideId] || article.featuredImage || '../assets/hero-default.jpg',
     ART_TITLE: p.ART_TITLE || article.title || '',
     WRITER_NAME: section.characterName || section.name || '',
     WRITER_NAME_UPPER: (section.characterName || section.name || '').toUpperCase(),
@@ -202,15 +225,17 @@ export async function exportPost(postId) {
   const imageUrls = [];
   const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
 
+  const slideConf = getPlatformExportConfig(post.platform);
+  const templateDir = path.join(TEMPLATE_ROOT, slideConf.subdir);
+
   try {
     for (let i = 0; i < post.slideIds.length; i++) {
       const slideId = post.slideIds[i];
-      const slideConf = getSlideConfig(slideId);
-      const templatePath = path.join(TEMPLATE_ROOT, slideConf.subdir, `${slideId}.html`);
-      const templateDir = path.join(TEMPLATE_ROOT, slideConf.subdir);
 
       // Build placeholders with correct position for this slide
-      const placeholders = buildPlaceholders(post, article, section, articleUrl, i + 1, slideTotal);
+      const placeholders = buildPlaceholders(post, article, section, articleUrl, i + 1, slideTotal, slideId);
+      const templateFilename = resolveTemplateFilename(slideId, post.placeholders || {});
+      const templatePath = path.join(templateDir, templateFilename);
       const rawHtml = await fs.readFile(templatePath, 'utf-8');
       const filledHtml = fillTemplate(rawHtml, placeholders);
 

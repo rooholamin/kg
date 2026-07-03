@@ -364,6 +364,15 @@ function LightboxViewer({ urls }) {
 // ---------------------------------------------------------------------------
 // Post card
 // ---------------------------------------------------------------------------
+// The cover slide's visual design is chosen randomly at generation time and
+// hidden from the content agent — this lets a human override it manually.
+const COVER_VARIANT_OPTIONS = [
+  { value: 'default', label: 'Classic' },
+  { value: 'bottom-anchor', label: 'Bottom Anchor' },
+  { value: 'center-vignette', label: 'Center Vignette' },
+  { value: 'left-panel', label: 'Left Panel' },
+];
+
 // Convert an ISO datetime string to the value expected by <input type="datetime-local">
 function toDatetimeLocal(iso) {
   if (!iso) return '';
@@ -438,12 +447,24 @@ function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
                 {Object.keys(localPlaceholders).map((key) => (
                   <div key={key} className="grid grid-cols-[110px_1fr] gap-2 items-center">
                     <span className="text-[10px] font-mono font-medium text-muted-foreground truncate">{key}</span>
-                    <input
-                      type="text"
-                      value={localPlaceholders[key] || ''}
-                      onChange={(e) => setLocalPlaceholders((p) => ({ ...p, [key]: e.target.value }))}
-                      className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
+                    {key === 'COVER_VARIANT' ? (
+                      <select
+                        value={localPlaceholders[key] || 'default'}
+                        onChange={(e) => setLocalPlaceholders((p) => ({ ...p, [key]: e.target.value }))}
+                        className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        {COVER_VARIANT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={localPlaceholders[key] || ''}
+                        onChange={(e) => setLocalPlaceholders((p) => ({ ...p, [key]: e.target.value }))}
+                        className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -580,9 +601,9 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onPullAn
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ImageIcon className="size-3" />
-              <span>{post.imageUrls.length} {post.platform === 'instagram_carousel' ? 'slide' : 'image'}{post.imageUrls.length > 1 ? 's' : ''}</span>
+              <span>{post.imageUrls.length} {['instagram_carousel', 'linkedin'].includes(post.platform) ? 'slide' : 'image'}{post.imageUrls.length > 1 ? 's' : ''}</span>
             </div>
-            {post.platform === 'instagram_carousel' ? (
+            {['instagram_carousel', 'linkedin'].includes(post.platform) ? (
               <CarouselViewer urls={post.imageUrls} />
             ) : (
               <LightboxViewer urls={post.imageUrls} />

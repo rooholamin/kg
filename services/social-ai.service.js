@@ -20,35 +20,39 @@ const CHAR_LIMITS = {
 // ---------------------------------------------------------------------------
 // Available slides reference
 // ---------------------------------------------------------------------------
+// LinkedIn has no slide set of its own — it clones the Instagram Carousel post
+// for the same article (see social-pipeline.service.js). Whenever the agent
+// needs to be asked directly (no sibling post to clone from yet), the pipeline
+// always calls generatePostContent with platform: 'instagram_carousel', so
+// only these two formats are ever presented to the agent.
 const AVAILABLE_SLIDES = {
   carousel: [
-    'slide-01-cover',
-    'slide-02-statement',
-    'slide-03-image-text',
-    'slide-04-narrative',
-    'slide-05-pull-quote',
-    'slide-06-key-stat',
-    'slide-07-features',
-    'slide-08-steps',
-    'slide-09-full-image',
-    'slide-10-image-box',
-    'slide-11-end-card',
+    '01-cover',
+    '02-statement',
+    '03-image-text',
+    '04-narrative',
+    '05-pull-quote',
+    '06-key-stat',
+    '07-features',
+    '08-how-to',
+    '09-full-image',
+    '10-image-box',
+    '11-end-card',
   ],
   story: [
-    'story-01-cover-image',
-    'story-02-dark-statement',
-    'story-03-split-image',
-    'story-04-pull-quote',
-    'story-05-stat-card',
-    'story-06-editorial-light',
+    'cover-image',
+    'dark-statement',
+    'split-image',
+    'pull-quote',
+    'stat-card',
+    'editorial-light',
   ],
-  linkedin: [
-    'linkedin-01-bottom-anchor',
-    'linkedin-02-left-panel',
-    'linkedin-03-center-vignette',
-    'linkedin-04-stat-overlay',
-    'linkedin-05-quote-overlay',
-  ],
+};
+
+// Slides that render {{HERO_IMAGE}} and therefore need an image assigned by the agent.
+const IMAGE_SLIDES = {
+  carousel: ['01-cover', '03-image-text', '09-full-image', '10-image-box'],
+  story: ['cover-image', 'dark-statement', 'split-image', 'pull-quote', 'stat-card', 'editorial-light'],
 };
 
 // ---------------------------------------------------------------------------
@@ -200,53 +204,42 @@ Based on your editorial memory of what has already been published, select which 
 // Slide layout descriptions for the system prompt
 // ---------------------------------------------------------------------------
 const SLIDE_DESCRIPTIONS = {
-  // Carousel
-  'slide-01-cover':
-    'Cover slide — hero image full bleed, large article title, section name, writer name. Always use as the first carousel slide.',
-  'slide-02-statement':
+  // Carousel (also used for LinkedIn — see AVAILABLE_SLIDES note above)
+  '01-cover':
+    'Cover slide — hero image full bleed, large article title, section name, writer name. Always use as the first carousel slide. Needs an image. (The visual design rotates automatically between 4 variants — you always just select "01-cover".)',
+  '02-statement':
     'Bold statement slide — single powerful sentence (HOOK) displayed large on a dark background. Great for a provocative opening line.',
-  'slide-03-image-text':
-    'Image + text split — left half is an article image, right half has a short paragraph (NARRATIVE). Good for visual storytelling.',
-  'slide-04-narrative':
+  '03-image-text':
+    'Image + text split — top is an article image, below it a short paragraph (HOOK). Good for visual storytelling. Needs an image.',
+  '04-narrative':
     'Text-heavy slide — a 2-3 sentence narrative block (NARRATIVE) with a subtle background. Use for context or background.',
-  'slide-05-pull-quote':
+  '05-pull-quote':
     'Pull quote slide — a single quotation (QUOTE) displayed prominently. Great for a memorable expert quote from the article.',
-  'slide-06-key-stat':
+  '06-key-stat':
     'Key statistic slide — one large number (STAT_N) and a short label (STAT_L). Use when the article has a standout data point.',
-  'slide-07-features':
+  '07-features':
     'Features grid — four labelled points (FEAT_1_LABEL/DESC through FEAT_4_LABEL/DESC). Good for listicle or "reasons why" content.',
-  'slide-08-steps':
-    'Steps slide — three numbered steps (STEP_1_TITLE/DESC through STEP_3_TITLE/DESC). Use for how-to or process articles.',
-  'slide-09-full-image':
-    'Full-bleed image slide — article image fills the entire frame with a short caption (IMGBOX_CAPTION) overlay. Visual pause slide.',
-  'slide-10-image-box':
-    'Image with boxed caption — image on top, text box below (IMGBOX_CAPTION). Use for a striking image with explanatory text.',
-  'slide-11-end-card':
-    'End card — writer bio/section tagline (END_CARD_BIO), article URL, logo. Always use as the final carousel slide.',
+  '08-how-to':
+    'How-to slide — three numbered steps (STEP_1_TITLE/DESC through STEP_3_TITLE/DESC). Use for how-to or process articles.',
+  '09-full-image':
+    'Full-bleed image slide — article image fills the entire frame. Visual pause slide. Needs an image.',
+  '10-image-box':
+    'Image with boxed caption — image on top, text box below (IMGBOX_CAPTION). Use for a striking image with explanatory text. Needs an image.',
+  '11-end-card':
+    'End card — writer bio/section tagline (END_CARD_BIO), logo. Always use as the final carousel slide.',
   // Story
-  'story-01-cover-image':
-    'Story cover — full-bleed hero image with article title overlaid. Classic opening story frame.',
-  'story-02-dark-statement':
-    'Dark statement story — bold HOOK text on a dark background. High-impact single-message frame.',
-  'story-03-split-image':
-    'Split story — image on the top half, short NARRATIVE text on the bottom half.',
-  'story-04-pull-quote':
-    'Pull quote story — QUOTE displayed large, centred, with minimal design. Great for shareable quotes.',
-  'story-05-stat-card':
-    'Stat story — STAT_N and STAT_L displayed prominently. Use when the article leads with a strong data point.',
-  'story-06-editorial-light':
-    'Editorial light story — clean, light background with article title and a 1-2 sentence teaser. Professional editorial feel.',
-  // LinkedIn
-  'linkedin-01-bottom-anchor':
-    'Bottom anchor — image fills most of the frame, title and section anchored to the bottom strip.',
-  'linkedin-02-left-panel':
-    'Left panel — dark left column with title/section, right side is the article image. Clean professional split.',
-  'linkedin-03-center-vignette':
-    'Centre vignette — hero image with dark vignette, title centred over the image. Bold editorial look.',
-  'linkedin-04-stat-overlay':
-    'Stat overlay — article image with a prominent STAT_N + STAT_L overlay. Data-forward LinkedIn format.',
-  'linkedin-05-quote-overlay':
-    'Quote overlay — article image with a QUOTE overlaid in a styled box. Great for thought-leadership posts.',
+  'cover-image':
+    'Story cover — full-bleed hero image with article title overlaid. Classic opening story frame. Needs an image.',
+  'dark-statement':
+    'Dark statement story — bold HOOK text over a dark image background. High-impact single-message frame. Needs an image.',
+  'split-image':
+    'Split story — image on the top half, article title/byline on the bottom half. Needs an image.',
+  'pull-quote':
+    'Pull quote story — QUOTE displayed large over an image background, centred, with minimal design. Great for shareable quotes. Needs an image.',
+  'stat-card':
+    'Stat story — STAT_N and STAT_L displayed prominently over an image background. Use when the article leads with a strong data point. Needs an image.',
+  'editorial-light':
+    'Editorial light story — clean, light background with a top image, article title and a 1-2 sentence teaser (HOOK). Professional editorial feel. Needs an image.',
 };
 
 // ---------------------------------------------------------------------------
@@ -259,7 +252,6 @@ export async function generatePostContent({ campaignId, postId, article, section
   const platformName = {
     instagram_carousel: 'Instagram Carousel',
     instagram_story: 'Instagram Story',
-    linkedin: 'LinkedIn',
     twitter: 'Twitter',
   }[platform];
 
@@ -275,7 +267,6 @@ export async function generatePostContent({ campaignId, postId, article, section
   const platformTemplateKey = {
     instagram_carousel: 'carousel',
     instagram_story: 'story',
-    linkedin: 'linkedin',
   }[platform];
   const disabled = new Set(settings?.disabledTemplates || []);
   const activeSlides = platformTemplateKey
@@ -284,6 +275,34 @@ export async function generatePostContent({ campaignId, postId, article, section
   const slideMenu = activeSlides
     .map((id) => `- ${id}: ${SLIDE_DESCRIPTIONS[id] || ''}`)
     .join('\n');
+  const imageSlideIds = new Set(
+    platformTemplateKey ? IMAGE_SLIDES[platformTemplateKey] || [] : [],
+  );
+
+  // Build the pool of real images the agent may assign to image-bearing slides:
+  // the article's featured image plus every completed featured/inline asset generated for it.
+  const assetRequests = await prisma.articleAssetRequest.findMany({
+    where: {
+      articleId: article.id,
+      type: { in: ['featured_image', 'inline_image'] },
+      status: 'completed',
+      imageUrl: { not: null },
+    },
+    select: { imageUrl: true, type: true },
+  });
+  const imagePool = [];
+  const seenUrls = new Set();
+  if (article.featuredImage) {
+    imagePool.push({ url: article.featuredImage, type: 'featured' });
+    seenUrls.add(article.featuredImage);
+  }
+  for (const req of assetRequests) {
+    if (!req.imageUrl || seenUrls.has(req.imageUrl)) continue;
+    seenUrls.add(req.imageUrl);
+    imagePool.push({ url: req.imageUrl, type: req.type === 'featured_image' ? 'featured' : 'inline' });
+  }
+  const imagePoolUrls = new Set(imagePool.map((img) => img.url));
+  const imageMenu = imagePool.map((img) => `- ${img.url} (${img.type})`).join('\n');
 
   // Re-read the article's session ID fresh to avoid stale caller data
   const freshArticle = await prisma.article.findUnique({
@@ -325,12 +344,14 @@ ${bodyText}
 WRITER TONE (for your writing style only — do not output this): ${section.characterTone || ''}
 WRITING STYLE: ${section.characterWritingStyle || ''}
 ${slideMenu ? `\nAVAILABLE TEMPLATES (select slideIds ONLY from this list):\n${slideMenu}` : ''}
+${imageMenu ? `\nAVAILABLE IMAGES (assign ONLY these URLs to image-bearing slides; vary the image across slides where sensible):\n${imageMenu}` : ''}
 ${instruction ? `INSTRUCTION: ${instruction}` : ''}
 
 Return JSON with these fields:
 - slideIds: array of template IDs selected from the list above
 - text: the post caption/body text
 - placeholders: object with all template placeholder values (HOOK, QUOTE, STAT_N, STAT_L, NARRATIVE, FEAT_*_LABEL, FEAT_*_DESC, STEP_*_TITLE, STEP_*_DESC, IMGBOX_CAPTION, END_CARD_BIO, ARC_TITLE)
+- images: object mapping each image-bearing slideId you selected (marked "Needs an image" above) to one URL from the AVAILABLE IMAGES list, e.g. {"01-cover": "https://...", "09-full-image": "https://..."}
 - label: a short 2–4 word creative eyebrow label written for this article (ALL CAPS, e.g. "RISING MARKETS", "BOLD NEW VISION", "DATA DEEP DIVE"). This appears above the article title in the image templates — make it punchy and editorial, not the writer tone.`
     : `PLATFORM: ${platformName}
 ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for this platform.'}`;
@@ -355,6 +376,18 @@ ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for
     // Filter slideIds to only active templates
     if (Array.isArray(result.slideIds) && activeSlides.length) {
       result.slideIds = result.slideIds.filter((id) => activeSlides.includes(id));
+    }
+    // Defensively filter images: keys must be image-bearing slides that were actually
+    // selected, and values must be real URLs from the pool we offered the agent.
+    if (result.images && typeof result.images === 'object') {
+      const selectedSlideIds = new Set(result.slideIds || []);
+      result.images = Object.fromEntries(
+        Object.entries(result.images).filter(
+          ([slideId, url]) => selectedSlideIds.has(slideId) && imageSlideIds.has(slideId) && imagePoolUrls.has(url),
+        ),
+      );
+    } else {
+      result.images = {};
     }
     await logDone(
       aiLogId,

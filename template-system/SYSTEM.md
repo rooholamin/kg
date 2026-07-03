@@ -5,22 +5,82 @@
 ```
 template-system/
 ├── assets/
-│   ├── K.png               ← brand watermark
-│   ├── logo.svg            ← KG logo
-│   ├── fonts/              ← TCM-Bold, TCM-Regular, Dosis-Book, Dosis-SemiBold
-│   └── photos/             ← livia, joseph, stephen, elara, selene, eden, michael (.jpg)
-├── carousel/               ← 11 files, one per slide
-├── story/                  ← 6 files, one per template variant
-├── linkedin/               ← 5 files, one per template variant
+│   ├── K.png                ← brand watermark
+│   ├── logo.svg              ← KG logo (dark-on-light)
+│   ├── logo-light.svg        ← KG logo (light-on-dark)
+│   ├── hero-default.jpg      ← fallback hero image when no article image is available
+│   ├── fonts/                ← TwCenMT (TCM/TCMC) + Dosis families
+│   └── joseph.jpg, livia.jpg, stephen.jpg, elara.jpg, selene.jpg, eden.jpg, michael.jpg
+│       ← writer headshot fallbacks, flat in assets/ (no photos/ subfolder)
+├── carousel/                 ← 14 files: 11 slide types (4 of them are cover variants)
+├── story/                    ← 6 files, one per template variant
+├── archived/                 ← previous template generation, kept for reference/rollback
 └── SYSTEM.md
 ```
+
+**LinkedIn has no templates of its own.** LinkedIn posts reuse the `carousel/` set —
+a LinkedIn post is generated and exported exactly like an Instagram Carousel post
+for the same article (see the social pipeline docs for how cloning works).
 
 ## How templates work
 
 Each file is a standalone HTML page containing one slide. Fill `{{PLACEHOLDER}}` tokens with real values, then export `.export` with Playwright.
 
-**Export selector:** `.export`  
-**No JS, no swiper, no navigation** — just one slide per file.
+**Export selector:** `.export`
+**No JS, no swiper, no navigation** — just one slide per file (the `<script>` block in each file only fills realistic sample copy for local preview in a browser; it's a no-op once the pipeline fills real placeholders).
+
+---
+
+## Slide IDs
+
+IDs are just the filename without `.html`. There are no `slide-`/`story-`/`linkedin-` prefixes anymore.
+
+### Carousel (used for both Instagram Carousel and LinkedIn)
+
+| ID | Notes |
+|---|---|
+| `01-cover` | Always first. See "Cover variants" below — this ID represents 4 interchangeable visual designs. |
+| `02-statement` | Bold single-sentence hook on a dark background. |
+| `03-image-text` | Image top, narrative paragraph below. Needs an image. |
+| `04-narrative` | Text-heavy 2–3 sentence context block. |
+| `05-pull-quote` | Prominent expert quote. |
+| `06-key-stat` | One large number with a short label. |
+| `07-features` | Four labelled feature points. |
+| `08-how-to` | Three numbered steps (formerly "steps"). |
+| `09-full-image` | Full-bleed image, visual pause slide. Needs an image. |
+| `10-image-box` | Boxed image with caption below. Needs an image. |
+| `11-end-card` | Always last. Writer headshot required. |
+
+### Story (pick one per article)
+
+| ID | Notes |
+|---|---|
+| `cover-image` | Strong hero photo articles. Visual-first. Needs an image. |
+| `dark-statement` | Opinion, editorial, or bold claim articles. Needs an image (background). |
+| `split-image` | Data or analysis articles needing image + context. Needs an image. |
+| `pull-quote` | Articles with a strong quotable line. Needs an image (background). |
+| `stat-card` | Data-driven articles with a headline number. Needs an image (background). |
+| `editorial-light` | Writer-forward or personal-voice articles. Needs an image. |
+
+**Every story template uses `{{HERO_IMAGE}}`** (as a background or a top image) — the
+single story slide always needs exactly one image assigned.
+
+### Cover variants (carousel `01-cover`)
+
+The content agent only ever sees and selects the single logical slide `01-cover` — it
+has no knowledge of the variants below. At export time, the pipeline resolves `01-cover`
+to one of 4 physical files, chosen once per post (stored on the post so retries stay
+consistent) and editable by a human via the post's edit modal:
+
+| Variant key | File |
+|---|---|
+| `default` | `01-cover.html` |
+| `bottom-anchor` | `01-cover-bottom-anchor.html` |
+| `center-vignette` | `01-cover-center-vignette.html` |
+| `left-panel` | `01-cover-left-panel.html` |
+
+All 4 share the exact same placeholder set — they only differ visually (headline
+position, vignette style, etc).
 
 ---
 
@@ -30,7 +90,7 @@ Each file is a standalone HTML page containing one slide. Fill `{{PLACEHOLDER}}`
 
 | Placeholder | Description | Example |
 |---|---|---|
-| `{{HERO_IMAGE}}` | Article hero image URL | `https://cdn.kghub...` |
+| `{{HERO_IMAGE}}` | Image shown on this specific slide — chosen per-slide by the content agent (see "Per-slide images" below) | `https://cdn.kghub...` |
 | `{{ART_TITLE}}` | Article headline | `Embracing Luxury: A Guide...` |
 | `{{HOOK}}` | Opening hook sentence | `Living above the city...` |
 | `{{QUOTE}}` | Pull quote from article | `In a penthouse, the city...` |
@@ -41,28 +101,49 @@ Each file is a standalone HTML page containing one slide. Fill `{{PLACEHOLDER}}`
 | `{{SECTION_NAME_UPPER}}` | Section name uppercased | `KG LIVING` |
 | `{{WRITER_NAME}}` | Writer full name | `Livia Moretti` |
 | `{{WRITER_NAME_UPPER}}` | Writer name uppercased | `LIVIA MORETTI` |
-| `{{WRITER_PHOTO}}` | Writer headshot URL | `assets/photos/livia.jpg` |
+| `{{WRITER_PHOTO}}` | Writer headshot URL | `assets/livia.jpg` |
 | `{{COLOR_ACCENT}}` | Section primary accent color (hex) | `#CCB260` |
 | `{{COLOR_LIGHT}}` | Section light accent (hex) | `#E0CC7A` |
 | `{{COLOR_DARK}}` | Section dark accent (hex) | `#7A5500` |
+| `{{SLIDE_INDEX}}` / `{{SLIDE_TOTAL}}` / `{{SLIDE_PROGRESS}}` | Progress bar position within the carousel | `3`, `11`, `27` |
 
 ### Carousel-only placeholders
 
 | Placeholder | Slide | Description |
 |---|---|---|
-| `{{NARRATIVE}}` | slide-04 | Full paragraph combining hook + context |
-| `{{FEAT_1_LABEL}}` … `{{FEAT_4_LABEL}}` | slide-07 | Feature row titles |
-| `{{FEAT_1_DESC}}` … `{{FEAT_4_DESC}}` | slide-07 | Feature row descriptions |
-| `{{STEP_1_TITLE}}` … `{{STEP_3_TITLE}}` | slide-08 | Step titles |
-| `{{STEP_1_DESC}}` … `{{STEP_3_DESC}}` | slide-08 | Step descriptions |
-| `{{IMGBOX_CAPTION}}` | slide-10 | Caption under the boxed image |
-| `{{END_CARD_BIO}}` | slide-11 | Short writer bio / section tagline |
+| `{{NARRATIVE}}` | `04-narrative` | Full paragraph combining hook + context |
+| `{{FEAT_1_LABEL}}` … `{{FEAT_4_LABEL}}` | `07-features` | Feature row titles |
+| `{{FEAT_1_DESC}}` … `{{FEAT_4_DESC}}` | `07-features` | Feature row descriptions |
+| `{{STEP_1_TITLE}}` … `{{STEP_3_TITLE}}` | `08-how-to` | Step titles |
+| `{{STEP_1_DESC}}` … `{{STEP_3_DESC}}` | `08-how-to` | Step descriptions |
+| `{{IMGBOX_CAPTION}}` | `10-image-box` | Caption under the boxed image |
+| `{{END_CARD_BIO}}` | `11-end-card` | Short writer bio / section tagline |
 
-### Story-only placeholder
+There is no `{{ARTICLE_URL}}` placeholder in the new templates — the "insights.kghub.ca"
+text shown in several slides is fixed decorative branding, not a real link.
 
-| Placeholder | Description |
-|---|---|
-| `{{ARTICLE_URL}}` | Full article URL shown in the link sticker |
+---
+
+## Per-slide images (agent-selected)
+
+Unlike the previous system (which repeated the article's single featured image on
+every slide), the content agent now chooses which image goes on which slide from the
+full pool of the article's generated assets (`ArticleAssetRequest` rows: `featured_image`
+and `inline_image` types, plus `Article.featuredImage` as a guaranteed fallback candidate).
+
+The agent returns an `images` map keyed by slide ID, e.g.:
+
+```json
+{
+  "01-cover": "https://cdn.kghub.../hero.jpg",
+  "03-image-text": "https://cdn.kghub.../inline-2.jpg",
+  "09-full-image": "https://cdn.kghub.../inline-4.jpg"
+}
+```
+
+Only slides that actually render `{{HERO_IMAGE}}` need an entry. If a needed slide has
+no assigned image, the export step falls back to `Article.featuredImage`, then to
+`assets/hero-default.jpg`.
 
 ---
 
@@ -72,9 +153,9 @@ Background colors are fixed across all sections — do not replace them:
 
 | Variable | Value | Used on |
 |---|---|---|
-| `#1C1910` | Primary dark | Most dark slides |
-| `#222016` | Secondary dark | Pull quote, steps slides |
-| `#EEEAE0` | Light off-white | Statement, features, end card |
+| `#1C1910` / `#131009` | Primary dark | Most dark slides |
+| `#222016` / `#0E0C09` | Secondary dark | Pull quote, steps slides |
+| `#F6F2EA` / `#EEEAE0` | Light off-white | Statement, features, end card |
 
 Per-section accent colors — fill these via `{{COLOR_ACCENT}}`, `{{COLOR_LIGHT}}`, `{{COLOR_DARK}}`:
 
@@ -92,62 +173,62 @@ Per-section accent colors — fill these via `{{COLOR_ACCENT}}`, `{{COLOR_LIGHT}
 
 ## Export dimensions
 
-| Format | File | Viewport | Scale factor | Output |
+| Format | Files | Viewport | Scale factor | Output |
 |---|---|---|---|---|
-| Carousel slides | `carousel/slide-*.html` | 420×525 | `1080÷420` | 1080×1350 |
-| Story | `story/story-*.html` | 420×747 | `1080÷420` | 1080×1920 |
-| LinkedIn | `linkedin/linkedin-*.html` | 600×314 | `2.0` | 1200×628 |
+| Carousel (Instagram Carousel + LinkedIn) | `carousel/*.html` | 420×525 | `1080÷420` | 1080×1350 |
+| Story | `story/*.html` | 420×747 | `1080÷420` | 1080×1920 |
 
-Export the `.export` div using `page.locator('.export').screenshot()`.  
-Wait 3 seconds after `set_content` for fonts to load.  
+LinkedIn no longer has its own export dimensions — LinkedIn posts are generated and
+exported as Instagram Carousel posts (or cloned directly from the sibling Instagram
+Carousel post for the same article) and reuse the carousel viewport/scale above.
+
+Export the `.export` div using `page.locator('.export').screenshot()`.
+Wait for `document.fonts.ready` after `page.goto()` for fonts to load.
 Never set the viewport to the output size — use `device_scale_factor` to scale up.
 
 ---
 
 ## Template guide — which to use when
 
-### Carousel (all 11 slides used every post, in order)
+### Carousel (agent picks 4–7 slides in order; `01-cover` and `11-end-card` are always included)
 
-| File | When it shines |
+| ID | When it shines |
 |---|---|
-| slide-01-cover | Always first. Strong hero image required. |
-| slide-02-statement | Best when hook is a short, punchy declaration. |
-| slide-03-image-text | Good when image and headline together tell the story. |
-| slide-04-narrative | Use for articles with strong narrative or explanation. |
-| slide-05-pull-quote | Best when article has a memorable standalone quote. |
-| slide-06-key-stat | Required when article has a compelling number. |
-| slide-07-features | Use for listicle-style articles or benefit-driven content. |
-| slide-08-steps | Use for how-to, process, or instructional articles. |
-| slide-09-full-image | Works best when hero image is editorial/dramatic quality. |
-| slide-10-image-box | Use when a specific image detail needs a caption. |
-| slide-11-end-card | Always last. Writer headshot required. |
+| `01-cover` | Always first. Strong hero image required. Visual variant is chosen automatically, not by the agent. |
+| `02-statement` | Best when hook is a short, punchy declaration. |
+| `03-image-text` | Good when image and headline together tell the story. |
+| `04-narrative` | Use for articles with strong narrative or explanation. |
+| `05-pull-quote` | Best when article has a memorable standalone quote. |
+| `06-key-stat` | Required when article has a compelling number. |
+| `07-features` | Use for listicle-style articles or benefit-driven content. |
+| `08-how-to` | Use for how-to, process, or instructional articles. |
+| `09-full-image` | Works best when hero image is editorial/dramatic quality. |
+| `10-image-box` | Use when a specific image detail needs a caption. |
+| `11-end-card` | Always last. Writer headshot required. |
 
 ### Story (pick one per article)
 
-| File | Best for |
+| ID | Best for |
 |---|---|
-| story-01-cover-image | Strong hero photo articles. Visual-first. |
-| story-02-dark-statement | Opinion, editorial, or bold claim articles. |
-| story-03-split-image | Data or analysis articles needing image + context. |
-| story-04-pull-quote | Articles with a strong quotable line. |
-| story-05-stat-card | Data-driven articles with a headline number. |
-| story-06-editorial-light | Writer-forward or personal-voice articles. |
+| `cover-image` | Strong hero photo articles. Visual-first. |
+| `dark-statement` | Opinion, editorial, or bold claim articles. |
+| `split-image` | Data or analysis articles needing image + context. |
+| `pull-quote` | Articles with a strong quotable line. |
+| `stat-card` | Data-driven articles with a headline number. |
+| `editorial-light` | Writer-forward or personal-voice articles. |
 
-### LinkedIn (pick one per article)
+### LinkedIn
 
-| File | Best for |
-|---|---|
-| linkedin-01-bottom-anchor | General article shares. Clean and versatile. |
-| linkedin-02-left-panel | Analysis or thought-leadership pieces needing hook copy. |
-| linkedin-03-center-vignette | Premium or award-type announcements. |
-| linkedin-04-stat-overlay | Data-heavy articles where the number is the story. |
-| linkedin-05-quote-overlay | Articles with a sharp executive or expert quote. |
+No separate guide — LinkedIn reuses the exact Instagram Carousel post generated for
+the same article whenever one exists in the same campaign. If it doesn't (e.g. only
+LinkedIn was approved for that article), the pipeline generates one using the
+Instagram Carousel prompt/template menu above and saves it onto the LinkedIn post.
 
 ---
 
 ## Playwright rules
 
-- Export selector: `.export`  
-- `crossorigin` attribute: never add it to any `<img>` — breaks CDN images  
-- Font wait: `await page.wait_for_timeout(3000)` after `set_content`  
+- Export selector: `.export`
+- `crossorigin` attribute: never add it to any `<img>` — breaks CDN images
+- Font wait: `await page.evaluate(() => document.fonts.ready)` after `page.goto()`
 - Screenshot: `page.locator('.export').screenshot()` — not `page.screenshot(clip=...)`

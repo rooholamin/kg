@@ -10,46 +10,41 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { apiFetch } from '@/lib/api';
-import { ArrowLeft, Loader2, Instagram, Linkedin, LayoutGrid } from 'lucide-react';
+import { ArrowLeft, Loader2, Instagram, LayoutGrid } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Template registry
+// LinkedIn has no templates of its own — it clones the Instagram Carousel post
+// for the same article (same slide images, caption, and slide IDs), so the
+// Carousel group below doubles as the LinkedIn template set.
 // ---------------------------------------------------------------------------
 const TEMPLATE_REGISTRY = {
   carousel: [
-    { id: 'slide-01-cover',       name: 'Cover',          description: 'Hero image full bleed with article title and section. Always first.' },
-    { id: 'slide-02-statement',   name: 'Bold Statement', description: 'Single powerful sentence on dark background.' },
-    { id: 'slide-03-image-text',  name: 'Image + Text',   description: 'Left image, right narrative paragraph.' },
-    { id: 'slide-04-narrative',   name: 'Narrative',      description: 'Text-heavy 2–3 sentence context block.' },
-    { id: 'slide-05-pull-quote',  name: 'Pull Quote',     description: 'Prominent expert quote from the article.' },
-    { id: 'slide-06-key-stat',    name: 'Key Stat',       description: 'One large number with a short label.' },
-    { id: 'slide-07-features',    name: 'Features Grid',  description: 'Four labelled feature points.' },
-    { id: 'slide-08-steps',       name: 'Steps',          description: 'Three numbered steps for how-to content.' },
-    { id: 'slide-09-full-image',  name: 'Full Image',     description: 'Full-bleed image with caption overlay.' },
-    { id: 'slide-10-image-box',   name: 'Image Box',      description: 'Image on top, boxed caption below.' },
-    { id: 'slide-11-end-card',    name: 'End Card',       description: 'Writer bio, article URL, logo. Always last.' },
+    { id: '01-cover',      name: 'Cover',          description: 'Hero image full bleed with article title and section. Always first. Visual design rotates automatically between 4 variants.' },
+    { id: '02-statement',  name: 'Bold Statement', description: 'Single powerful sentence on dark background.' },
+    { id: '03-image-text', name: 'Image + Text',   description: 'Article image with a short paragraph below.' },
+    { id: '04-narrative',  name: 'Narrative',      description: 'Text-heavy 2–3 sentence context block.' },
+    { id: '05-pull-quote', name: 'Pull Quote',     description: 'Prominent expert quote from the article.' },
+    { id: '06-key-stat',   name: 'Key Stat',       description: 'One large number with a short label.' },
+    { id: '07-features',  name: 'Features Grid',  description: 'Four labelled feature points.' },
+    { id: '08-how-to',     name: 'How To',         description: 'Three numbered steps for how-to content.' },
+    { id: '09-full-image', name: 'Full Image',     description: 'Full-bleed image, visual pause slide.' },
+    { id: '10-image-box',  name: 'Image Box',      description: 'Image on top, boxed caption below.' },
+    { id: '11-end-card',   name: 'End Card',       description: 'Writer bio and logo. Always last.' },
   ],
   story: [
-    { id: 'story-01-cover-image',     name: 'Cover Image',     description: 'Full-bleed hero image with article title.' },
-    { id: 'story-02-dark-statement',  name: 'Dark Statement',  description: 'Bold hook text on dark background.' },
-    { id: 'story-03-split-image',     name: 'Split Image',     description: 'Image top half, narrative text bottom.' },
-    { id: 'story-04-pull-quote',      name: 'Pull Quote',      description: 'Large centred quote, minimal design.' },
-    { id: 'story-05-stat-card',       name: 'Stat Card',       description: 'Prominent stat number and label.' },
-    { id: 'story-06-editorial-light', name: 'Editorial Light', description: 'Clean light background with title and teaser.' },
-  ],
-  linkedin: [
-    { id: 'linkedin-01-bottom-anchor',   name: 'Bottom Anchor',   description: 'Image fills frame, title anchored to bottom.' },
-    { id: 'linkedin-02-left-panel',      name: 'Left Panel',      description: 'Dark left column with title, image on right.' },
-    { id: 'linkedin-03-center-vignette', name: 'Centre Vignette', description: 'Hero image with dark vignette, centred title.' },
-    { id: 'linkedin-04-stat-overlay',    name: 'Stat Overlay',    description: 'Image with stat number overlay.' },
-    { id: 'linkedin-05-quote-overlay',   name: 'Quote Overlay',   description: 'Image with styled quote box overlay.' },
+    { id: 'cover-image',     name: 'Cover Image',     description: 'Full-bleed hero image with article title.' },
+    { id: 'dark-statement',  name: 'Dark Statement',  description: 'Bold hook text over a dark image background.' },
+    { id: 'split-image',     name: 'Split Image',     description: 'Image top half, title/byline bottom half.' },
+    { id: 'pull-quote',      name: 'Pull Quote',      description: 'Large centred quote over an image, minimal design.' },
+    { id: 'stat-card',       name: 'Stat Card',       description: 'Prominent stat number and label over an image.' },
+    { id: 'editorial-light', name: 'Editorial Light', description: 'Clean light background with title and teaser.' },
   ],
 };
 
 const GROUP_CONFIG = [
-  { key: 'carousel', label: 'Instagram Carousel', Icon: Instagram, iconClass: 'text-pink-500',   badgeClass: 'bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-400' },
-  { key: 'story',    label: 'Instagram Story',    Icon: Instagram, iconClass: 'text-purple-500', badgeClass: 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400' },
-  { key: 'linkedin', label: 'LinkedIn',           Icon: Linkedin,  iconClass: 'text-blue-600',   badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' },
+  { key: 'carousel', label: 'Instagram Carousel', note: 'Also used for LinkedIn posts', Icon: Instagram, iconClass: 'text-pink-500',   badgeClass: 'bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-400' },
+  { key: 'story',    label: 'Instagram Story',    note: null,                          Icon: Instagram, iconClass: 'text-purple-500', badgeClass: 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400' },
 ];
 
 export default function TemplatesPage() {
@@ -135,7 +130,7 @@ export default function TemplatesPage() {
 
       {/* Groups */}
       <div className="space-y-6">
-        {GROUP_CONFIG.map(({ key, label, Icon, iconClass, badgeClass }) => {
+        {GROUP_CONFIG.map(({ key, label, note, Icon, iconClass, badgeClass }) => {
           const templates = TEMPLATE_REGISTRY[key] || [];
           const groupActive = templates.filter((t) => !disabled.has(t.id)).length;
           return (
@@ -143,11 +138,18 @@ export default function TemplatesPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className={`size-7 rounded-lg flex items-center justify-center ${key === 'carousel' ? 'bg-pink-500/10' : key === 'story' ? 'bg-purple-500/10' : 'bg-blue-600/10'}`}>
+                    <div className={`size-7 rounded-lg flex items-center justify-center ${key === 'carousel' ? 'bg-pink-500/10' : 'bg-purple-500/10'}`}>
                       <Icon className={`size-3.5 ${iconClass}`} />
                     </div>
                     <div>
-                      <CardTitle className="text-sm">{label}</CardTitle>
+                      <div className="flex items-center gap-1.5">
+                        <CardTitle className="text-sm">{label}</CardTitle>
+                        {note && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground border-0 bg-muted">
+                            {note}
+                          </Badge>
+                        )}
+                      </div>
                       <CardDescription className="text-xs">{groupActive} of {templates.length} active</CardDescription>
                     </div>
                   </div>
@@ -168,7 +170,7 @@ export default function TemplatesPage() {
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className="text-xs font-semibold text-foreground">{tmpl.name}</span>
                             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${badgeClass} border-0`}>
-                              {tmpl.id.split('-')[0]}
+                              {key}
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground leading-relaxed">{tmpl.description}</p>

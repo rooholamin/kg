@@ -24,6 +24,105 @@ async function getSocialAiMemory() {
 }
 
 // ---------------------------------------------------------------------------
+// LinkedIn clones the Instagram Carousel post for the same article — same
+// slide images, same caption, same slide IDs. Helpers below find the sibling
+// post and copy its generated content / exported images directly.
+// ---------------------------------------------------------------------------
+const COVER_VARIANT_KEYS = ['default', 'bottom-anchor', 'center-vignette', 'left-panel'];
+
+function pickRandomCoverVariant() {
+  return COVER_VARIANT_KEYS[Math.floor(Math.random() * COVER_VARIANT_KEYS.length)];
+}
+
+async function findCarouselSibling(campaignId, articleId) {
+  return prisma.socialPost.findFirst({
+    where: { campaignId, articleId, platform: 'instagram_carousel' },
+  });
+}
+
+/**
+ * Persists a generatePostContent() result onto a post, merging with any
+ * placeholders already on the post (e.g. a user-edited COVER_VARIANT) and
+ * randomly assigning a cover variant the first time a post gets a "01-cover" slide.
+ */
+async function saveGeneratedContent(post, result) {
+  const slideIds = result.slideIds || [];
+  const placeholders = {
+    ...(post.placeholders || {}),
+    ...(result.placeholders || {}),
+    ...(result.label ? { LABEL: result.label } : {}),
+  };
+  if (slideIds.includes('01-cover') && !placeholders.COVER_VARIANT) {
+    placeholders.COVER_VARIANT = pickRandomCoverVariant();
+  }
+
+  await prisma.socialPost.update({
+    where: { id: post.id },
+    data: {
+      status: 'content_ready',
+      slideIds,
+      generatedText: result.text || '',
+      hashtags: result.hashtags || [],
+      placeholders,
+      slideImages: result.images || {},
+      exportTotal: slideIds.length,
+    },
+  });
+}
+
+/**
+ * If a sibling Instagram Carousel post for the same article already generated
+ * content successfully, clone it onto the given LinkedIn post directly — no
+ * agent call. Returns true if cloned, false if there's no usable sibling yet.
+ */
+async function tryCloneCarouselContent(post) {
+  const sibling = await findCarouselSibling(post.campaignId, post.articleId);
+  if (!sibling?.slideIds?.length) return false;
+
+  await prisma.socialPost.update({
+    where: { id: post.id },
+    data: {
+      status: 'content_ready',
+      slideIds: sibling.slideIds,
+      generatedText: sibling.generatedText,
+      hashtags: sibling.hashtags,
+      placeholders: sibling.placeholders,
+      slideImages: sibling.slideImages,
+      exportTotal: sibling.slideIds.length,
+    },
+  });
+  return true;
+}
+
+/**
+ * If a sibling Instagram Carousel post for the same article has already been
+ * exported/uploaded, clone its image URLs onto the given LinkedIn post directly
+ * — no re-export, no re-upload, same CDN URLs referenced by both posts.
+ */
+async function tryCloneCarouselImages(post) {
+  const sibling = await findCarouselSibling(post.campaignId, post.articleId);
+  if (sibling?.status !== 'uploaded' || !sibling.imageUrls?.length) return null;
+
+  await logInfo(
+    post.campaignId, 'export_clone',
+    'Cloning exported images from sibling Instagram Carousel post — no re-export needed',
+    { sourcePostId: sibling.id },
+    post.id,
+  );
+
+  await prisma.socialPost.update({
+    where: { id: post.id },
+    data: {
+      status: 'uploaded',
+      imageUrls: sibling.imageUrls,
+      exportProgress: sibling.imageUrls.length,
+      exportTotal: sibling.imageUrls.length,
+    },
+  });
+  return sibling.imageUrls;
+}
+
+// ---------------------------------------------------------------------------
 // 1. runApproval
 // Calls the Managed Agent to decide which articles go to which platforms,
 // then creates SocialPost rows.
@@ -160,8 +259,14 @@ export async function runContentGeneration(campaignId) {
 
   const settings = await getSocialSettings();
 
+  // Process non-LinkedIn posts first so each LinkedIn post can clone its
+  // sibling Instagram Carousel post's content instead of generating its own.
+  const linkedinPosts = posts.filter((p) => p.platform === 'linkedin');
+  const otherPosts = posts.filter((p) => p.platform !== 'linkedin');
+  const orderedPosts = [...otherPosts, ...linkedinPosts];
+
   let succeeded = 0;
-  for (const post of posts) {
+  for (const post of orderedPosts) {
     // Bail if the campaign was paused or cancelled while we were mid-loop
     const current = await prisma.socialCampaign.findUnique({
       where: { id: campaignId },
@@ -179,29 +284,27 @@ export async function runContentGeneration(campaignId) {
         data: { status: 'content_generating' },
       });
 
+      if (post.platform === 'linkedin') {
+        const cloned = await tryCloneCarouselContent(post);
+        if (cloned) {
+          await logInfo(campaignId, 'content_clone', `Cloned content from sibling Instagram Carousel post for "${post.article.title}"`, null, post.id);
+          succeeded++;
+          continue;
+        }
+      }
+
+      // LinkedIn has no templates/prompt of its own — a fallback generation always
+      // uses the exact Instagram Carousel prompt/template menu, saved onto this post.
       const { result } = await generatePostContent({
         campaignId,
         postId: post.id,
         article: post.article,
         section,
-        platform: post.platform,
+        platform: post.platform === 'linkedin' ? 'instagram_carousel' : post.platform,
         settings,
       });
 
-      await prisma.socialPost.update({
-        where: { id: post.id },
-        data: {
-          status: 'content_ready',
-          slideIds: result.slideIds || [],
-          generatedText: result.text || '',
-          hashtags: result.hashtags || [],
-          placeholders: {
-            ...(result.placeholders || {}),
-            ...(result.label ? { LABEL: result.label } : {}),
-          },
-          exportTotal: (result.slideIds || []).length,
-        },
-      });
+      await saveGeneratedContent(post, result);
       succeeded++;
     } catch (error) {
       await prisma.socialPost.update({
@@ -238,30 +341,19 @@ export async function regeneratePostContent(postId, instruction) {
   });
 
   try {
+    // A manual regenerate on a LinkedIn post intentionally lets it diverge from
+    // its sibling — same Instagram Carousel prompt/template menu, but its own result.
     const { result } = await generatePostContent({
       campaignId: post.campaignId,
       postId,
       article: post.article,
       section,
-      platform: post.platform,
+      platform: post.platform === 'linkedin' ? 'instagram_carousel' : post.platform,
       settings,
       instruction: instruction || undefined,
     });
 
-    await prisma.socialPost.update({
-      where: { id: postId },
-      data: {
-        status: 'content_ready',
-        slideIds: result.slideIds || [],
-        generatedText: result.text || '',
-        hashtags: result.hashtags || [],
-        placeholders: {
-          ...(result.placeholders || {}),
-          ...(result.label ? { LABEL: result.label } : {}),
-        },
-        exportTotal: (result.slideIds || []).length,
-      },
-    });
+    await saveGeneratedContent(post, result);
 
     return result;
   } catch (error) {
@@ -309,6 +401,18 @@ export async function runExport(postId) {
       await schedulePost(postId);
     }
     return [];
+  }
+
+  // LinkedIn: reuse the sibling Instagram Carousel post's already-exported images
+  // when available, instead of exporting/uploading a second identical set.
+  if (post.platform === 'linkedin') {
+    const clonedUrls = await tryCloneCarouselImages(post);
+    if (clonedUrls) {
+      if (!settings.requireReview) {
+        await schedulePost(postId);
+      }
+      return clonedUrls;
+    }
   }
 
   const exportLogId = await logStart(
@@ -406,12 +510,16 @@ export async function runFullPipeline(campaignId) {
       data: { status: 'exporting' },
     });
 
-    // Export all content_ready posts
+    // Export all content_ready posts — non-LinkedIn first, so each LinkedIn
+    // post can clone its sibling Instagram Carousel post's exported images.
     const posts = await prisma.socialPost.findMany({
       where: { campaignId, status: 'content_ready' },
     });
+    const linkedinPosts = posts.filter((p) => p.platform === 'linkedin');
+    const otherPosts = posts.filter((p) => p.platform !== 'linkedin');
 
-    await Promise.allSettled(posts.map((p) => runExport(p.id)));
+    await Promise.allSettled(otherPosts.map((p) => runExport(p.id)));
+    await Promise.allSettled(linkedinPosts.map((p) => runExport(p.id)));
 
     await checkAndFinalizeCampaign(campaignId);
   } catch (error) {
@@ -490,7 +598,8 @@ export async function resumePipeline(campaignId) {
     await runContentGeneration(campaignId);
   }
 
-  // Export all content-ready posts
+  // Export all content-ready posts — non-LinkedIn first, so each LinkedIn
+  // post can clone its sibling Instagram Carousel post's exported images.
   if (pendingCount > 0 || contentReadyCount > 0) {
     await prisma.socialCampaign.update({
       where: { id: campaignId },
@@ -499,7 +608,11 @@ export async function resumePipeline(campaignId) {
     const posts = await prisma.socialPost.findMany({
       where: { campaignId, status: 'content_ready' },
     });
-    await Promise.allSettled(posts.map((p) => runExport(p.id)));
+    const linkedinPosts = posts.filter((p) => p.platform === 'linkedin');
+    const otherPosts = posts.filter((p) => p.platform !== 'linkedin');
+
+    await Promise.allSettled(otherPosts.map((p) => runExport(p.id)));
+    await Promise.allSettled(linkedinPosts.map((p) => runExport(p.id)));
   }
 
   await checkAndFinalizeCampaign(campaignId);
