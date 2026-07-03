@@ -248,7 +248,7 @@ const SLIDE_DESCRIPTIONS = {
 // The session is stored on Article.socialContentSessionId so the agent remembers
 // context when a second platform post is generated or any post is regenerated.
 // ---------------------------------------------------------------------------
-export async function generatePostContent({ campaignId, postId, article, section, platform, settings, instruction }) {
+export async function generatePostContent({ campaignId, postId, article, section, platform, settings, instruction, usageStats }) {
   const platformName = {
     instagram_carousel: 'Instagram Carousel',
     instagram_story: 'Instagram Story',
@@ -278,6 +278,15 @@ export async function generatePostContent({ campaignId, postId, article, section
   const imageSlideIds = new Set(
     platformTemplateKey ? IMAGE_SLIDES[platformTemplateKey] || [] : [],
   );
+
+  // Surface how many times each template has already been used elsewhere in
+  // this campaign so the agent can consciously balance/rotate its picks
+  // instead of converging on the same handful of templates every time.
+  const usageMenu = activeSlides.length
+    ? activeSlides
+        .map((id) => `- ${id}: used ${usageStats?.[id] || 0}x so far this campaign`)
+        .join('\n')
+    : '';
 
   // Build the pool of real images the agent may assign to image-bearing slides:
   // the article's featured image plus every completed featured/inline asset generated for it.
@@ -344,6 +353,7 @@ ${bodyText}
 WRITER TONE (for your writing style only — do not output this): ${section.characterTone || ''}
 WRITING STYLE: ${section.characterWritingStyle || ''}
 ${slideMenu ? `\nAVAILABLE TEMPLATES (select slideIds ONLY from this list):\n${slideMenu}` : ''}
+${usageMenu ? `\nTEMPLATE USAGE THIS CAMPAIGN SO FAR (balance your selection — favor templates used less often, avoid picking the same one every time):\n${usageMenu}` : ''}
 ${imageMenu ? `\nAVAILABLE IMAGES (assign ONLY these URLs to image-bearing slides; vary the image across slides where sensible):\n${imageMenu}` : ''}
 ${instruction ? `INSTRUCTION: ${instruction}` : ''}
 
@@ -354,6 +364,7 @@ Return JSON with these fields:
 - images: object mapping each image-bearing slideId you selected (marked "Needs an image" above) to one URL from the AVAILABLE IMAGES list, e.g. {"01-cover": "https://...", "09-full-image": "https://..."}
 - label: a short 2–4 word creative eyebrow label written for this article (ALL CAPS, e.g. "RISING MARKETS", "BOLD NEW VISION", "DATA DEEP DIVE"). This appears above the article title in the image templates — make it punchy and editorial, not the writer tone.`
     : `PLATFORM: ${platformName}
+${usageMenu ? `\nTEMPLATE USAGE THIS CAMPAIGN SO FAR (balance your selection — favor templates used less often, avoid picking the same one every time):\n${usageMenu}\n` : ''}
 ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for this platform.'}`;
 
   const aiLogId = await logStart(

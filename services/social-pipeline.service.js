@@ -40,6 +40,46 @@ async function findCarouselSibling(campaignId, articleId) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Template usage stats — lets the content agent see how many times each
+// slide template has already been used elsewhere in this campaign, so it can
+// balance/rotate its picks instead of converging on the same few templates.
+// LinkedIn shares the carousel template pool (it clones carousel posts), so
+// its slideIds count toward the same tally.
+// ---------------------------------------------------------------------------
+const USAGE_STATS_PLATFORMS = {
+  story: ['instagram_story'],
+  carousel: ['instagram_carousel', 'linkedin'],
+};
+
+async function getTemplateUsageStats(campaignId, platformTemplateKey, excludePostId) {
+  const platforms = USAGE_STATS_PLATFORMS[platformTemplateKey];
+  if (!platforms) return {};
+
+  const posts = await prisma.socialPost.findMany({
+    where: {
+      campaignId,
+      platform: { in: platforms },
+      ...(excludePostId ? { id: { not: excludePostId } } : {}),
+    },
+    select: { slideIds: true },
+  });
+
+  const stats = {};
+  for (const post of posts) {
+    for (const slideId of post.slideIds) {
+      stats[slideId] = (stats[slideId] || 0) + 1;
+    }
+  }
+  return stats;
+}
+
+function templateKeyForPlatform(platform) {
+  if (platform === 'instagram_story') return 'story';
+  if (platform === 'instagram_carousel' || platform === 'linkedin') return 'carousel';
+  return null;
+}
+
 /**
  * Persists a generatePostContent() result onto a post, merging with any
  * placeholders already on the post (e.g. a user-edited COVER_VARIANT) and
@@ -295,13 +335,16 @@ export async function runContentGeneration(campaignId) {
 
       // LinkedIn has no templates/prompt of its own — a fallback generation always
       // uses the exact Instagram Carousel prompt/template menu, saved onto this post.
+      const generationPlatform = post.platform === 'linkedin' ? 'instagram_carousel' : post.platform;
+      const usageStats = await getTemplateUsageStats(campaignId, templateKeyForPlatform(generationPlatform));
       const { result } = await generatePostContent({
         campaignId,
         postId: post.id,
         article: post.article,
         section,
-        platform: post.platform === 'linkedin' ? 'instagram_carousel' : post.platform,
+        platform: generationPlatform,
         settings,
+        usageStats,
       });
 
       await saveGeneratedContent(post, result);
@@ -343,14 +386,17 @@ export async function regeneratePostContent(postId, instruction) {
   try {
     // A manual regenerate on a LinkedIn post intentionally lets it diverge from
     // its sibling — same Instagram Carousel prompt/template menu, but its own result.
+    const generationPlatform = post.platform === 'linkedin' ? 'instagram_carousel' : post.platform;
+    const usageStats = await getTemplateUsageStats(post.campaignId, templateKeyForPlatform(generationPlatform), postId);
     const { result } = await generatePostContent({
       campaignId: post.campaignId,
       postId,
       article: post.article,
       section,
-      platform: post.platform === 'linkedin' ? 'instagram_carousel' : post.platform,
+      platform: generationPlatform,
       settings,
       instruction: instruction || undefined,
+      usageStats,
     });
 
     await saveGeneratedContent(post, result);
