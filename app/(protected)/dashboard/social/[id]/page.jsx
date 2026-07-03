@@ -169,6 +169,32 @@ function topPercent(scheduledAt) {
   return Math.max(2, Math.min(94, ((h - DAY_START_H) / (DAY_END_H - DAY_START_H)) * 100));
 }
 
+// Groups posts into chronological day buckets (sorted by time within each
+// day); posts without a scheduledAt yet trail in an "Unscheduled" bucket.
+function groupPostsByDate(posts) {
+  const scheduled = posts.filter((p) => p.scheduledAt);
+  const unscheduled = posts.filter((p) => !p.scheduledAt);
+
+  scheduled.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+
+  const groups = [];
+  const indexByDay = new Map();
+  for (const post of scheduled) {
+    const dayKey = new Date(post.scheduledAt).toDateString();
+    if (!indexByDay.has(dayKey)) {
+      indexByDay.set(dayKey, groups.length);
+      groups.push({ dayKey, date: new Date(post.scheduledAt), posts: [] });
+    }
+    groups[indexByDay.get(dayKey)].posts.push(post);
+  }
+
+  if (unscheduled.length) {
+    groups.push({ dayKey: 'unscheduled', date: null, posts: unscheduled });
+  }
+
+  return groups;
+}
+
 const PLATFORM_BORDER_COLOR = {
   instagram_carousel: '#ec4899',
   instagram_story: '#a855f7',
@@ -1703,19 +1729,31 @@ export default function SocialCampaignPage({ params }) {
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {posts.map((post) => (
-                      <PostCard
-                        key={post.id}
-                        post={post}
-                        onUpdate={(postId, data) => updateMutation.mutate({ postId, data })}
-                        onRegenerate={(postId, instruction) =>
-                          regenerateMutation.mutate({ postId, instruction })
-                        }
-                        onExport={(postId) => exportMutation.mutate(postId)}
-                        onSchedule={(postId) => schedulePostMutation.mutate(postId)}
-                        onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
-                      />
+                  <div className="space-y-6">
+                    {groupPostsByDate(posts).map((group) => (
+                      <div key={group.dayKey}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            {group.date ? format(group.date, 'EEEE, MMM d') : 'Unscheduled'}
+                          </p>
+                          <div className="h-px flex-1 bg-border" />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {group.posts.map((post) => (
+                            <PostCard
+                              key={post.id}
+                              post={post}
+                              onUpdate={(postId, data) => updateMutation.mutate({ postId, data })}
+                              onRegenerate={(postId, instruction) =>
+                                regenerateMutation.mutate({ postId, instruction })
+                              }
+                              onExport={(postId) => exportMutation.mutate(postId)}
+                              onSchedule={(postId) => schedulePostMutation.mutate(postId)}
+                              onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
