@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Section" ADD COLUMN IF NOT EXISTS "colorAccent" TEXT;
+ALTER TABLE "Section" ADD COLUMN IF NOT EXISTS "colorLight" TEXT;
+ALTER TABLE "Section" ADD COLUMN IF NOT EXISTS "colorDark" TEXT;
