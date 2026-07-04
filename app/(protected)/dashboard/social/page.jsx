@@ -203,9 +203,13 @@ function InstagramGridPreviewDialog({ campaigns, open, onOpenChange }) {
 // Date range helpers
 // ---------------------------------------------------------------------------
 
-/** Scale limits proportionally for windows shorter than a week (rounds to nearest int, min 1 if default > 0). */
+/**
+ * Scale limits proportionally to the schedule window length, using a 7-day
+ * week as the baseline for the defaults (e.g. a 14-day window doubles them,
+ * a 3-day window scales them down). Rounds to nearest int, min 1 if default > 0.
+ */
 function scaleLimits(defaults, days) {
-  if (days >= 7) return { ...defaults };
+  if (days === 7) return { ...defaults };
   const factor = days / 7;
   return Object.fromEntries(
     Object.entries(defaults).map(([k, v]) => [k, v === 0 ? 0 : Math.max(1, Math.round(v * factor))]),
@@ -400,7 +404,7 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings, existingCam
   const STEP_TITLES = ['Campaign Dates', 'Post Limits', 'Campaign Brief'];
   const STEP_DESCRIPTIONS = [
     'Choose when posts go out, and which articles are eligible.',
-    'Maximum posts per platform for this campaign.',
+    'Max posts per platform — auto-suggested from your defaults, feel free to adjust.',
     'Optionally guide the AI with a campaign brief.',
   ];
 
@@ -540,10 +544,10 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings, existingCam
 
           {step === 2 && (
             <div className="space-y-3">
-              {scheduleDays < 7 && (
+              {scheduleDays !== 7 && (
                 <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-100 dark:border-amber-900/30 text-xs text-amber-700 dark:text-amber-400">
                   <AlertCircle className="size-3.5 shrink-0" />
-                  Short window ({scheduleDays} day{scheduleDays !== 1 ? 's' : ''}) — limits scaled proportionally from your defaults.
+                  {scheduleDays} day{scheduleDays !== 1 ? 's' : ''} selected — limits scaled proportionally from your weekly defaults ({scheduleDays > 7 ? 'scaled up' : 'scaled down'}). Adjust freely below.
                 </div>
               )}
               {Object.entries(maxPosts).map(([platform, val]) => {
@@ -558,19 +562,18 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings, existingCam
                     <span className="flex-1 text-sm font-medium">
                       {cfg?.label ?? platform.replace(/_/g, ' ')}
                     </span>
-                    {scheduleDays < 7 && (
+                    {scheduleDays !== 7 && (
                       <span className="text-xs text-muted-foreground">
-                        (max {defaultVal})
+                        (default {defaultVal}/week)
                       </span>
                     )}
                     <Input
                       type="number"
                       min={0}
-                      max={20}
                       className="w-20 text-right"
                       value={val}
                       onChange={(e) =>
-                        setMaxPosts((p) => ({ ...p, [platform]: Number(e.target.value) }))
+                        setMaxPosts((p) => ({ ...p, [platform]: Math.max(0, Number(e.target.value) || 0) }))
                       }
                     />
                   </div>
