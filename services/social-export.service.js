@@ -172,7 +172,7 @@ async function uploadBufferToS3(buffer, key) {
       Bucket: bucket,
       Key: key,
       Body: buffer,
-      ContentType: 'image/png',
+      ContentType: 'image/jpeg',
       CacheControl: 'public, max-age=31536000',
       ACL: 'public-read',
     }),
@@ -280,8 +280,15 @@ export async function exportPost(postId) {
       const exportEl = page.locator('.export');
       await exportEl.waitFor({ state: 'visible', timeout: 30_000 });
 
+      // Confirmed via direct Buffer API testing (2026-07-04): images over ~8MB
+      // get a bare "Invalid post: " MutationError with zero detail — Buffer's
+      // docs claim oversized images get auto-resized, but that doesn't happen
+      // through the createPost API, only the web composer's own upload flow.
+      // Our full-bleed PNG screenshots were routinely 5-9MB; JPEG-90 keeps
+      // every slide well under the limit.
       const screenshot = await exportEl.screenshot({
-        type: 'png',
+        type: 'jpeg',
+        quality: 90,
         timeout: 90_000,
         animations: 'disabled',
       });
@@ -289,7 +296,7 @@ export async function exportPost(postId) {
 
       // Upload to Spaces — include a random suffix so re-exports never hit cached URLs
       const rand = Math.random().toString(36).slice(2, 7);
-      const s3Key = `social/${platformDir}/${dateStr}/${article.id}-${slideId}-${rand}.png`;
+      const s3Key = `social/${platformDir}/${dateStr}/${article.id}-${slideId}-${rand}.jpg`;
       const url = await uploadBufferToS3(screenshot, s3Key);
       imageUrls.push(url);
 
