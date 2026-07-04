@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { selectApprovedPlatforms, generatePostContent } from './social-ai.service';
 import { exportPost } from './social-export.service';
-import { schedulePost as bufferSchedulePost, computeScheduledAt } from './buffer.service';
+import { schedulePost as bufferSchedulePost, unschedulePost as bufferUnschedulePost, computeScheduledAt } from './buffer.service';
 import { logStart, logDone, logError, logInfo } from '@/lib/social-logger';
 
 // ---------------------------------------------------------------------------
@@ -508,6 +508,30 @@ export async function schedulePost(postId) {
     const bufferPostId = await bufferSchedulePost({ postId, settings });
     await logDone(logId, `Scheduled — Buffer post ID: ${bufferPostId || 'unknown'}`, { bufferPostId });
     return bufferPostId;
+  } catch (err) {
+    await logError(logId, err.message);
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4b. unschedulePost
+// Removes a post from Buffer and reverts it to "uploaded" so it can be
+// edited/regenerated and re-sent.
+// ---------------------------------------------------------------------------
+export async function unschedulePost(postId) {
+  const post = await prisma.socialPost.findUnique({ where: { id: postId }, select: { campaignId: true, platform: true, bufferPostId: true } });
+
+  const logId = await logStart(
+    post?.campaignId, 'unschedule_buffer',
+    `Removing ${post?.platform} post from Buffer`,
+    { bufferPostId: post?.bufferPostId },
+    postId,
+  );
+
+  try {
+    await bufferUnschedulePost(postId);
+    await logDone(logId, 'Removed from Buffer — post reverted to "uploaded"');
   } catch (err) {
     await logError(logId, err.message);
     throw err;

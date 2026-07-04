@@ -275,6 +275,67 @@ export async function schedulePost({ postId, settings }) {
 }
 
 // ---------------------------------------------------------------------------
+// unschedulePost — removes a post from Buffer (e.g. it was sent by mistake,
+// or with bad content) and reverts the SocialPost back to "uploaded" so it
+// can be edited/regenerated and re-sent.
+// ---------------------------------------------------------------------------
+
+const DELETE_POST_MUTATION = /* GraphQL */ `
+  mutation DeletePost($input: DeletePostInput!) {
+    deletePost(input: $input) {
+      ... on DeletePostSuccess {
+        id
+      }
+      ... on MutationError {
+        message
+      }
+    }
+  }
+`;
+
+export async function unschedulePost(postId) {
+  const post = await prisma.socialPost.findUnique({ where: { id: postId } });
+  if (!post) throw new Error(`SocialPost not found: ${postId}`);
+  if (!post.bufferPostId) throw new Error('Post has no Buffer post ID — nothing to remove');
+
+  const input = { id: post.bufferPostId };
+
+  let queryResult;
+  try {
+    queryResult = await bufferQuery(DELETE_POST_MUTATION, { input });
+  } catch (err) {
+    await logInfo(
+      post.campaignId, 'buffer_raw_response',
+      `Buffer delete request failed for ${post.platform} post`,
+      { input, raw: err.bufferRaw, status: err.bufferStatus },
+      postId,
+    );
+    throw err;
+  }
+
+  const { data, raw, status } = queryResult;
+  const result = data?.deletePost;
+
+  await logInfo(
+    post.campaignId, 'buffer_raw_response',
+    result?.message ? `Buffer rejected delete for ${post.platform} post` : `Removed ${post.platform} post from Buffer`,
+    { input, raw, status },
+    postId,
+  );
+
+  if (result?.message) {
+    throw new Error(`Buffer rejected delete: ${result.message}`);
+  }
+
+  await prisma.socialPost.update({
+    where: { id: postId },
+    data: { status: 'uploaded', bufferPostId: null, errorMessage: null },
+  });
+
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // pullAnalytics
 // ---------------------------------------------------------------------------
 

@@ -553,10 +553,11 @@ function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
   );
 }
 
-function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onPullAnalytics }) {
+function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onUnschedule, onPullAnalytics }) {
   const [editOpen, setEditOpen] = useState(false);
   const [regenerateInstruction, setRegenerateInstruction] = useState('');
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
+  const [unscheduleOpen, setUnscheduleOpen] = useState(false);
 
   function handleRegenerate() {
     onRegenerate(post.id, regenerateInstruction || undefined);
@@ -748,8 +749,40 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onPullAn
               Pull Analytics
             </Button>
           )}
+          {post.bufferPostId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+              onClick={() => setUnscheduleOpen(true)}
+            >
+              <Trash2 className="size-3 mr-1" />
+              Remove from Buffer
+            </Button>
+          )}
         </div>
       </CardContent>
+
+      <AlertDialog open={unscheduleOpen} onOpenChange={setUnscheduleOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this post from Buffer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deletes the post from Buffer's queue so it will not be published. The post reverts to
+              "uploaded" here so you can edit, regenerate, or re-send it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              onClick={() => onUnschedule(post.id)}
+            >
+              Remove from Buffer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
     </>
   );
@@ -775,6 +808,7 @@ const STEP_LABEL = {
   export_start:             'Exporting images',
   export_skip:              'Export skipped (Twitter)',
   schedule_buffer:          'Scheduling via Buffer',
+  unschedule_buffer:        'Removing from Buffer',
   schedule_all_start:       'Scheduling all posts',
   schedule_all_done:        'All posts scheduled',
 };
@@ -1308,6 +1342,20 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const unscheduleMutation = useMutation({
+    mutationFn: async (postId) => {
+      const res = await apiFetch(`/api/social/posts/${postId}/unschedule`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Failed to remove from Buffer');
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
+      toast.success('Removed from Buffer');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const scheduleAllMutation = useMutation({
     mutationFn: async () => {
       const res = await apiFetch(`/api/social/campaigns/${id}/schedule-all`, { method: 'POST' });
@@ -1749,6 +1797,7 @@ export default function SocialCampaignPage({ params }) {
                               }
                               onExport={(postId) => exportMutation.mutate(postId)}
                               onSchedule={(postId) => schedulePostMutation.mutate(postId)}
+                              onUnschedule={(postId) => unscheduleMutation.mutate(postId)}
                               onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
                             />
                           ))}
@@ -1815,6 +1864,7 @@ export default function SocialCampaignPage({ params }) {
                     }
                     onExport={(postId) => exportMutation.mutate(postId)}
                     onSchedule={(postId) => schedulePostMutation.mutate(postId)}
+                    onUnschedule={(postId) => unscheduleMutation.mutate(postId)}
                     onPullAnalytics={(postId) => analyticsMutation.mutate(postId)}
                   />
                 </>
