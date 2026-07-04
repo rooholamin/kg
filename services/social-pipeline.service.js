@@ -183,14 +183,22 @@ export async function runApproval(campaignId) {
   const settings = await getSocialSettings();
   const memory = await getSocialAiMemory();
 
-  // Fetch eligible articles for the week — must be fully published to WP
-  const fetchLogId = await logStart(campaignId, 'approval_fetch', 'Fetching published articles for the week');
+  // Article eligibility range is independent of the posting/schedule window —
+  // null articleDateStart/End means "use the same range as weekStart/weekEnd"
+  // (legacy behavior), but campaigns can otherwise pull from any article
+  // publishDate range (e.g. "articles from the past month") while still
+  // scheduling posts within weekStart/weekEnd.
+  const articleFrom = campaign.articleDateStart ?? campaign.weekStart;
+  const articleTo = campaign.articleDateEnd ?? campaign.weekEnd;
+
+  // Fetch eligible articles — must be fully published to WP
+  const fetchLogId = await logStart(campaignId, 'approval_fetch', 'Fetching published articles for the campaign');
   const articles = await prisma.article.findMany({
     where: {
       status: 'post_publish',
       publishDate: {
-        gte: campaign.weekStart,
-        lte: campaign.weekEnd,
+        gte: articleFrom,
+        lte: articleTo,
       },
       ...(campaign.editorsChoiceOnly ? { isEditorsChoice: true } : {}),
       ...(campaign.includeSections?.length
@@ -210,12 +218,12 @@ export async function runApproval(campaignId) {
   });
 
   if (!articles.length) {
-    await logError(fetchLogId, 'No eligible published articles found for this week');
+    await logError(fetchLogId, 'No eligible published articles found in the selected date range');
     await prisma.socialCampaign.update({
       where: { id: campaignId },
       data: { status: 'failed' },
     });
-    throw new Error('No eligible articles found for this week');
+    throw new Error('No eligible articles found in the selected date range');
   }
 
   await logDone(
@@ -244,6 +252,13 @@ export async function runApproval(campaignId) {
   const platforms = ['instagram_carousel', 'instagram_story', 'linkedin', 'twitter'];
   const postCreateData = [];
 
+  // Spread scheduled posts across the actual posting/schedule window length,
+  // not a hardcoded 7 days — the window can now be any custom range.
+  const windowDays = Math.max(
+    1,
+    Math.round((campaign.weekEnd - campaign.weekStart) / (24 * 60 * 60 * 1000)) + 1,
+  );
+
   for (const platform of platforms) {
     const articleIds = approvalMap[platform] || [];
     const total = articleIds.length;
@@ -251,7 +266,7 @@ export async function runApproval(campaignId) {
       const articleId = articleIds[i];
       const article = articles.find((a) => a.id === articleId);
       if (!article) continue;
-      const rawScheduledAt = computeScheduledAt(platform, settings, campaign.weekStart, i, total);
+      const rawScheduledAt = computeScheduledAt(platform, settings, campaign.weekStart, i, total, windowDays);
       // Never schedule a social post before its article actually goes live on
       // WordPress — the week's even day-spread otherwise happily lands a post
       // a day or two ahead of an article publishing later that same week.

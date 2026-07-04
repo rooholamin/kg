@@ -42,7 +42,10 @@ export async function POST(req) {
     requireRole(session, 'superadmin', 'admin', 'editor');
 
     const body = await req.json();
-    const { weekStart, weekEnd, campaignBrief, editorsChoiceOnly, includeSections } = body;
+    const {
+      weekStart, weekEnd, articleDateStart, articleDateEnd,
+      campaignBrief, editorsChoiceOnly, includeSections,
+    } = body;
 
     if (!weekStart || !weekEnd) {
       return NextResponse.json({ message: 'weekStart and weekEnd are required' }, { status: 400 });
@@ -66,6 +69,9 @@ export async function POST(req) {
       data: {
         weekStart: new Date(weekStart),
         weekEnd: new Date(weekEnd),
+        // Null = "use weekStart/weekEnd" (article filter matches the posting window)
+        articleDateStart: articleDateStart ? new Date(articleDateStart) : null,
+        articleDateEnd: articleDateEnd ? new Date(articleDateEnd) : null,
         status: 'pending',
         maxPostsPerPlatform,
         campaignBrief: campaignBrief || null,

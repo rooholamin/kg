@@ -804,6 +804,10 @@ model SocialCampaign {
   weekStart   DateTime
   weekEnd     DateTime
   status      SocialCampaignStatus @default(pending)
+  // Article publishDate filter, independent of the weekStart/weekEnd posting
+  // window above. Null means "use weekStart/weekEnd" (legacy behavior).
+  articleDateStart DateTime?
+  articleDateEnd   DateTime?
   // Settings captured at creation time (copied from SocialSettings defaults)
   maxPostsPerPlatform Json
   campaignBrief       String?  @db.Text

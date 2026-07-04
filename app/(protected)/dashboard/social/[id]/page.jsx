@@ -4,7 +4,7 @@ import { useState, use, useEffect, useRef, useMemo, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import { format, parseISO, formatDistanceToNow, differenceInCalendarDays } from 'date-fns';
 import { toast } from 'sonner';
 import { Container } from '@/components/common/container';
 import { Button } from '@/components/ui/button';
@@ -1456,16 +1456,19 @@ export default function SocialCampaignPage({ params }) {
   const [selectedPost, setSelectedPost] = useState(null);
 
   const weekDays = useMemo(() => {
-    if (!campaign?.weekStart) return [];
+    if (!campaign?.weekStart || !campaign?.weekEnd) return [];
     const days = [];
     const start = new Date(campaign.weekStart);
-    for (let i = 0; i < 7; i++) {
+    // The posting/schedule window is now a free-form date range, not always
+    // 7 days, so span the calendar across however many days it covers.
+    const dayCount = Math.max(1, differenceInCalendarDays(new Date(campaign.weekEnd), start) + 1);
+    for (let i = 0; i < dayCount; i++) {
       const d = new Date(start);
       d.setDate(d.getDate() + i);
       days.push(d);
     }
     return days;
-  }, [campaign?.weekStart]);
+  }, [campaign?.weekStart, campaign?.weekEnd]);
 
   const postsByDay = useMemo(() => {
     const map = {};
@@ -1511,6 +1514,13 @@ export default function SocialCampaignPage({ params }) {
 
   const statusCfg = CAMPAIGN_STATUS_CONFIG[campaign.status] ?? CAMPAIGN_STATUS_CONFIG.pending;
 
+  const articleRangeStart = campaign.articleDateStart ?? campaign.weekStart;
+  const articleRangeEnd = campaign.articleDateEnd ?? campaign.weekEnd;
+  const hasCustomArticleRange = (
+    new Date(articleRangeStart).getTime() !== new Date(campaign.weekStart).getTime()
+    || new Date(articleRangeEnd).getTime() !== new Date(campaign.weekEnd).getTime()
+  );
+
   return (
     <Container>
       {/* Header */}
@@ -1535,6 +1545,12 @@ export default function SocialCampaignPage({ params }) {
               {format(parseISO(String(campaign.weekStart)), 'MMM d')} –{' '}
               {format(parseISO(String(campaign.weekEnd)), 'MMM d, yyyy')}
             </h1>
+            {hasCustomArticleRange && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Articles from {format(new Date(articleRangeStart), 'MMM d')} –{' '}
+                {format(new Date(articleRangeEnd), 'MMM d, yyyy')}
+              </p>
+            )}
             <div className="flex items-center gap-2 mt-1.5">
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusCfg.className}`}>
                 <span className={`size-1.5 rounded-full ${statusCfg.dot}`} />
@@ -1669,7 +1685,7 @@ export default function SocialCampaignPage({ params }) {
 
       {/* Week Calendar */}
       <div className="overflow-x-auto pb-2 mt-6" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <div className="flex" style={{ minWidth: `calc(3rem + 7 * 160px)` }}>
+        <div className="flex" style={{ minWidth: `calc(3rem + ${weekDays.length} * 160px)` }}>
           {/* Time axis */}
           <div className="relative w-12 shrink-0" style={{ minHeight: 560 }}>
             {TIME_LABELS.map((label) => {

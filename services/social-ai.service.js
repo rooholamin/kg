@@ -132,9 +132,16 @@ export async function selectApprovedPlatforms({ articles, campaign, settings, me
     .filter(Boolean)
     .join(' ');
 
-  const taskMessage = `WEEKLY SOCIAL APPROVAL — Week of ${new Date(campaign.weekStart).toDateString()} to ${new Date(campaign.weekEnd).toDateString()}
+  const articleFrom = campaign.articleDateStart ?? campaign.weekStart;
+  const articleTo = campaign.articleDateEnd ?? campaign.weekEnd;
+  const sameRange = new Date(articleFrom).getTime() === new Date(campaign.weekStart).getTime()
+    && new Date(articleTo).getTime() === new Date(campaign.weekEnd).getTime();
 
-Candidate articles this week:
+  const taskMessage = `SOCIAL CAMPAIGN APPROVAL — Posting window: ${new Date(campaign.weekStart).toDateString()} to ${new Date(campaign.weekEnd).toDateString()}${
+    sameRange ? '' : ` (articles are sourced from a different range, see below)`
+  }
+
+Candidate articles${sameRange ? ' this week' : ` (published ${new Date(articleFrom).toDateString()} to ${new Date(articleTo).toDateString()})`}:
 ${articleList}
 
 Limits (max posts per platform):

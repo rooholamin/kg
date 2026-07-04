@@ -406,7 +406,7 @@ export async function pullAnalytics(postId) {
 // (unchanged from previous version)
 // ---------------------------------------------------------------------------
 
-export function computeScheduledAt(platform, settings, weekStart, index = 0, total = 1) {
+export function computeScheduledAt(platform, settings, weekStart, index = 0, total = 1, windowDays = 7) {
   const cfgMap = {
     instagram_carousel: {
       daysMask:    settings?.instagramCarouselDays    ?? 28,
@@ -442,7 +442,8 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
 
   const base = new Date(weekStart || Date.now());
   const validDays = [];
-  for (let offset = 0; offset < 7; offset++) {
+  const days = Math.max(1, windowDays || 7);
+  for (let offset = 0; offset < days; offset++) {
     const d = new Date(base);
     d.setUTCDate(d.getUTCDate() + offset);
     if (daysMask & (1 << d.getUTCDay())) {
