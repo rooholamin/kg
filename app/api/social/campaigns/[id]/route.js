@@ -16,38 +16,59 @@ export async function GET(_req, { params }) {
 
     const { id } = await params;
 
-    const campaign = await prisma.socialCampaign.findUnique({
-      where: { id },
-      include: {
-        posts: {
-          include: {
-            article: {
-              select: {
-                id: true,
-                title: true,
-                featuredImage: true,
-                publishDate: true,
-                category: {
-                  select: {
-                    name: true,
-                    section: {
-                      select: { name: true, slug: true, colorAccent: true },
+    const [campaign, settings] = await Promise.all([
+      prisma.socialCampaign.findUnique({
+        where: { id },
+        include: {
+          posts: {
+            include: {
+              article: {
+                select: {
+                  id: true,
+                  title: true,
+                  featuredImage: true,
+                  publishDate: true,
+                  category: {
+                    select: {
+                      name: true,
+                      section: {
+                        select: { name: true, slug: true, colorAccent: true },
+                      },
                     },
                   },
                 },
               },
             },
+            orderBy: { createdAt: 'asc' },
           },
-          orderBy: { createdAt: 'asc' },
         },
-      },
-    });
+      }),
+      prisma.socialSettings.findUnique({ where: { id: 'singleton' } }),
+    ]);
 
     if (!campaign) {
       return NextResponse.json({ message: 'Campaign not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ data: campaign });
+    // Prefill data for the "Randomize Schedule" modal — this route is
+    // reachable by editors, unlike /api/social/settings (admin-only), so
+    // expose only the day-mask/window fields it needs, not the full settings row.
+    const settingsDefaults = {
+      instagramCarouselDays: settings?.instagramCarouselDays,
+      instagramCarouselWindowStart: settings?.instagramCarouselWindowStart,
+      instagramCarouselWindowEnd: settings?.instagramCarouselWindowEnd,
+      instagramStoryDays: settings?.instagramStoryDays,
+      instagramStoryWindowStart: settings?.instagramStoryWindowStart,
+      instagramStoryWindowEnd: settings?.instagramStoryWindowEnd,
+      linkedinDays: settings?.linkedinDays,
+      linkedinWindowStart: settings?.linkedinWindowStart,
+      linkedinWindowEnd: settings?.linkedinWindowEnd,
+      twitterDays: settings?.twitterDays,
+      twitterWindowStart: settings?.twitterWindowStart,
+      twitterWindowEnd: settings?.twitterWindowEnd,
+    };
+
+    return NextResponse.json({ data: { ...campaign, settingsDefaults } });
   } catch (e) {
     return routeError('[GET /api/social/campaigns/[id]]', e);
   }

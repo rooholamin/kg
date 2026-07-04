@@ -11,11 +11,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { apiFetch } from '@/lib/api';
 import {
   ArrowLeft,
@@ -49,6 +52,7 @@ import {
   Trash2,
   BrainCircuit,
   StopCircle,
+  Shuffle,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -99,6 +103,53 @@ const PLATFORMS = [
     tabBg: 'data-[state=active]:bg-zinc-100 dark:data-[state=active]:bg-zinc-800',
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Randomize Schedule — per-platform day/window field keys + fallback
+// defaults (mirrors SocialSettings @default values in prisma/schema.prisma),
+// used to prefill the modal when campaign.settingsDefaults is missing a field.
+// ---------------------------------------------------------------------------
+const PLATFORM_SCHEDULE_FIELDS = {
+  instagram_carousel: { daysKey: 'instagramCarouselDays', startKey: 'instagramCarouselWindowStart', endKey: 'instagramCarouselWindowEnd', defaults: { days: 28, start: '10:00', end: '10:00' } },
+  instagram_story:    { daysKey: 'instagramStoryDays',    startKey: 'instagramStoryWindowStart',    endKey: 'instagramStoryWindowEnd',    defaults: { days: 62, start: '08:00', end: '20:00' } },
+  linkedin:            { daysKey: 'linkedinDays',           startKey: 'linkedinWindowStart',           endKey: 'linkedinWindowEnd',           defaults: { days: 20, start: '09:00', end: '09:00' } },
+  twitter:             { daysKey: 'twitterDays',            startKey: 'twitterWindowStart',            endKey: 'twitterWindowEnd',            defaults: { days: 42, start: '10:00', end: '10:00' } },
+};
+
+const DAY_OPTIONS = [
+  { label: 'Sun', bit: 1 },
+  { label: 'Mon', bit: 2 },
+  { label: 'Tue', bit: 4 },
+  { label: 'Wed', bit: 8 },
+  { label: 'Thu', bit: 16 },
+  { label: 'Fri', bit: 32 },
+  { label: 'Sat', bit: 64 },
+];
+
+function DayMaskPicker({ value, onChange }) {
+  const mask = value || 0;
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {DAY_OPTIONS.map(({ label, bit }) => {
+        const active = Boolean(mask & bit);
+        return (
+          <button
+            key={label}
+            type="button"
+            onClick={() => onChange(active ? mask & ~bit : mask | bit)}
+            className={`px-2 py-1 rounded text-xs font-medium border transition-colors cursor-pointer ${
+              active
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Post status config
@@ -219,13 +270,31 @@ function StatusDot({ status }) {
   return <span className="size-2 rounded-full bg-zinc-400 shrink-0" />;
 }
 
+// Small colored pill showing which article section a post belongs to —
+// shared between the week-calendar chip and the platform-tab card. Reads
+// from `article.category.section` (the actual nesting the campaign API
+// returns; a `article.section` shortcut never existed server-side).
+function SectionBadge({ post, className = '' }) {
+  const section = post.article?.category?.section;
+  if (!section?.name) return null;
+  return (
+    <span
+      className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${className}`}
+      style={{
+        backgroundColor: section.colorAccent ? section.colorAccent + '22' : 'rgba(0,0,0,0.08)',
+        color: section.colorAccent ?? '#666',
+      }}
+    >
+      {section.name}
+    </span>
+  );
+}
+
 function PostChip({ post, onClick }) {
   const platform = PLATFORMS.find((p) => p.id === post.platform);
   const Icon = platform?.Icon ?? Share2;
   const borderColor = PLATFORM_BORDER_COLOR[post.platform] ?? '#71717a';
   const timeLabel = post.scheduledAt ? format(new Date(post.scheduledAt), 'HH:mm') : '—';
-  const sectionName = post.article?.section?.name;
-  const colorAccent = post.article?.section?.colorAccent;
 
   return (
     <button
@@ -244,17 +313,7 @@ function PostChip({ post, onClick }) {
         <p className="text-xs font-medium line-clamp-2 leading-tight">
           {post.article?.title ?? 'Untitled'}
         </p>
-        {sectionName && (
-          <span
-            className="inline-block text-[10px] px-1.5 py-0.5 rounded-full"
-            style={{
-              backgroundColor: colorAccent ? colorAccent + '22' : 'rgba(0,0,0,0.08)',
-              color: colorAccent ?? '#666',
-            }}
-          >
-            {sectionName}
-          </span>
-        )}
+        <SectionBadge post={post} />
       </div>
     </button>
   );
@@ -567,6 +626,107 @@ function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// RandomizeScheduleDialog — lets the user pick how to scatter a single
+// platform's not-yet-sent posts across the posting schedule: even spacing
+// (today's default behavior) or fully randomized day/time, with optional
+// day-of-week and time-window overrides for this one-off run.
+// ---------------------------------------------------------------------------
+function RandomizeScheduleDialog({ platform, posts, settingsDefaults, onClose, onSubmit, isSubmitting }) {
+  const fields = PLATFORM_SCHEDULE_FIELDS[platform?.id];
+  const eligiblePosts = useMemo(() => posts.filter((p) => !p.bufferPostId), [posts]);
+
+  const [mode, setMode] = useState('even');
+  const [daysMask, setDaysMask] = useState(0);
+  const [windowStart, setWindowStart] = useState('09:00');
+  const [windowEnd, setWindowEnd] = useState('09:00');
+
+  // Reset/prefill whenever a new platform's dialog is opened
+  useEffect(() => {
+    if (!platform || !fields) return;
+    setMode('even');
+    setDaysMask(settingsDefaults?.[fields.daysKey] ?? fields.defaults.days);
+    setWindowStart(settingsDefaults?.[fields.startKey] ?? fields.defaults.start);
+    setWindowEnd(settingsDefaults?.[fields.endKey] ?? fields.defaults.end);
+  }, [platform, fields, settingsDefaults]);
+
+  if (!platform || !fields) return null;
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Shuffle className="size-4" />
+            Randomize {platform.label} Schedule
+          </DialogTitle>
+          <DialogDescription>
+            {eligiblePosts.length} of {posts.length} post{posts.length !== 1 ? 's' : ''} will be rescheduled —
+            posts already sent to Buffer are left untouched.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">Scatter mode</Label>
+            <RadioGroup value={mode} onValueChange={setMode} className="gap-2.5">
+              <label className="flex items-start gap-2.5 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
+                <RadioGroupItem value="even" className="mt-0.5" />
+                <span>
+                  <span className="block text-sm font-medium">Even spread</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Posts are spaced out evenly across the selected days and time window.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2.5 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
+                <RadioGroupItem value="random" className="mt-0.5" />
+                <span>
+                  <span className="block text-sm font-medium">Randomize times</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Which day each post lands on and its time-of-day are both randomized within the window.
+                  </span>
+                </span>
+              </label>
+            </RadioGroup>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">Days to use</Label>
+            <DayMaskPicker value={daysMask} onChange={setDaysMask} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Window Start</Label>
+              <Input type="time" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Window End</Label>
+              <Input type="time" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+          <Button
+            onClick={() => onSubmit({ platform: platform.id, mode, daysMask, windowStart, windowEnd })}
+            disabled={isSubmitting || eligiblePosts.length === 0 || !daysMask}
+          >
+            {isSubmitting ? (
+              <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Shuffle className="size-3.5 mr-1.5" />
+            )}
+            Randomize {eligiblePosts.length} post{eligiblePosts.length !== 1 ? 's' : ''}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onUnschedule, onPullAnalytics }) {
   const [editOpen, setEditOpen] = useState(false);
   const [regenerateInstruction, setRegenerateInstruction] = useState('');
@@ -614,6 +774,8 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onUnsche
           </p>
           <PostStatusBadge status={post.status} />
         </div>
+
+        <SectionBadge post={post} className="mt-1.5" />
 
         {post.scheduledAt && (
           <div className="flex items-center gap-1.5 mt-1">
@@ -1415,6 +1577,25 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const randomizeMutation = useMutation({
+    mutationFn: async (payload) => {
+      const res = await apiFetch(`/api/social/campaigns/${id}/randomize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Failed to randomize schedule');
+      return json;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
+      toast.success(`Rescheduled ${data.count} post${data.count !== 1 ? 's' : ''}`);
+      setRandomizeTarget(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const pipelineAction = async (action) => {
     const res = await apiFetch(`/api/social/campaigns/${id}`, {
       method: 'PATCH',
@@ -1467,6 +1648,7 @@ export default function SocialCampaignPage({ params }) {
   });
 
   const [selectedPost, setSelectedPost] = useState(null);
+  const [randomizeTarget, setRandomizeTarget] = useState(null);
 
   const weekDays = useMemo(() => {
     if (!campaign?.weekStart || !campaign?.weekEnd) return [];
@@ -1845,6 +2027,7 @@ export default function SocialCampaignPage({ params }) {
 
           {PLATFORMS.map((platform) => {
             const posts = postsByPlatform[platform.id] ?? [];
+            const eligibleCount = posts.filter((p) => !p.bufferPostId).length;
             return (
               <TabsContent key={platform.id} value={platform.id}>
                 {posts.length === 0 ? (
@@ -1858,6 +2041,19 @@ export default function SocialCampaignPage({ params }) {
                   </div>
                 ) : (
                   <div className="space-y-6">
+                    {eligibleCount > 0 && (
+                      <div className="flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs gap-1.5"
+                          onClick={() => setRandomizeTarget(platform.id)}
+                        >
+                          <Shuffle className="size-3.5" />
+                          Randomize Schedule
+                        </Button>
+                      </div>
+                    )}
                     {groupPostsByDate(posts).map((group) => (
                       <div key={group.dayKey}>
                         <div className="flex items-center gap-2 mb-3">
@@ -1953,6 +2149,18 @@ export default function SocialCampaignPage({ params }) {
           </Sheet>
         );
       })()}
+
+      {/* Randomize Schedule dialog — one shared instance for whichever platform tab triggered it */}
+      {randomizeTarget && (
+        <RandomizeScheduleDialog
+          platform={PLATFORMS.find((p) => p.id === randomizeTarget)}
+          posts={postsByPlatform[randomizeTarget] ?? []}
+          settingsDefaults={campaign.settingsDefaults}
+          onClose={() => setRandomizeTarget(null)}
+          onSubmit={(payload) => randomizeMutation.mutate(payload)}
+          isSubmitting={randomizeMutation.isPending}
+        />
+      )}
     </Container>
   );
 }

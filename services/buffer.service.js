@@ -469,3 +469,145 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
   chosenDay.setUTCHours(utcHour, localMinute, 0, 0);
   return chosenDay;
 }
+
+// ---------------------------------------------------------------------------
+// randomizePlatformSchedule — re-bucket a platform's not-yet-sent posts
+// across the posting window, either with the same even-spacing math
+// computeScheduledAt uses at creation time, or with a randomized day/time
+// assignment. Only touches posts with bufferPostId === null — posts already
+// pushed to Buffer keep whatever time was sent there.
+// ---------------------------------------------------------------------------
+
+const PLATFORM_SETTINGS_KEYS = {
+  instagram_carousel: { days: 'instagramCarouselDays', start: 'instagramCarouselWindowStart', end: 'instagramCarouselWindowEnd' },
+  instagram_story:    { days: 'instagramStoryDays',    start: 'instagramStoryWindowStart',    end: 'instagramStoryWindowEnd' },
+  linkedin:           { days: 'linkedinDays',           start: 'linkedinWindowStart',           end: 'linkedinWindowEnd' },
+  twitter:            { days: 'twitterDays',            start: 'twitterWindowStart',            end: 'twitterWindowEnd' },
+};
+
+// Mirrors the SocialSettings @default values (prisma/schema.prisma) — used
+// only if the singleton row is somehow missing a field.
+const PLATFORM_SCHEDULE_DEFAULTS = {
+  instagram_carousel: { days: 28, start: '10:00', end: '10:00' },
+  instagram_story:    { days: 62, start: '08:00', end: '20:00' },
+  linkedin:           { days: 20, start: '09:00', end: '09:00' },
+  twitter:            { days: 42, start: '10:00', end: '10:00' },
+};
+
+function buildValidDays(daysMask, weekStart, windowDays) {
+  const base = new Date(weekStart || Date.now());
+  const validDays = [];
+  const days = Math.max(1, windowDays || 7);
+  for (let offset = 0; offset < days; offset++) {
+    const d = new Date(base);
+    d.setUTCDate(d.getUTCDate() + offset);
+    if (daysMask & (1 << d.getUTCDay())) {
+      validDays.push(new Date(d));
+    }
+  }
+  return validDays.length ? validDays : [new Date(base)];
+}
+
+function shuffle(arr) {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// Never let a post land before its article actually goes live on WordPress —
+// same guard used at initial pipeline creation (social-pipeline.service.js).
+function clampToPublishDate(scheduledAt, publishDate) {
+  if (publishDate && scheduledAt < publishDate) {
+    return new Date(publishDate.getTime() + 30 * 60 * 1000);
+  }
+  return scheduledAt;
+}
+
+export async function randomizePlatformSchedule({ campaignId, platform, mode, daysMask, windowStart, windowEnd }) {
+  const keys = PLATFORM_SETTINGS_KEYS[platform];
+  if (!keys) throw new Error(`Unknown platform: ${platform}`);
+
+  const campaign = await prisma.socialCampaign.findUnique({
+    where: { id: campaignId },
+    select: { weekStart: true, weekEnd: true },
+  });
+  if (!campaign) throw new Error(`SocialCampaign not found: ${campaignId}`);
+
+  const settings = await prisma.socialSettings.findUnique({ where: { id: 'singleton' } });
+  const defaults = PLATFORM_SCHEDULE_DEFAULTS[platform];
+
+  const effectiveDaysMask = daysMask ?? settings?.[keys.days] ?? defaults.days;
+  const effectiveWindowStart = windowStart ?? settings?.[keys.start] ?? defaults.start;
+  const effectiveWindowEnd = windowEnd ?? settings?.[keys.end] ?? defaults.end;
+
+  const posts = await prisma.socialPost.findMany({
+    where: { campaignId, platform, bufferPostId: null },
+    include: { article: { select: { publishDate: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (!posts.length) return { count: 0 };
+
+  const total = posts.length;
+  const windowDays = Math.max(
+    1,
+    Math.round((campaign.weekEnd - campaign.weekStart) / (24 * 60 * 60 * 1000)) + 1,
+  );
+
+  const updates = [];
+
+  if (mode === 'random') {
+    const tzOffsetHours = settings?.timezoneOffset ?? 0;
+    const validDays = buildValidDays(effectiveDaysMask, campaign.weekStart, windowDays);
+    const [startH, startM] = effectiveWindowStart.split(':').map(Number);
+    const [endH, endM] = effectiveWindowEnd.split(':').map(Number);
+    const windowStartMin = startH * 60 + startM;
+    const windowEndMin = endH * 60 + endM;
+    const postsPerDay = Math.ceil(total / validDays.length);
+
+    // Shuffle order first so WHICH post lands on which day is randomized too
+    // (not just the time-of-day) — otherwise posts already grouped together
+    // (e.g. by section) would still cluster on the same day.
+    const shuffled = shuffle(posts);
+
+    shuffled.forEach((post, i) => {
+      const dayIndex = Math.floor(i / postsPerDay) % validDays.length;
+      const chosenDay = new Date(validDays[dayIndex]);
+      const randomMinutes = windowEndMin > windowStartMin
+        ? windowStartMin + Math.random() * (windowEndMin - windowStartMin)
+        : windowStartMin;
+      const localHour = Math.floor(randomMinutes / 60);
+      const localMinute = Math.round(randomMinutes % 60);
+      chosenDay.setUTCHours(localHour - tzOffsetHours, localMinute, 0, 0);
+
+      updates.push({
+        id: post.id,
+        scheduledAt: clampToPublishDate(chosenDay, post.article?.publishDate),
+      });
+    });
+  } else {
+    const syntheticSettings = {
+      ...settings,
+      [keys.days]: effectiveDaysMask,
+      [keys.start]: effectiveWindowStart,
+      [keys.end]: effectiveWindowEnd,
+    };
+
+    posts.forEach((post, i) => {
+      const raw = computeScheduledAt(platform, syntheticSettings, campaign.weekStart, i, total, windowDays);
+      updates.push({
+        id: post.id,
+        scheduledAt: clampToPublishDate(raw, post.article?.publishDate),
+      });
+    });
+  }
+
+  await prisma.$transaction(
+    updates.map((u) => prisma.socialPost.update({ where: { id: u.id }, data: { scheduledAt: u.scheduledAt } })),
+  );
+
+  return { count: updates.length };
+}
