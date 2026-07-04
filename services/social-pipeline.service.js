@@ -578,19 +578,25 @@ export async function unschedulePost(postId) {
 // 5. scheduleAllPosts
 // Schedules all uploaded posts in a campaign (used by "Schedule All" button).
 // ---------------------------------------------------------------------------
-export async function scheduleAllPosts(campaignId) {
+// `platform` is optional — omit it to schedule every uploaded post in the
+// campaign ("Schedule All"), or pass one to scope the run to a single
+// channel ("Schedule this channel").
+export async function scheduleAllPosts(campaignId, platform) {
   const posts = await prisma.socialPost.findMany({
-    where: { campaignId, status: 'uploaded' },
+    where: { campaignId, status: 'uploaded', ...(platform ? { platform } : {}) },
   });
 
-  await logInfo(campaignId, 'schedule_all_start', `Scheduling ${posts.length} posts via Buffer`);
+  const scope = platform ? ` (${platform})` : '';
+  await logInfo(campaignId, 'schedule_all_start', `Scheduling ${posts.length} post${posts.length !== 1 ? 's' : ''}${scope} via Buffer`);
 
   const results = await Promise.allSettled(posts.map((p) => schedulePost(p.id)));
 
   const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-  await logInfo(campaignId, 'schedule_all_done', `Scheduled ${succeeded}/${posts.length} posts`);
+  await logInfo(campaignId, 'schedule_all_done', `Scheduled ${succeeded}/${posts.length} post${posts.length !== 1 ? 's' : ''}${scope}`);
 
-  // Check if all posts are done
+  // Checks status across the WHOLE campaign, so it's safe to call here even
+  // when only one platform was just scheduled — it only finalizes once every
+  // platform's posts are done.
   await checkAndFinalizeCampaign(campaignId);
 
   return succeeded;

@@ -1552,14 +1552,19 @@ export default function SocialCampaignPage({ params }) {
   });
 
   const scheduleAllMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiFetch(`/api/social/campaigns/${id}/schedule-all`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to schedule all');
-      return res.json();
+    mutationFn: async (platform) => {
+      const res = await apiFetch(`/api/social/campaigns/${id}/schedule-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(platform ? { platform } : {}),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Failed to schedule');
+      return json;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
-      toast.success(`Scheduled ${data.scheduled} posts`);
+      toast.success(`Scheduled ${data.scheduled} post${data.scheduled !== 1 ? 's' : ''}`);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -2028,6 +2033,7 @@ export default function SocialCampaignPage({ params }) {
           {PLATFORMS.map((platform) => {
             const posts = postsByPlatform[platform.id] ?? [];
             const eligibleCount = posts.filter((p) => !p.bufferPostId).length;
+            const uploadedCount = posts.filter((p) => p.status === 'uploaded').length;
             return (
               <TabsContent key={platform.id} value={platform.id}>
                 {posts.length === 0 ? (
@@ -2041,17 +2047,34 @@ export default function SocialCampaignPage({ params }) {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {eligibleCount > 0 && (
-                      <div className="flex justify-end">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 text-xs gap-1.5"
-                          onClick={() => setRandomizeTarget(platform.id)}
-                        >
-                          <Shuffle className="size-3.5" />
-                          Randomize Schedule
-                        </Button>
+                    {(uploadedCount > 0 || eligibleCount > 0) && (
+                      <div className="flex justify-end gap-1.5">
+                        {uploadedCount > 0 && (
+                          <Button
+                            size="sm"
+                            className="h-8 text-xs gap-1.5"
+                            onClick={() => scheduleAllMutation.mutate(platform.id)}
+                            disabled={scheduleAllMutation.isPending}
+                          >
+                            {scheduleAllMutation.isPending ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <CalendarCheck className="size-3.5" />
+                            )}
+                            Schedule this Channel ({uploadedCount})
+                          </Button>
+                        )}
+                        {eligibleCount > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs gap-1.5"
+                            onClick={() => setRandomizeTarget(platform.id)}
+                          >
+                            <Shuffle className="size-3.5" />
+                            Randomize Schedule
+                          </Button>
+                        )}
                       </div>
                     )}
                     {groupPostsByDate(posts).map((group) => (
