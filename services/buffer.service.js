@@ -177,10 +177,13 @@ export async function schedulePost({ postId, settings }) {
     // Instagram-specific metadata
     if (post.platform === 'instagram_carousel' || post.platform === 'instagram_story') {
       const igType = post.platform === 'instagram_story' ? 'story' : 'post';
+      // shouldShareToFeed: a "post" (carousel) IS the feed by definition, so this
+      // must be true — Buffer's own docs example is `{ type: POST, shouldShareToFeed: true }`.
+      // A "story" correctly stays false since stories don't appear in the main feed.
       input.metadata = {
         instagram: {
           type: igType,
-          shouldShareToFeed: false,
+          shouldShareToFeed: igType === 'post',
         },
       };
 
