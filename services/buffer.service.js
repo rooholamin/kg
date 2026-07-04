@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { getArticlePermalink } from '@/services/wordpress.service';
+import { logInfo } from '@/lib/social-logger';
 
 const BUFFER_GRAPHQL = 'https://api.buffer.com';
 
@@ -13,6 +14,11 @@ function getToken() {
   return token;
 }
 
+// Returns { data, raw, status } — callers get the raw response text so it can
+// be persisted verbatim to SocialCampaignLog for debugging (Buffer's typed
+// errors are often terse, e.g. "Invalid post: ", so the full body — including
+// the GraphQL `errors` array/extensions our typed query doesn't select — is
+// sometimes the only place with extra context).
 async function bufferQuery(query, variables = {}) {
   const res = await fetch(BUFFER_GRAPHQL, {
     method: 'POST',
@@ -23,18 +29,29 @@ async function bufferQuery(query, variables = {}) {
     body: JSON.stringify({ query, variables }),
   });
 
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = null;
+  }
+
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Buffer API HTTP ${res.status}: ${text}`);
+    const err = new Error(`Buffer API HTTP ${res.status}: ${text}`);
+    err.bufferRaw = text;
+    err.bufferStatus = res.status;
+    throw err;
   }
 
-  const json = await res.json();
-
-  if (json.errors?.length) {
-    throw new Error(`Buffer GraphQL error: ${json.errors.map((e) => e.message).join('; ')}`);
+  if (json?.errors?.length) {
+    const err = new Error(`Buffer GraphQL error: ${json.errors.map((e) => e.message).join('; ')}`);
+    err.bufferRaw = text;
+    err.bufferStatus = res.status;
+    throw err;
   }
 
-  return json.data;
+  return { data: json?.data, raw: text, status: res.status };
 }
 
 // ---------------------------------------------------------------------------
@@ -195,9 +212,35 @@ export async function schedulePost({ postId, settings }) {
       }
     }
 
-    const data = await bufferQuery(CREATE_POST_MUTATION, { input });
+    let queryResult;
+    try {
+      queryResult = await bufferQuery(CREATE_POST_MUTATION, { input });
+    } catch (err) {
+      // HTTP-level or top-level GraphQL error — log the full exchange before
+      // re-throwing so the raw body is visible in the campaign log.
+      await logInfo(
+        post.campaignId, 'buffer_raw_response',
+        `Buffer request failed for ${post.platform} post`,
+        { input, raw: err.bufferRaw, status: err.bufferStatus },
+        postId,
+      );
+      throw err;
+    }
 
+    const { data, raw, status } = queryResult;
     const result = data?.createPost;
+
+    // Always persist the exact input we sent and the exact body Buffer
+    // returned, success or failure — this is the "full log from Buffer".
+    await logInfo(
+      post.campaignId, 'buffer_raw_response',
+      result?.message
+        ? `Buffer rejected ${post.platform} post`
+        : `Buffer accepted ${post.platform} post`,
+      { input, raw, status },
+      postId,
+    );
+
     if (result?.message) {
       throw new Error(`Buffer rejected post: ${result.message}`);
     }
@@ -251,7 +294,7 @@ export async function pullAnalytics(postId) {
   if (!post?.bufferPostId) return null;
 
   try {
-    const data = await bufferQuery(buildGetPostMetricsQuery(post.bufferPostId));
+    const { data } = await bufferQuery(buildGetPostMetricsQuery(post.bufferPostId));
     const metrics = data?.post?.metrics ?? [];
 
     const find = (type) => metrics.find((m) => m.type === type)?.value ?? 0;

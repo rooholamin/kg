@@ -504,9 +504,10 @@ export async function schedulePost(postId) {
   );
 
   try {
-    const result = await bufferSchedulePost({ postId, settings });
-    await logDone(logId, `Scheduled — Buffer post ID: ${result?.bufferPostId || 'unknown'}`, { bufferPostId: result?.bufferPostId });
-    return result;
+    // bufferSchedulePost resolves to the plain Buffer post ID string, not an object.
+    const bufferPostId = await bufferSchedulePost({ postId, settings });
+    await logDone(logId, `Scheduled — Buffer post ID: ${bufferPostId || 'unknown'}`, { bufferPostId });
+    return bufferPostId;
   } catch (err) {
     await logError(logId, err.message);
     throw err;
