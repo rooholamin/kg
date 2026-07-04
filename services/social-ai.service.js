@@ -14,7 +14,7 @@ const CHAR_LIMITS = {
   instagram_carousel: 2200,
   instagram_story: 2200,
   linkedin: 3000,
-  twitter: 280,
+  twitter: 25000, // Twitter Premium longform limit — no longer capped at 280
 };
 
 // ---------------------------------------------------------------------------

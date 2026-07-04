@@ -98,16 +98,9 @@ async function appendArticleCta(caption, platform, article, section) {
 
   const ctaLine = `${prefix} ${permalink}`;
 
-  if (platform === 'twitter') {
-    const maxLen = 280;
-    const available = maxLen - ctaLine.length - 2; // 2 chars for the blank-line separator
-    let trimmed = caption;
-    if (trimmed.length > available) {
-      trimmed = available > 1 ? `${trimmed.slice(0, available - 1).trimEnd()}…` : '';
-    }
-    return trimmed ? `${trimmed}\n\n${ctaLine}` : ctaLine;
-  }
-
+  // Twitter Premium removes the classic 280-char cap (up to 25,000 chars for
+  // longform posts), so the caption is no longer truncated to make room for
+  // the CTA — it's simply appended like every other platform.
   return `${caption}\n\n${ctaLine}`;
 }
 
