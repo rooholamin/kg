@@ -530,18 +530,28 @@ export async function publishArticleToWordPress(articleId, userId = null) {
  * Returns the URL string on success, or null on any failure (missing WP post
  * ID, unreachable site, non-200 response, etc.) — callers must handle null.
  *
+ * Authenticates with the section's WP Application Password when available.
+ * This matters because the public (unauthenticated) REST API only exposes
+ * posts with status "publish" — a post scheduled for a future publishDate
+ * has WP status "future" and returns 401 for anonymous requests, which was
+ * silently dropping the article CTA on Twitter/LinkedIn for posts scheduled
+ * ahead of their WordPress publish time.
+ *
  * @param {{ wordpressPostId?: number | null }} article
- * @param {{ wpSiteUrl?: string | null }} section
+ * @param {{ wpSiteUrl?: string | null, wpUsername?: string | null, wpAppPassword?: string | null }} section
  * @returns {Promise<string | null>}
  */
 export async function getArticlePermalink(article, section) {
   if (!article?.wordpressPostId || !section?.wpSiteUrl) return null;
   try {
     const base = normaliseUrl(section.wpSiteUrl);
-    const res = await fetch(
-      `${base}/wp-json/wp/v2/posts/${article.wordpressPostId}`,
-      { headers: { Accept: 'application/json' } },
-    );
+    const endpoint = `${base}/wp-json/wp/v2/posts/${article.wordpressPostId}`;
+    // `context=edit` is required to view a non-"publish" (e.g. "future"
+    // scheduled) post at all, but it also requires auth — only add it when
+    // we actually have credentials to send.
+    const res = section.wpUsername && section.wpAppPassword
+      ? await wpFetch(`${endpoint}?context=edit`, { username: section.wpUsername, appPassword: section.wpAppPassword })
+      : await fetch(endpoint, { headers: { Accept: 'application/json' } });
     if (!res.ok) return null;
     const data = await res.json();
     return data?.link ?? null;

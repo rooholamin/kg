@@ -251,7 +251,13 @@ export async function runApproval(campaignId) {
       const articleId = articleIds[i];
       const article = articles.find((a) => a.id === articleId);
       if (!article) continue;
-      const scheduledAt = computeScheduledAt(platform, settings, campaign.weekStart, i, total);
+      const rawScheduledAt = computeScheduledAt(platform, settings, campaign.weekStart, i, total);
+      // Never schedule a social post before its article actually goes live on
+      // WordPress — the week's even day-spread otherwise happily lands a post
+      // a day or two ahead of an article publishing later that same week.
+      const scheduledAt = article.publishDate && rawScheduledAt < article.publishDate
+        ? new Date(article.publishDate.getTime() + 30 * 60 * 1000)
+        : rawScheduledAt;
       postCreateData.push({
         campaignId,
         articleId,

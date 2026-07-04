@@ -36,6 +36,7 @@ import {
   ChevronLeft,
   X as XIcon,
   ImageIcon,
+  AlertTriangle,
   Eye,
   Pencil,
   Clock,
@@ -508,6 +509,19 @@ function PostEditModal({ post, open, onClose, onUpdate, onRegenerate }) {
               onChange={(e) => setScheduledAt(e.target.value)}
               className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             />
+            {post.article?.publishDate && (
+              <p className="text-[11px] text-muted-foreground">
+                Article publishes {format(new Date(post.article.publishDate), 'MMM d, yyyy · h:mm a')}
+              </p>
+            )}
+            {post.article?.publishDate && scheduledAt && new Date(scheduledAt) < new Date(post.article.publishDate) && (
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="size-3 text-amber-500 shrink-0" />
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  This is before the article publishes — Buffer will reject scheduling until fixed.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Regenerate */}
@@ -606,6 +620,25 @@ function PostCard({ post, onUpdate, onRegenerate, onExport, onSchedule, onUnsche
             <CalendarCheck className="size-3 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">
               {format(parseISO(String(post.scheduledAt)), 'MMM d, yyyy · h:mm a')}
+            </p>
+          </div>
+        )}
+
+        {post.article?.publishDate && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <Clock className="size-3 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">
+              Article publishes {format(parseISO(String(post.article.publishDate)), 'MMM d, yyyy · h:mm a')}
+            </p>
+          </div>
+        )}
+
+        {post.scheduledAt && post.article?.publishDate &&
+          new Date(post.scheduledAt) < new Date(post.article.publishDate) && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <AlertTriangle className="size-3 text-amber-500" />
+            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+              Scheduled before article publishes
             </p>
           </div>
         )}

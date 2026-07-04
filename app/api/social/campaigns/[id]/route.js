@@ -26,6 +26,7 @@ export async function GET(_req, { params }) {
                 id: true,
                 title: true,
                 featuredImage: true,
+                publishDate: true,
                 category: {
                   select: {
                     name: true,
