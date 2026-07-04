@@ -61,7 +61,7 @@ function distributeEvenly(total, buckets) {
  * @param {any[][]} arrays
  * @returns {any[]}
  */
-function interleaveRoundRobin(arrays) {
+export function interleaveRoundRobin(arrays) {
   const out = [];
   const maxLen = Math.max(...arrays.map((a) => a.length), 0);
   for (let i = 0; i < maxLen; i++) {

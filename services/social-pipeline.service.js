@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { selectApprovedPlatforms, generatePostContent } from './social-ai.service';
 import { exportPost } from './social-export.service';
 import { schedulePost as bufferSchedulePost, unschedulePost as bufferUnschedulePost, computeScheduledAt } from './buffer.service';
+import { interleaveRoundRobin } from './scheduler.service';
 import { logStart, logDone, logError, logInfo } from '@/lib/social-logger';
 
 // ---------------------------------------------------------------------------
@@ -260,7 +261,21 @@ export async function runApproval(campaignId) {
   );
 
   for (const platform of platforms) {
-    const articleIds = approvalMap[platform] || [];
+    const rawArticleIds = approvalMap[platform] || [];
+
+    // Diversify order so consecutive same-section articles don't all land on
+    // the same day — computeScheduledAt buckets contiguous indices into
+    // contiguous days, so section-clustered order (which the AI tends to
+    // return) would otherwise repeat one section per day.
+    const bySectionKey = new Map();
+    for (const articleId of rawArticleIds) {
+      const article = articles.find((a) => a.id === articleId);
+      const key = article?.category?.section?.id || article?.categoryId || 'unknown';
+      if (!bySectionKey.has(key)) bySectionKey.set(key, []);
+      bySectionKey.get(key).push(articleId);
+    }
+    const articleIds = interleaveRoundRobin([...bySectionKey.values()]);
+
     const total = articleIds.length;
     for (let i = 0; i < articleIds.length; i++) {
       const articleId = articleIds[i];
