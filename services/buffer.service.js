@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { getArticlePermalink } from '@/services/wordpress.service';
 import { logInfo } from '@/lib/social-logger';
+import { buildLinkedInCarouselDocument } from '@/services/social-export.service';
 
 const BUFFER_GRAPHQL = 'https://api.buffer.com';
 
@@ -187,7 +188,13 @@ export async function schedulePost({ postId, settings }) {
     }
 
     // Media assets (not for Twitter)
-    if (post.platform !== 'twitter' && post.imageUrls?.length) {
+    if (post.platform === 'linkedin' && post.imageUrls?.length > 1) {
+      // LinkedIn removed native image carousels in Dec 2023 — multiple `image`
+      // assets just render as a static grid. A PDF `document` asset is the
+      // only format LinkedIn treats as a swipeable carousel.
+      const doc = await buildLinkedInCarouselDocument(post, post.article);
+      input.assets = [{ document: doc }];
+    } else if (post.platform !== 'twitter' && post.imageUrls?.length) {
       input.assets = post.imageUrls.map((url) => ({ image: { url } }));
     }
 

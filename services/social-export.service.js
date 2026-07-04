@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { chromium } from 'playwright';
+import { PDFDocument } from 'pdf-lib';
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getS3ClientInstance } from '@/lib/s3-client';
 import { prisma } from '@/lib/prisma';
@@ -161,7 +162,7 @@ export async function deleteFromS3(url) {
 // ---------------------------------------------------------------------------
 // S3 upload (buffer variant — no File object needed)
 // ---------------------------------------------------------------------------
-async function uploadBufferToS3(buffer, key) {
+async function uploadBufferToS3(buffer, key, contentType = 'image/jpeg') {
   const s3Client = getS3ClientInstance();
   const bucket = process.env.STORAGE_BUCKET || 'kghub';
   const cdnUrl = process.env.STORAGE_CDN_URL?.replace(/\/$/, '');
@@ -172,13 +173,48 @@ async function uploadBufferToS3(buffer, key) {
       Bucket: bucket,
       Key: key,
       Body: buffer,
-      ContentType: 'image/jpeg',
+      ContentType: contentType,
       CacheControl: 'public, max-age=31536000',
       ACL: 'public-read',
     }),
   );
 
   return cdnUrl ? `${cdnUrl}/${key}` : `${endpoint}/${key}`;
+}
+
+// ---------------------------------------------------------------------------
+// buildLinkedInCarouselDocument — LinkedIn removed native image carousels in
+// Dec 2023; multiple `image` assets just render as a static grid. The only
+// way to get a swipeable "carousel" on LinkedIn is a PDF document post, so we
+// stitch the already-exported slide images (one per page, full-bleed) into a
+// single PDF and upload it alongside the images.
+// ---------------------------------------------------------------------------
+export async function buildLinkedInCarouselDocument(post, article) {
+  const pdfDoc = await PDFDocument.create();
+
+  for (const url of post.imageUrls) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch slide image for PDF: ${url}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const contentType = res.headers.get('content-type') || '';
+    const image = contentType.includes('png')
+      ? await pdfDoc.embedPng(bytes)
+      : await pdfDoc.embedJpg(bytes);
+    const page = pdfDoc.addPage([image.width, image.height]);
+    page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const dateStr = format(new Date(), 'yyyy-MM-dd');
+  const rand = Math.random().toString(36).slice(2, 7);
+  const s3Key = `social/linkedin/${dateStr}/${article.id}-carousel-${rand}.pdf`;
+  const url = await uploadBufferToS3(Buffer.from(pdfBytes), s3Key, 'application/pdf');
+
+  return {
+    url,
+    title: article.title.slice(0, 100),
+    thumbnailUrl: post.imageUrls[0],
+  };
 }
 
 // ---------------------------------------------------------------------------
