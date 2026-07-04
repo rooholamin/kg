@@ -472,10 +472,11 @@ export function computeScheduledAt(platform, settings, weekStart, index = 0, tot
 
 // ---------------------------------------------------------------------------
 // randomizePlatformSchedule — re-bucket a platform's not-yet-sent posts
-// across the posting window, either with the same even-spacing math
-// computeScheduledAt uses at creation time, or with a randomized day/time
-// assignment. Only touches posts with bufferPostId === null — posts already
-// pushed to Buffer keep whatever time was sent there.
+// across the posting window, either with even spacing or a randomized
+// day/time assignment. Only touches posts with bufferPostId === null — posts
+// already pushed to Buffer keep whatever time was sent there, but their
+// existing scheduledAt is treated as an "occupied" slot so new posts are
+// woven around them instead of landing on/next to the same days and times.
 // ---------------------------------------------------------------------------
 
 const PLATFORM_SETTINGS_KEYS = {
@@ -526,6 +527,10 @@ function clampToPublishDate(scheduledAt, publishDate) {
   return scheduledAt;
 }
 
+function dayKeyUTC(d) {
+  return d.toISOString().slice(0, 10);
+}
+
 export async function randomizePlatformSchedule({ campaignId, platform, mode, daysMask, windowStart, windowEnd }) {
   const keys = PLATFORM_SETTINGS_KEYS[platform];
   if (!keys) throw new Error(`Unknown platform: ${platform}`);
@@ -542,45 +547,107 @@ export async function randomizePlatformSchedule({ campaignId, platform, mode, da
   const effectiveDaysMask = daysMask ?? settings?.[keys.days] ?? defaults.days;
   const effectiveWindowStart = windowStart ?? settings?.[keys.start] ?? defaults.start;
   const effectiveWindowEnd = windowEnd ?? settings?.[keys.end] ?? defaults.end;
+  const tzOffsetHours = settings?.timezoneOffset ?? 0;
 
-  const posts = await prisma.socialPost.findMany({
-    where: { campaignId, platform, bufferPostId: null },
+  // Load EVERY post for this platform/campaign — not just the eligible ones
+  // — so already-scheduled (sent-to-Buffer) posts can be treated as fixed
+  // occupied slots. Ignoring them entirely (as before) meant the randomizer
+  // had no idea a day was already full and would happily pile new posts
+  // right on top of / next to whatever was already scheduled there.
+  const allPosts = await prisma.socialPost.findMany({
+    where: { campaignId, platform },
     include: { article: { select: { publishDate: true } } },
     orderBy: { createdAt: 'asc' },
   });
 
-  if (!posts.length) return { count: 0 };
+  const lockedPosts = allPosts.filter((p) => p.bufferPostId && p.scheduledAt);
+  const eligiblePosts = allPosts.filter((p) => !p.bufferPostId);
 
-  const total = posts.length;
+  if (!eligiblePosts.length) return { count: 0 };
+
   const windowDays = Math.max(
     1,
     Math.round((campaign.weekEnd - campaign.weekStart) / (24 * 60 * 60 * 1000)) + 1,
   );
 
+  const validDays = buildValidDays(effectiveDaysMask, campaign.weekStart, windowDays);
+  const [startH, startM] = effectiveWindowStart.split(':').map(Number);
+  const [endH, endM] = effectiveWindowEnd.split(':').map(Number);
+  const windowStartMin = startH * 60 + startM;
+  const windowEndMin = endH * 60 + endM;
+
+  // Seed each valid day's load with however many locked posts already fall
+  // on it (a locked post on a day outside this run's valid days/window just
+  // doesn't count toward anyone's load — nothing we can do about that slot).
+  const dayIndexByKey = new Map(validDays.map((d, i) => [dayKeyUTC(d), i]));
+  const load = new Array(validDays.length).fill(0);
+  const lockedMinutesByDayIndex = new Map();
+  for (const post of lockedPosts) {
+    const scheduled = new Date(post.scheduledAt);
+    const idx = dayIndexByKey.get(dayKeyUTC(scheduled));
+    if (idx === undefined) continue;
+    load[idx] += 1;
+    const localMinutes = ((scheduled.getUTCHours() + tzOffsetHours) * 60 + scheduled.getUTCMinutes() + 1440) % 1440;
+    if (!lockedMinutesByDayIndex.has(idx)) lockedMinutesByDayIndex.set(idx, []);
+    lockedMinutesByDayIndex.get(idx).push(localMinutes);
+  }
+
+  // Assign each eligible post to whichever valid day currently has the
+  // fewest posts (locked + already-assigned-this-run), always filling the
+  // least-crowded day first — this naturally weaves new posts into the gaps
+  // around already-scheduled ones instead of ignoring them.
+  const orderedPosts = mode === 'random' ? shuffle(eligiblePosts) : eligiblePosts;
+  const assignments = validDays.map(() => []);
+
+  for (const post of orderedPosts) {
+    const minLoad = Math.min(...load);
+    const candidates = [];
+    for (let i = 0; i < load.length; i++) {
+      if (load[i] === minLoad) candidates.push(i);
+    }
+    const chosenIdx = mode === 'random'
+      ? candidates[Math.floor(Math.random() * candidates.length)]
+      : candidates[0];
+    assignments[chosenIdx].push(post);
+    load[chosenIdx] += 1;
+  }
+
   const updates = [];
 
-  if (mode === 'random') {
-    const tzOffsetHours = settings?.timezoneOffset ?? 0;
-    const validDays = buildValidDays(effectiveDaysMask, campaign.weekStart, windowDays);
-    const [startH, startM] = effectiveWindowStart.split(':').map(Number);
-    const [endH, endM] = effectiveWindowEnd.split(':').map(Number);
-    const windowStartMin = startH * 60 + startM;
-    const windowEndMin = endH * 60 + endM;
-    const postsPerDay = Math.ceil(total / validDays.length);
+  assignments.forEach((dayPosts, dayIdx) => {
+    if (!dayPosts.length) return;
+    const lockedMinutes = lockedMinutesByDayIndex.get(dayIdx) || [];
 
-    // Shuffle order first so WHICH post lands on which day is randomized too
-    // (not just the time-of-day) — otherwise posts already grouped together
-    // (e.g. by section) would still cluster on the same day.
-    const shuffled = shuffle(posts);
+    dayPosts.forEach((post, slotIndex) => {
+      const chosenDay = new Date(validDays[dayIdx]);
+      let localMinutes;
 
-    shuffled.forEach((post, i) => {
-      const dayIndex = Math.floor(i / postsPerDay) % validDays.length;
-      const chosenDay = new Date(validDays[dayIndex]);
-      const randomMinutes = windowEndMin > windowStartMin
-        ? windowStartMin + Math.random() * (windowEndMin - windowStartMin)
-        : windowStartMin;
-      const localHour = Math.floor(randomMinutes / 60);
-      const localMinute = Math.round(randomMinutes % 60);
+      if (mode === 'random') {
+        // Try a few times to land clear of already-locked times that day
+        // (at least 20 minutes away) before giving up and using the last roll.
+        let attempt = 0;
+        do {
+          localMinutes = windowEndMin > windowStartMin
+            ? windowStartMin + Math.random() * (windowEndMin - windowStartMin)
+            : windowStartMin;
+          attempt++;
+        } while (
+          attempt < 6 &&
+          lockedMinutes.some((m) => Math.abs(m - localMinutes) < 20)
+        );
+      } else {
+        // Even spread: total slots for the day include the posts already
+        // locked there, so new posts fill in AFTER them instead of
+        // overlapping the same early slice of the window.
+        const totalSlotsForDay = dayPosts.length + lockedMinutes.length;
+        const ownSlot = lockedMinutes.length + slotIndex;
+        localMinutes = totalSlotsForDay > 1 && windowEndMin > windowStartMin
+          ? windowStartMin + ownSlot * ((windowEndMin - windowStartMin) / (totalSlotsForDay - 1))
+          : windowStartMin;
+      }
+
+      const localHour = Math.floor(localMinutes / 60);
+      const localMinute = Math.round(localMinutes % 60);
       chosenDay.setUTCHours(localHour - tzOffsetHours, localMinute, 0, 0);
 
       updates.push({
@@ -588,22 +655,7 @@ export async function randomizePlatformSchedule({ campaignId, platform, mode, da
         scheduledAt: clampToPublishDate(chosenDay, post.article?.publishDate),
       });
     });
-  } else {
-    const syntheticSettings = {
-      ...settings,
-      [keys.days]: effectiveDaysMask,
-      [keys.start]: effectiveWindowStart,
-      [keys.end]: effectiveWindowEnd,
-    };
-
-    posts.forEach((post, i) => {
-      const raw = computeScheduledAt(platform, syntheticSettings, campaign.weekStart, i, total, windowDays);
-      updates.push({
-        id: post.id,
-        scheduledAt: clampToPublishDate(raw, post.article?.publishDate),
-      });
-    });
-  }
+  });
 
   await prisma.$transaction(
     updates.map((u) => prisma.socialPost.update({ where: { id: u.id }, data: { scheduledAt: u.scheduledAt } })),
