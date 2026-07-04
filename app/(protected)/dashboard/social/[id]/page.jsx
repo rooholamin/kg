@@ -1402,6 +1402,19 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const retryFailedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/social/campaigns/${id}/retry-failed`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to retry failed posts');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
+      toast.success(`Retrying ${data.count} failed post${data.count !== 1 ? 's' : ''}…`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const pipelineAction = async (action) => {
     const res = await apiFetch(`/api/social/campaigns/${id}`, {
       method: 'PATCH',
@@ -1597,6 +1610,24 @@ export default function SocialCampaignPage({ params }) {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+
+            {/* Retry all failed */}
+            {failedPosts.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => retryFailedMutation.mutate()}
+                disabled={retryFailedMutation.isPending}
+                size="sm"
+                className="h-8 text-xs"
+              >
+                {retryFailedMutation.isPending ? (
+                  <Loader2 className="size-3.5 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-3.5 mr-1" />
+                )}
+                Retry Failed ({failedPosts.length})
+              </Button>
+            )}
 
             {/* Schedule all */}
             {canScheduleAll && (

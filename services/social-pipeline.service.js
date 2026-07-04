@@ -582,6 +582,37 @@ export async function scheduleAllPosts(campaignId) {
 }
 
 // ---------------------------------------------------------------------------
+// 5b. retryFailedExports
+// Re-runs export for every failed post in a campaign (used by the "Retry
+// Failed" button) — same per-post retry logic as the individual "Retry
+// Export" button, just batched. Posts that failed during content generation
+// (no slideIds yet) will fail again with a clear message pointing at
+// Regenerate instead, same as retrying them one at a time would.
+// ---------------------------------------------------------------------------
+export async function retryFailedExports(campaignId) {
+  const posts = await prisma.socialPost.findMany({
+    where: { campaignId, status: 'failed' },
+  });
+
+  await logInfo(campaignId, 'retry_failed_start', `Retrying export for ${posts.length} failed post${posts.length !== 1 ? 's' : ''}`);
+
+  // Non-LinkedIn first, so LinkedIn posts can clone their sibling Instagram
+  // Carousel post's exported images once it's done, same as the main pipeline.
+  const linkedinPosts = posts.filter((p) => p.platform === 'linkedin');
+  const otherPosts = posts.filter((p) => p.platform !== 'linkedin');
+
+  const otherResults = await Promise.allSettled(otherPosts.map((p) => runExport(p.id)));
+  const linkedinResults = await Promise.allSettled(linkedinPosts.map((p) => runExport(p.id)));
+
+  const succeeded = [...otherResults, ...linkedinResults].filter((r) => r.status === 'fulfilled').length;
+  await logInfo(campaignId, 'retry_failed_done', `Retried ${posts.length} post${posts.length !== 1 ? 's' : ''} — ${succeeded} succeeded`);
+
+  await checkAndFinalizeCampaign(campaignId);
+
+  return succeeded;
+}
+
+// ---------------------------------------------------------------------------
 // 6. runFullPipeline
 // Fire-and-forget: approval → content generation → export all posts.
 // Called after campaign creation; runs in background.

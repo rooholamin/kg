@@ -39,6 +39,54 @@ function getPlatformExportConfig(platform) {
   return config;
 }
 
+// ---------------------------------------------------------------------------
+// Export concurrency gate
+//
+// Each exportPost() call launches its own headless Chromium process. This
+// server has very little RAM to spare, and nothing previously capped how
+// many exports could run at once — a campaign (or several running back to
+// back/concurrently) could launch dozens of browsers simultaneously and
+// exhaust memory/swap, taking the whole app down (observed: 300+ Chromium
+// processes, swap fully exhausted, site unresponsive).
+//
+// This is a single process-wide gate that every exportPost() call goes
+// through, regardless of caller (batch pipeline export, resume, or a single
+// post's manual "Export" button) — so the total number of concurrent
+// Chromium instances is bounded no matter how many campaigns/posts are
+// queued up. Tune MAX_CONCURRENT_EXPORTS based on available server RAM.
+// ---------------------------------------------------------------------------
+const MAX_CONCURRENT_EXPORTS = 2;
+let activeExportCount = 0;
+const exportWaitQueue = [];
+
+function runWithExportSlot(fn) {
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      activeExportCount++;
+      fn().then(
+        (result) => {
+          activeExportCount--;
+          releaseNextExportSlot();
+          resolve(result);
+        },
+        (error) => {
+          activeExportCount--;
+          releaseNextExportSlot();
+          reject(error);
+        },
+      );
+    };
+    if (activeExportCount < MAX_CONCURRENT_EXPORTS) attempt();
+    else exportWaitQueue.push(attempt);
+  });
+}
+
+function releaseNextExportSlot() {
+  if (activeExportCount < MAX_CONCURRENT_EXPORTS && exportWaitQueue.length) {
+    exportWaitQueue.shift()();
+  }
+}
+
 // The content agent only ever selects the logical slide "01-cover" — the actual
 // visual variant is resolved here, either randomly assigned at content-generation
 // time (see social-pipeline.service.js) or overridden by a human via the edit modal.
@@ -221,6 +269,10 @@ export async function buildLinkedInCarouselDocument(post, article) {
 // exportPost — main export function
 // ---------------------------------------------------------------------------
 export async function exportPost(postId) {
+  return runWithExportSlot(() => exportPostInternal(postId));
+}
+
+async function exportPostInternal(postId) {
   const post = await prisma.socialPost.findUnique({
     where: { id: postId },
     include: {
