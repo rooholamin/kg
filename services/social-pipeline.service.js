@@ -654,6 +654,41 @@ export async function scheduleAllPosts(campaignId, platform) {
 }
 
 // ---------------------------------------------------------------------------
+// 5a. exportAllContent
+// Exports every content_ready post in a campaign (used by the "Export All"
+// button) — same per-post export logic as the individual "Export" button,
+// just batched. `platform` is optional, same scoping convention as
+// scheduleAllPosts — omit for the whole campaign, or pass one to scope the
+// run to a single channel. runExport's own MAX_CONCURRENT_EXPORTS queue
+// bounds how many Chromium instances run at once regardless of batch size.
+// ---------------------------------------------------------------------------
+export async function exportAllContent(campaignId, platform) {
+  const posts = await prisma.socialPost.findMany({
+    where: { campaignId, status: 'content_ready', ...(platform ? { platform } : {}) },
+  });
+
+  if (!posts.length) return 0;
+
+  const scope = platform ? ` (${platform})` : '';
+  await logInfo(campaignId, 'export_all_start', `Exporting ${posts.length} post${posts.length !== 1 ? 's' : ''}${scope}`);
+
+  // Non-LinkedIn first, so LinkedIn posts can clone their sibling Instagram
+  // Carousel post's exported images once it's done, same as the main pipeline.
+  const linkedinPosts = posts.filter((p) => p.platform === 'linkedin');
+  const otherPosts = posts.filter((p) => p.platform !== 'linkedin');
+
+  const otherResults = await Promise.allSettled(otherPosts.map((p) => runExport(p.id)));
+  const linkedinResults = await Promise.allSettled(linkedinPosts.map((p) => runExport(p.id)));
+
+  const succeeded = [...otherResults, ...linkedinResults].filter((r) => r.status === 'fulfilled').length;
+  await logInfo(campaignId, 'export_all_done', `Exported ${succeeded}/${posts.length} post${posts.length !== 1 ? 's' : ''}${scope}`);
+
+  await checkAndFinalizeCampaign(campaignId);
+
+  return succeeded;
+}
+
+// ---------------------------------------------------------------------------
 // 5b. retryFailedExports
 // Re-runs export for every failed post in a campaign (used by the "Retry
 // Failed" button) — same per-post retry logic as the individual "Retry

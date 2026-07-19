@@ -1008,6 +1008,8 @@ const STEP_LABEL = {
   schedule_all_done:        'All posts scheduled',
   regenerate_all_start:     'Regenerating all posts',
   regenerate_all_done:      'Regeneration complete',
+  export_all_start:         'Exporting all posts',
+  export_all_done:          'Export complete',
 };
 
 function LogRow({ log }) {
@@ -1590,6 +1592,24 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const exportAllMutation = useMutation({
+    mutationFn: async (platform) => {
+      const res = await apiFetch(`/api/social/campaigns/${id}/export-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(platform ? { platform } : {}),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Failed to export');
+      return json;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
+      toast.success(`Exporting ${data.count} post${data.count !== 1 ? 's' : ''}…`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const retryFailedMutation = useMutation({
     mutationFn: async () => {
       const res = await apiFetch(`/api/social/campaigns/${id}/retry-failed`, { method: 'POST' });
@@ -1727,6 +1747,7 @@ export default function SocialCampaignPage({ params }) {
   const uploadedPosts = allPosts.filter((p) => p.status === 'uploaded');
   const scheduledPosts = allPosts.filter((p) => p.status === 'scheduled');
   const failedPosts = allPosts.filter((p) => p.status === 'failed');
+  const contentReadyPosts = allPosts.filter((p) => p.status === 'content_ready');
   const canScheduleAll = uploadedPosts.length > 0;
   const regenerateAllCount = allPosts.filter(
     (p) => p.status !== 'content_generating' && p.status !== 'scheduled',
@@ -1857,6 +1878,24 @@ export default function SocialCampaignPage({ params }) {
                   <RefreshCw className="size-3.5 mr-1" />
                 )}
                 Retry Failed ({failedPosts.length})
+              </Button>
+            )}
+
+            {/* Export all */}
+            {contentReadyPosts.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => exportAllMutation.mutate()}
+                disabled={exportAllMutation.isPending}
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+              >
+                {exportAllMutation.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Play className="size-3.5" />
+                )}
+                Export All ({contentReadyPosts.length})
               </Button>
             )}
 
@@ -2078,6 +2117,7 @@ export default function SocialCampaignPage({ params }) {
             const posts = postsByPlatform[platform.id] ?? [];
             const eligibleCount = posts.filter((p) => !p.bufferPostId).length;
             const uploadedCount = posts.filter((p) => p.status === 'uploaded').length;
+            const contentReadyCount = posts.filter((p) => p.status === 'content_ready').length;
             return (
               <TabsContent key={platform.id} value={platform.id}>
                 {posts.length === 0 ? (
@@ -2091,8 +2131,24 @@ export default function SocialCampaignPage({ params }) {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {(uploadedCount > 0 || eligibleCount > 0) && (
+                    {(contentReadyCount > 0 || uploadedCount > 0 || eligibleCount > 0) && (
                       <div className="flex justify-end gap-1.5">
+                        {contentReadyCount > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs gap-1.5"
+                            onClick={() => exportAllMutation.mutate(platform.id)}
+                            disabled={exportAllMutation.isPending}
+                          >
+                            {exportAllMutation.isPending ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Play className="size-3.5" />
+                            )}
+                            Export this Channel ({contentReadyCount})
+                          </Button>
+                        )}
                         {uploadedCount > 0 && (
                           <Button
                             size="sm"
