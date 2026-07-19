@@ -632,6 +632,17 @@ export async function unschedulePost(postId) {
 // `platform` is optional — omit it to schedule every uploaded post in the
 // campaign ("Schedule All"), or pass one to scope the run to a single
 // channel ("Schedule this channel").
+//
+// Buffer's API rate-limits requests, so posts are sent strictly one at a
+// time (with a short pause between each) rather than all at once — firing
+// every schedule call concurrently was tripping that limit on larger
+// batches, which (before the buffer.service.js fix) also incorrectly
+// flipped posts to "failed" and made them look like export/content problems.
+const BUFFER_SCHEDULE_DELAY_MS = 1500;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function scheduleAllPosts(campaignId, platform) {
   const posts = await prisma.socialPost.findMany({
     where: { campaignId, status: 'uploaded', ...(platform ? { platform } : {}) },
@@ -640,9 +651,17 @@ export async function scheduleAllPosts(campaignId, platform) {
   const scope = platform ? ` (${platform})` : '';
   await logInfo(campaignId, 'schedule_all_start', `Scheduling ${posts.length} post${posts.length !== 1 ? 's' : ''}${scope} via Buffer`);
 
-  const results = await Promise.allSettled(posts.map((p) => schedulePost(p.id)));
+  let succeeded = 0;
+  for (const [index, post] of posts.entries()) {
+    try {
+      await schedulePost(post.id);
+      succeeded++;
+    } catch (err) {
+      console.error(`[scheduleAllPosts] post ${post.id} failed:`, err.message);
+    }
+    if (index < posts.length - 1) await sleep(BUFFER_SCHEDULE_DELAY_MS);
+  }
 
-  const succeeded = results.filter((r) => r.status === 'fulfilled').length;
   await logInfo(campaignId, 'schedule_all_done', `Scheduled ${succeeded}/${posts.length} post${posts.length !== 1 ? 's' : ''}${scope}`);
 
   // Checks status across the WHOLE campaign, so it's safe to call here even

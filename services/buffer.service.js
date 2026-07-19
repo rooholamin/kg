@@ -266,14 +266,23 @@ export async function schedulePost({ postId, settings }) {
         status: 'scheduled',
         bufferPostId,
         scheduledAt: dueAt ? new Date(dueAt) : post.scheduledAt,
+        errorMessage: null,
       },
     });
 
     return bufferPostId;
   } catch (error) {
+    // Revert to "uploaded" rather than "failed" — this post's content/images
+    // are still perfectly good, only the Buffer call itself didn't go
+    // through (often a rate limit on larger batches). "failed" is treated
+    // elsewhere as an export/content problem (Retry Failed and Export All
+    // both re-run Playwright export for it, wastefully re-generating images
+    // that were never the issue). Staying "uploaded" keeps the error visible
+    // via errorMessage while letting a plain re-send (Send to Buffer /
+    // Schedule All) retry the one thing that actually failed.
     await prisma.socialPost.update({
       where: { id: postId },
-      data: { status: 'failed', errorMessage: error.message },
+      data: { status: 'uploaded', errorMessage: error.message },
     });
     throw error;
   }
