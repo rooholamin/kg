@@ -17,12 +17,9 @@ export async function POST(req, { params }) {
     // instruction: optional natural-language change request, e.g. "make it more concise"
     const instruction = body.instruction || body.toneSeed || null;
 
-    await prisma.socialPost.update({
-      where: { id },
-      data: { status: 'content_generating', errorMessage: null, exportProgress: 0, imageUrls: [] },
-    });
-
-    // Continues the existing content session so the agent has memory of what it generated
+    // Continues the existing content session so the agent has memory of what
+    // it generated; regeneratePostContent itself clears any stale exported
+    // images/progress before regenerating.
     const result = await regeneratePostContent(id, instruction);
 
     const updated = await prisma.socialPost.findUnique({ where: { id } });

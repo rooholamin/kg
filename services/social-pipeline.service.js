@@ -417,9 +417,18 @@ export async function regeneratePostContent(postId, instruction) {
   const section = post.article.category?.section;
   if (!section) throw new Error('Article has no section');
 
+  // A post that was already exported (or is mid-export) has images tied to
+  // its *current* content — regenerating text/placeholders without clearing
+  // these leaves stale images attached (wrong slide copy, orphaned S3 files
+  // once a later export overwrites them). Clean them up before touching content.
+  if (post.imageUrls?.length) {
+    const { deleteFromS3 } = await import('./social-export.service');
+    await Promise.allSettled(post.imageUrls.map(deleteFromS3));
+  }
+
   await prisma.socialPost.update({
     where: { id: postId },
-    data: { status: 'content_generating' },
+    data: { status: 'content_generating', errorMessage: null, exportProgress: 0, imageUrls: [] },
   });
 
   try {
