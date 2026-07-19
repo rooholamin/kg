@@ -93,11 +93,10 @@ control which variant gets picked, it should always supply `COVER_SUBTEXT`.
 | Placeholder | Description | Example |
 |---|---|---|
 | `{{HERO_IMAGE}}` | Image shown on this specific slide — chosen per-slide by the content agent (see "Per-slide images" below) | `https://cdn.kghub...` |
-| `{{ART_TITLE}}` | Article headline | `Embracing Luxury: A Guide...` |
+| `{{ART_TITLE}}` | Article headline. Rendered only by carousel `01-cover` (all 4 variants, one logical slide) and by Story slides — never by any other carousel slide | `Embracing Luxury: A Guide...` |
 | `{{QUOTE}}` | Pull quote from article | `In a penthouse, the city...` |
 | `{{STAT_N}}` | Stat figure | `2.4×` |
 | `{{STAT_L}}` | Stat label | `price premium on penthouse units` |
-| `{{LABEL}}` | Agent-written eyebrow label above the title | `RISING MARKETS` |
 | `{{SECTION_NAME}}` | Section display name | `KG Living` |
 | `{{SECTION_NAME_UPPER}}` | Section name uppercased | `KG LIVING` |
 | `{{WRITER_NAME}}` | Writer full name | `Livia Moretti` |
@@ -121,6 +120,7 @@ reword of it, across fields):
 | `{{STATEMENT_TEXT}}` | `02-statement` | Single bold declarative sentence |
 | `{{IMAGE_TEXT_HOOK}}` | `03-image-text` | Short paragraph below the image |
 | `{{HOWTO_INTRO}}` | `08-how-to` | One-line intro above the numbered steps |
+| `{{NARRATIVE_TITLE}}` | `04-narrative` | Short sub-headline above the narrative paragraph — must NOT repeat `{{ART_TITLE}}`, since that would duplicate the cover's headline |
 | `{{NARRATIVE}}` | `04-narrative` | Full paragraph combining hook + context |
 | `{{FEAT_1_LABEL}}` … `{{FEAT_4_LABEL}}` | `07-features` | Feature row titles |
 | `{{FEAT_1_DESC}}` … `{{FEAT_4_DESC}}` | `07-features` | Feature row descriptions |
@@ -129,9 +129,33 @@ reword of it, across fields):
 | `{{FULL_IMAGE_CAPTION}}` | `09-full-image` | Caption overlaid near the bottom of the full-bleed image |
 | `{{IMAGE_BOX_CAPTION}}` | `10-image-box` | Caption under the boxed image |
 | `{{END_CARD_BIO}}` | `11-end-card` | Short writer bio / section tagline |
+| `{{COVER_EYEBROW}}` | `01-cover` | Small ALL CAPS eyebrow tag above the headline |
+| `{{STATEMENT_EYEBROW}}` | `02-statement` | Small ALL CAPS eyebrow tag above the statement |
+| `{{IMAGE_TEXT_EYEBROW}}` | `03-image-text` | Small ALL CAPS eyebrow tag above the paragraph |
+| `{{NARRATIVE_EYEBROW}}` | `04-narrative` | Small ALL CAPS eyebrow tag above the sub-headline |
+| `{{KEY_STAT_EYEBROW}}` | `06-key-stat` | Small ALL CAPS eyebrow tag above the stat |
+| `{{FEATURES_EYEBROW}}` | `07-features` | Small ALL CAPS eyebrow tag above the feature grid |
+| `{{HOWTO_EYEBROW}}` | `08-how-to` | Small ALL CAPS eyebrow tag above the intro line |
+| `{{IMAGE_BOX_EYEBROW}}` | `10-image-box` | Small ALL CAPS eyebrow tag above the boxed image |
+
+`05-pull-quote`, `09-full-image`, and `11-end-card` render no eyebrow tag at all — don't
+supply one for them. Every carousel eyebrow tag above must be its own fresh 2–4 word
+phrase; never reuse the same word or phrase across two of them in the same post (that
+was the old `{{LABEL}}` bug — one shared eyebrow value repeated on up to 8 different
+carousel slides).
 
 There is no `{{ARTICLE_URL}}` placeholder in the new templates — the "insights.kghub.ca"
 text shown in several slides is fixed decorative branding, not a real link.
+
+### Story-only placeholders
+
+Unlike carousel, a Story post only ever shows **one** slide, so these two fields are
+safely shared/generic — there's no duplication risk since nothing else renders alongside them:
+
+| Placeholder | Slides | Description |
+|---|---|---|
+| `{{LABEL}}` | `cover-image`, `dark-statement`, `split-image`, `stat-card`, `editorial-light` | Agent-written ALL CAPS eyebrow label above the title |
+| `{{HOOK}}` | `dark-statement`, `editorial-light` | Bold statement / 1-2 sentence teaser |
 
 ---
 

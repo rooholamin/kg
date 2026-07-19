@@ -213,25 +213,25 @@ Based on your editorial memory of what has already been published, select which 
 const SLIDE_DESCRIPTIONS = {
   // Carousel (also used for LinkedIn — see AVAILABLE_SLIDES note above)
   '01-cover':
-    'Cover slide — hero image full bleed, large article title, section name, writer name. Always use as the first carousel slide. Needs an image. (The visual design rotates automatically between 4 variants — you always just select "01-cover". One variant, "left panel", also displays a short lede sentence (COVER_SUBTEXT) beneath the title, so always write a value for it even though you cannot control whether that variant gets picked.)',
+    'Cover slide — hero image full bleed, large article title, an eyebrow tag (COVER_EYEBROW), section name, writer name. Always use as the first carousel slide. Needs an image. (The visual design rotates automatically between 4 variants — you always just select "01-cover". One variant, "left panel", also displays a short lede sentence (COVER_SUBTEXT) beneath the title, so always write a value for it even though you cannot control whether that variant gets picked.)',
   '02-statement':
-    'Bold statement slide — single powerful sentence (STATEMENT_TEXT) displayed large on a dark background. Great for a provocative opening line.',
+    'Bold statement slide — single powerful sentence (STATEMENT_TEXT) displayed large on a dark background, with its own eyebrow tag (STATEMENT_EYEBROW). Great for a provocative opening line.',
   '03-image-text':
-    'Image + text split — top is an article image, below it a short paragraph (IMAGE_TEXT_HOOK). Good for visual storytelling. Needs an image.',
+    'Image + text split — top is an article image, below it a short paragraph (IMAGE_TEXT_HOOK) and its own eyebrow tag (IMAGE_TEXT_EYEBROW). Good for visual storytelling. Needs an image.',
   '04-narrative':
-    'Text-heavy slide — a 2-3 sentence narrative block (NARRATIVE) with a subtle background. Use for context or background.',
+    'Text-heavy slide — its own short sub-headline (NARRATIVE_TITLE, must NOT just repeat the article title verbatim), an eyebrow tag (NARRATIVE_EYEBROW), and a 2-3 sentence narrative block (NARRATIVE) with a subtle background. Use for context or background.',
   '05-pull-quote':
     'Pull quote slide — a single quotation (QUOTE) displayed prominently. Great for a memorable expert quote from the article.',
   '06-key-stat':
-    'Key statistic slide — one large number (STAT_N) and a short label (STAT_L). Use when the article has a standout data point.',
+    'Key statistic slide — an eyebrow tag (KEY_STAT_EYEBROW), one large number (STAT_N) and a short label (STAT_L). Use when the article has a standout data point.',
   '07-features':
-    'Features grid — four labelled points (FEAT_1_LABEL/DESC through FEAT_4_LABEL/DESC). Good for listicle or "reasons why" content.',
+    'Features grid — an eyebrow tag (FEATURES_EYEBROW) plus four labelled points (FEAT_1_LABEL/DESC through FEAT_4_LABEL/DESC). Good for listicle or "reasons why" content.',
   '08-how-to':
-    'How-to slide — an intro line (HOWTO_INTRO) above three numbered steps (STEP_1_TITLE/DESC through STEP_3_TITLE/DESC). Use for how-to or process articles.',
+    'How-to slide — an eyebrow tag (HOWTO_EYEBROW), an intro line (HOWTO_INTRO) above three numbered steps (STEP_1_TITLE/DESC through STEP_3_TITLE/DESC). Use for how-to or process articles.',
   '09-full-image':
     'Full-bleed image slide with a short caption (FULL_IMAGE_CAPTION) overlaid near the bottom. Visual pause slide. Needs an image.',
   '10-image-box':
-    'Image with boxed caption — image on top, text box below (IMAGE_BOX_CAPTION). Use for a striking image with explanatory text. Needs an image.',
+    'Image with boxed caption — an eyebrow tag (IMAGE_BOX_EYEBROW), image on top, text box below (IMAGE_BOX_CAPTION). Use for a striking image with explanatory text. Needs an image.',
   '11-end-card':
     'End card — writer bio/section tagline (END_CARD_BIO), logo. Always use as the final carousel slide.',
   // Story
@@ -381,9 +381,9 @@ ${instruction ? `INSTRUCTION: ${instruction}` : ''}
 Return JSON with these fields:
 - slideIds: array of template IDs selected from the list above
 - text: the post caption/body text
-- placeholders: object with all template placeholder values (COVER_SUBTEXT, STATEMENT_TEXT, IMAGE_TEXT_HOOK, HOWTO_INTRO, QUOTE, STAT_N, STAT_L, NARRATIVE, FEAT_*_LABEL, FEAT_*_DESC, STEP_*_TITLE, STEP_*_DESC, FULL_IMAGE_CAPTION, IMAGE_BOX_CAPTION, END_CARD_BIO, ARC_TITLE). Every one of these fields is its own distinct slide's text — even though several of them play a similar "hook" or "caption" role, each MUST be freshly written and MUST NOT reuse the same sentence (or a trivial rewording of it) as any other field. Fill in every field even if you didn't select the corresponding slide (e.g. COVER_SUBTEXT is only shown on one randomly-chosen cover visual variant that you don't control, so always write a value for it).
+- placeholders: object with all template placeholder values (COVER_SUBTEXT, STATEMENT_TEXT, IMAGE_TEXT_HOOK, HOWTO_INTRO, QUOTE, STAT_N, STAT_L, NARRATIVE, NARRATIVE_TITLE, FEAT_*_LABEL, FEAT_*_DESC, STEP_*_TITLE, STEP_*_DESC, FULL_IMAGE_CAPTION, IMAGE_BOX_CAPTION, END_CARD_BIO, HOOK, COVER_EYEBROW, STATEMENT_EYEBROW, IMAGE_TEXT_EYEBROW, NARRATIVE_EYEBROW, KEY_STAT_EYEBROW, FEATURES_EYEBROW, HOWTO_EYEBROW, IMAGE_BOX_EYEBROW). Every one of these fields is its own distinct slide's text — even though several of them play a similar "hook", "caption", or "eyebrow tag" role, each MUST be freshly written and MUST NOT reuse the same sentence, phrase, or word (or a trivial rewording of it) as any other field. The *_EYEBROW fields are each a short 2–4 word creative label (ALL CAPS, e.g. "RISING MARKETS", "BOLD NEW VISION", "DATA DEEP DIVE") shown above that slide's headline — make each one punchy, editorial, and specific to what that slide is about, never the same phrase reused across slides. NARRATIVE_TITLE is a short sub-headline for the narrative slide and must NOT just repeat the article title verbatim. Fill in every field even if you didn't select the corresponding slide (e.g. COVER_SUBTEXT is only shown on one randomly-chosen cover visual variant that you don't control, so always write a value for it).
 - images: object mapping each image-bearing slideId you selected (marked "Needs an image" above) to one URL from the AVAILABLE IMAGES list, e.g. {"01-cover": "https://...", "09-full-image": "https://..."}
-- label: a short 2–4 word creative eyebrow label written for this article (ALL CAPS, e.g. "RISING MARKETS", "BOLD NEW VISION", "DATA DEEP DIVE"). This appears above the article title in the image templates — make it punchy and editorial, not the writer tone.`
+- label: a short 2–4 word creative eyebrow label written for this article (ALL CAPS, e.g. "RISING MARKETS", "BOLD NEW VISION", "DATA DEEP DIVE"). This is ONLY used by Instagram Story slides (a single slide per post, so one label is fine there) — it appears above the article title. Carousel/LinkedIn posts ignore this field entirely; for those, use the per-slide *_EYEBROW placeholder fields above instead. Make it punchy and editorial, not the writer tone.`
     : `PLATFORM: ${platformName}
 ${usageMenu ? `\nTEMPLATE USAGE THIS CAMPAIGN SO FAR (balance your selection — favor templates used less often, avoid picking the same one every time):\n${usageMenu}\n` : ''}
 ${instruction ? `\nINSTRUCTION: ${instruction}` : '\nPlease generate content for this platform.'}`;

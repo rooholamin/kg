@@ -135,7 +135,10 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
     WRITER_PHOTO: section.characterImage || writerPhotoPath(section),
     SECTION_NAME: section.name || '',
     SECTION_NAME_UPPER: (section.name || '').toUpperCase(),
+    // LABEL/HOOK are only rendered by Instagram Story templates (single slide
+    // per post). Carousel slides each use their own dedicated field instead.
     LABEL: p.LABEL || '',
+    HOOK: p.HOOK || '',
     COLOR_ACCENT: section.colorAccent || '#CCB260',
     COLOR_LIGHT: section.colorLight || '#E0CC7A',
     COLOR_DARK: section.colorDark || '#7A5500',
@@ -144,18 +147,27 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
     SLIDE_TOTAL: slideTotal != null ? String(slideTotal) : '',
     SLIDE_PROGRESS: (slideIndex != null && slideTotal) ? String(Math.round((slideIndex / slideTotal) * 100)) : '0',
     // AI-generated placeholders — each carousel slide that needs a
-    // hook-style line or a caption gets its own dedicated key (COVER_SUBTEXT,
-    // STATEMENT_TEXT, IMAGE_TEXT_HOOK, HOWTO_INTRO, FULL_IMAGE_CAPTION,
-    // IMAGE_BOX_CAPTION) so no two slides in the same post ever render
+    // hook-style line, eyebrow tag, or a caption gets its own dedicated key
+    // (COVER_SUBTEXT, STATEMENT_TEXT, IMAGE_TEXT_HOOK, HOWTO_INTRO,
+    // FULL_IMAGE_CAPTION, IMAGE_BOX_CAPTION, NARRATIVE_TITLE, and the
+    // *_EYEBROW fields below) so no two slides in the same post ever render
     // identical AI copy — see template-system/SYSTEM.md.
     COVER_SUBTEXT: p.COVER_SUBTEXT || '',
+    COVER_EYEBROW: p.COVER_EYEBROW || '',
     STATEMENT_TEXT: p.STATEMENT_TEXT || '',
+    STATEMENT_EYEBROW: p.STATEMENT_EYEBROW || '',
     IMAGE_TEXT_HOOK: p.IMAGE_TEXT_HOOK || '',
+    IMAGE_TEXT_EYEBROW: p.IMAGE_TEXT_EYEBROW || '',
     HOWTO_INTRO: p.HOWTO_INTRO || '',
+    HOWTO_EYEBROW: p.HOWTO_EYEBROW || '',
     QUOTE: p.QUOTE || '',
     STAT_N: p.STAT_N || '',
     STAT_L: p.STAT_L || '',
+    KEY_STAT_EYEBROW: p.KEY_STAT_EYEBROW || '',
     NARRATIVE: p.NARRATIVE || '',
+    NARRATIVE_TITLE: p.NARRATIVE_TITLE || '',
+    NARRATIVE_EYEBROW: p.NARRATIVE_EYEBROW || '',
+    FEATURES_EYEBROW: p.FEATURES_EYEBROW || '',
     FEAT_1_LABEL: p.FEAT_1_LABEL || '',
     FEAT_1_DESC: p.FEAT_1_DESC || '',
     FEAT_2_LABEL: p.FEAT_2_LABEL || '',
@@ -172,6 +184,7 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
     STEP_3_DESC: p.STEP_3_DESC || '',
     FULL_IMAGE_CAPTION: p.FULL_IMAGE_CAPTION || '',
     IMAGE_BOX_CAPTION: p.IMAGE_BOX_CAPTION || '',
+    IMAGE_BOX_EYEBROW: p.IMAGE_BOX_EYEBROW || '',
     END_CARD_BIO: p.END_CARD_BIO || '',
   };
 }

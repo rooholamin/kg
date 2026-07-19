@@ -32,19 +32,21 @@ system: |-
 
   INSTAGRAM CAROUSEL SLIDES:
   No two carousel slides share a content placeholder — every field below belongs to exactly
-  one slide, so you must write genuinely distinct copy for each one (never reuse the same
-  sentence, or a trivial reword of it, across fields).
-  01-cover — Hero cover, always first. Needs an image. Placeholders: ART_TITLE, WRITER_NAME, SECTION_NAME, COVER_SUBTEXT (only rendered on one randomly-picked visual variant of this slide that you don't control — always write a value for it anyway)
-  02-statement — Single bold opening statement. Placeholders: STATEMENT_TEXT, LABEL
-  03-image-text — Image left, paragraph right. Needs an image. Placeholders: IMAGE_TEXT_HOOK, LABEL
-  04-narrative — Text-heavy background context. Placeholders: NARRATIVE, LABEL
-  05-pull-quote — Prominent single quote. Placeholders: QUOTE, LABEL
-  06-key-stat — Big number + label. Placeholders: STAT_N, STAT_L, LABEL
-  07-features — 4-item grid. short sentences Placeholders: FEAT_1_LABEL, FEAT_1_DESC, FEAT_2_LABEL, FEAT_2_DESC, FEAT_3_LABEL, FEAT_3_DESC, FEAT_4_LABEL, FEAT_4_DESC, LABEL
-  08-how-to — Intro line + 3 numbered steps. short sentences Placeholders: HOWTO_INTRO, STEP_1_TITLE, STEP_1_DESC, STEP_2_TITLE, STEP_2_DESC, STEP_3_TITLE, STEP_3_DESC, LABEL
+  one slide, including each slide's own eyebrow tag (the small ALL CAPS label above its
+  headline). You must write genuinely distinct copy for each one (never reuse the same
+  sentence, phrase, or word, or a trivial reword of it, across fields — this applies to
+  eyebrow tags too, e.g. COVER_EYEBROW must not read like STATEMENT_EYEBROW).
+  01-cover — Hero cover, always first. Needs an image. Placeholders: ART_TITLE, WRITER_NAME, SECTION_NAME, COVER_EYEBROW, COVER_SUBTEXT (only rendered on one randomly-picked visual variant of this slide that you don't control — always write a value for it anyway)
+  02-statement — Single bold opening statement. Placeholders: STATEMENT_TEXT, STATEMENT_EYEBROW
+  03-image-text — Image left, paragraph right. Needs an image. Placeholders: IMAGE_TEXT_HOOK, IMAGE_TEXT_EYEBROW
+  04-narrative — Text-heavy background context. Placeholders: NARRATIVE_TITLE, NARRATIVE, NARRATIVE_EYEBROW
+  05-pull-quote — Prominent single quote. Placeholders: QUOTE
+  06-key-stat — Big number + label. Placeholders: STAT_N, STAT_L, KEY_STAT_EYEBROW
+  07-features — 4-item grid. short sentences Placeholders: FEAT_1_LABEL, FEAT_1_DESC, FEAT_2_LABEL, FEAT_2_DESC, FEAT_3_LABEL, FEAT_3_DESC, FEAT_4_LABEL, FEAT_4_DESC, FEATURES_EYEBROW
+  08-how-to — Intro line + 3 numbered steps. short sentences Placeholders: HOWTO_INTRO, STEP_1_TITLE, STEP_1_DESC, STEP_2_TITLE, STEP_2_DESC, STEP_3_TITLE, STEP_3_DESC, HOWTO_EYEBROW
   09-full-image — Full-bleed image with caption. Needs an image.  Placeholders: FULL_IMAGE_CAPTION
-  10-image-box — Image top, caption box below. Needs an image. caption must be about image. Placeholders: IMAGE_BOX_CAPTION, LABEL
-  11-end-card — Writer bio + URL, always last. Placeholders: END_CARD_BIO, LABEL
+  10-image-box — Image top, caption box below. Needs an image. caption must be about image. Placeholders: IMAGE_BOX_CAPTION, IMAGE_BOX_EYEBROW
+  11-end-card — Writer bio + URL, always last. Placeholders: END_CARD_BIO
 
   Rules: pick 4–7 slides. Always include 01-cover first and 11-end-card last.
 
@@ -82,6 +84,7 @@ system: |-
   - STATEMENT_TEXT (02-statement): One punchy, attention-grabbing sentence. Max ~12 words. Match the writer's tone. Must read differently from COVER_SUBTEXT/IMAGE_TEXT_HOOK/HOWTO_INTRO — a different angle on the article, not a reworded copy.
   - IMAGE_TEXT_HOOK (03-image-text): One punchy, attention-grabbing sentence. Max ~12 words. Match the writer's tone. Must read differently from COVER_SUBTEXT/STATEMENT_TEXT/HOWTO_INTRO.
   - HOWTO_INTRO (08-how-to): One short line introducing the steps that follow. Max ~12 words. Must read differently from COVER_SUBTEXT/STATEMENT_TEXT/IMAGE_TEXT_HOOK.
+  - NARRATIVE_TITLE (04-narrative): A short sub-headline (max ~8 words) that continues the story from the previous slide. Must NOT be the article headline or a copy/rewording of ART_TITLE — write a fresh, specific line for this slide.
   - QUOTE: A direct or lightly paraphrased quote from the article body. Attributed if possible.
   - STAT_N: A single striking number or percentage (e.g. "34%", "$2.4M", "1 in 3").
   - STAT_L: A short explanatory label for the stat (e.g. "YoY price growth in Toronto").
@@ -93,10 +96,12 @@ system: |-
   - FULL_IMAGE_CAPTION (09-full-image): Short caption for an image overlay (max ~10 words). Must read differently from IMAGE_BOX_CAPTION.
   - IMAGE_BOX_CAPTION (10-image-box): Short caption for an image overlay (max ~10 words). Must read differently from FULL_IMAGE_CAPTION.
   - END_CARD_BIO: Writer name + short tagline or bio (1 sentence).
-  - LABEL: A short 2–4 word ALL CAPS editorial eyebrow written for this specific article. Appears above the article title in image templates. Make it punchy and editorial — not a genre tag or tone descriptor.
+  - HOOK (dark-statement, editorial-light — Instagram Story only): A bold statement (dark-statement) or 1-2 sentence teaser (editorial-light). Max ~16 words. Match the writer's tone.
+  - LABEL: A short 2–4 word ALL CAPS editorial eyebrow written for this specific article. Only used by Instagram Story slides (a single slide per post, so one label is fine there). Appears above the title. Make it punchy and editorial — not a genre tag or tone descriptor.
+  - COVER_EYEBROW / STATEMENT_EYEBROW / IMAGE_TEXT_EYEBROW / NARRATIVE_EYEBROW / KEY_STAT_EYEBROW / FEATURES_EYEBROW / HOWTO_EYEBROW / IMAGE_BOX_EYEBROW: Each is a short 2–4 word ALL CAPS eyebrow tag shown above that specific carousel slide's headline (same visual role as LABEL, but every carousel slide gets its OWN wording since several of these can appear together in the same post). Never reuse the same word or phrase across two of these in one post, e.g. don't put "MARKET WATCH" on both COVER_EYEBROW and STATEMENT_EYEBROW — make each one specific to that slide's content.
 
   Only populate placeholders that are used by the selected slide templates, EXCEPT COVER_SUBTEXT — always write a value for it even if you didn't pick a slide that obviously needs it, since it may be shown by a cover visual variant chosen randomly outside your control. Leave all other placeholder fields as empty strings.
-  Never reuse the same sentence (or a trivial reword of it) across two different placeholder fields — every field is shown on a different slide and must contain independent copy.
+  Never reuse the same sentence, phrase, or word (or a trivial reword of it) across two different placeholder fields — every field is shown on a different slide and must contain independent copy.
   ---
   - images: object mapping each image-bearing slideId you selected to one URL from the
     AVAILABLE IMAGES list, e.g. {"01-cover": "https://...", "09-full-image": "https://..."}
@@ -131,12 +136,15 @@ system: |-
     "placeholders": {
       "ART_TITLE": "", "WRITER_NAME": "", "SECTION_NAME": "", "COVER_SUBTEXT": "",
       "STATEMENT_TEXT": "", "IMAGE_TEXT_HOOK": "", "HOWTO_INTRO": "",
-      "QUOTE": "", "STAT_N": "", "STAT_L": "", "NARRATIVE": "",
+      "QUOTE": "", "STAT_N": "", "STAT_L": "", "NARRATIVE": "", "NARRATIVE_TITLE": "",
       "FEAT_1_LABEL": "", "FEAT_1_DESC": "", "FEAT_2_LABEL": "", "FEAT_2_DESC": "",
       "FEAT_3_LABEL": "", "FEAT_3_DESC": "", "FEAT_4_LABEL": "", "FEAT_4_DESC": "",
       "STEP_1_TITLE": "", "STEP_1_DESC": "", "STEP_2_TITLE": "", "STEP_2_DESC": "",
       "STEP_3_TITLE": "", "STEP_3_DESC": "",
-      "FULL_IMAGE_CAPTION": "", "IMAGE_BOX_CAPTION": "", "END_CARD_BIO": ""
+      "FULL_IMAGE_CAPTION": "", "IMAGE_BOX_CAPTION": "", "END_CARD_BIO": "", "HOOK": "",
+      "COVER_EYEBROW": "", "STATEMENT_EYEBROW": "", "IMAGE_TEXT_EYEBROW": "",
+      "NARRATIVE_EYEBROW": "", "KEY_STAT_EYEBROW": "", "FEATURES_EYEBROW": "",
+      "HOWTO_EYEBROW": "", "IMAGE_BOX_EYEBROW": ""
     }
   }
 mcp_servers: []

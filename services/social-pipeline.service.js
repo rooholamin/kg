@@ -91,6 +91,9 @@ async function saveGeneratedContent(post, result) {
   const placeholders = {
     ...(post.placeholders || {}),
     ...(result.placeholders || {}),
+    // LABEL is only rendered by Instagram Story templates (one slide per post,
+    // so a single shared label is fine there). Carousel slides each have their
+    // own dedicated *_EYEBROW field inside result.placeholders instead.
     ...(result.label ? { LABEL: result.label } : {}),
   };
   if (slideIds.includes('01-cover') && !placeholders.COVER_VARIANT) {
@@ -445,6 +448,45 @@ export async function regeneratePostContent(postId, instruction) {
     });
     throw error;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 2c. regenerateAllContent
+// Bulk version of regeneratePostContent — reruns content generation for
+// every post in the campaign that isn't already generating or scheduled.
+// Runs sequentially (like runContentGeneration) since each call hits the AI
+// content agent; non-LinkedIn posts go first so LinkedIn can still clone its
+// sibling Instagram Carousel post's fresh content.
+// ---------------------------------------------------------------------------
+export async function regenerateAllContent(campaignId, instruction) {
+  const posts = await prisma.socialPost.findMany({
+    where: {
+      campaignId,
+      status: { notIn: ['content_generating', 'scheduled'] },
+    },
+  });
+
+  if (!posts.length) return { count: 0, succeeded: 0 };
+
+  await logInfo(campaignId, 'regenerate_all_start', `Regenerating content for ${posts.length} post${posts.length !== 1 ? 's' : ''}`);
+
+  const linkedinPosts = posts.filter((p) => p.platform === 'linkedin');
+  const otherPosts = posts.filter((p) => p.platform !== 'linkedin');
+  const orderedPosts = [...otherPosts, ...linkedinPosts];
+
+  let succeeded = 0;
+  for (const post of orderedPosts) {
+    try {
+      await regeneratePostContent(post.id, instruction);
+      succeeded++;
+    } catch (error) {
+      console.error(`[regenerateAllContent] post ${post.id} failed:`, error.message);
+    }
+  }
+
+  await logInfo(campaignId, 'regenerate_all_done', `Regenerated ${succeeded}/${posts.length} post${posts.length !== 1 ? 's' : ''}`);
+
+  return { count: posts.length, succeeded };
 }
 
 // ---------------------------------------------------------------------------
