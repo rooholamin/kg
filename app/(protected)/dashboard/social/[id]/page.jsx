@@ -1006,6 +1006,8 @@ const STEP_LABEL = {
   unschedule_buffer:        'Removing from Buffer',
   schedule_all_start:       'Scheduling all posts',
   schedule_all_done:        'All posts scheduled',
+  regenerate_all_start:     'Regenerating all posts',
+  regenerate_all_done:      'Regeneration complete',
 };
 
 function LogRow({ log }) {
@@ -1569,6 +1571,25 @@ export default function SocialCampaignPage({ params }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const regenerateAllMutation = useMutation({
+    mutationFn: async (instruction) => {
+      const res = await apiFetch(`/api/social/campaigns/${id}/regenerate-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(instruction ? { instruction } : {}),
+      });
+      if (!res.ok) throw new Error('Failed to regenerate all posts');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['social-campaign', id] });
+      toast.success(`Regenerating ${data.count} post${data.count !== 1 ? 's' : ''}…`);
+      setRegenerateAllOpen(false);
+      setRegenerateAllInstruction('');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const retryFailedMutation = useMutation({
     mutationFn: async () => {
       const res = await apiFetch(`/api/social/campaigns/${id}/retry-failed`, { method: 'POST' });
@@ -1654,6 +1675,8 @@ export default function SocialCampaignPage({ params }) {
 
   const [selectedPost, setSelectedPost] = useState(null);
   const [randomizeTarget, setRandomizeTarget] = useState(null);
+  const [regenerateAllOpen, setRegenerateAllOpen] = useState(false);
+  const [regenerateAllInstruction, setRegenerateAllInstruction] = useState('');
 
   const weekDays = useMemo(() => {
     if (!campaign?.weekStart || !campaign?.weekEnd) return [];
@@ -1705,6 +1728,9 @@ export default function SocialCampaignPage({ params }) {
   const scheduledPosts = allPosts.filter((p) => p.status === 'scheduled');
   const failedPosts = allPosts.filter((p) => p.status === 'failed');
   const canScheduleAll = uploadedPosts.length > 0;
+  const regenerateAllCount = allPosts.filter(
+    (p) => p.status !== 'content_generating' && p.status !== 'scheduled',
+  ).length;
 
   const postsByPlatform = {};
   for (const p of allPosts) {
@@ -1797,6 +1823,24 @@ export default function SocialCampaignPage({ params }) {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+
+            {/* Regenerate all */}
+            {regenerateAllCount > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setRegenerateAllOpen(true)}
+                disabled={regenerateAllMutation.isPending}
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+              >
+                {regenerateAllMutation.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="size-3.5" />
+                )}
+                Regenerate All ({regenerateAllCount})
+              </Button>
+            )}
 
             {/* Retry all failed */}
             {failedPosts.length > 0 && (
@@ -2184,6 +2228,51 @@ export default function SocialCampaignPage({ params }) {
           isSubmitting={randomizeMutation.isPending}
         />
       )}
+
+      {/* Regenerate All confirmation dialog */}
+      <Dialog open={regenerateAllOpen} onOpenChange={(open) => { if (!open) { setRegenerateAllOpen(false); setRegenerateAllInstruction(''); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="size-4" />
+              Regenerate All Posts
+            </DialogTitle>
+            <DialogDescription>
+              This will regenerate content for {regenerateAllCount} post{regenerateAllCount !== 1 ? 's' : ''} —
+              posts already scheduled or currently generating are left untouched. Existing captions and images
+              will be replaced.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Instructions (optional)</Label>
+            <Textarea
+              rows={3}
+              className="text-sm resize-none"
+              placeholder='e.g. "make captions more concise" or "focus on the key stat"'
+              value={regenerateAllInstruction}
+              onChange={(e) => setRegenerateAllInstruction(e.target.value)}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRegenerateAllOpen(false); setRegenerateAllInstruction(''); }} disabled={regenerateAllMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => regenerateAllMutation.mutate(regenerateAllInstruction || undefined)}
+              disabled={regenerateAllMutation.isPending}
+            >
+              {regenerateAllMutation.isPending ? (
+                <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Sparkles className="size-3.5 mr-1.5" />
+              )}
+              Regenerate {regenerateAllCount} post{regenerateAllCount !== 1 ? 's' : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Container>
   );
 }
