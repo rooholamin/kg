@@ -837,7 +837,7 @@ model SocialPost {
   hashtags       String[]         @default([])
   // Ordered CDN URLs matching slideIds order (empty for Twitter)
   imageUrls      String[]         @default([])
-  // All {{PLACEHOLDER}} values from AI (HOOK, QUOTE, STAT_N, etc.)
+  // All {{PLACEHOLDER}} values from AI (STATEMENT_TEXT, QUOTE, STAT_N, etc.)
   placeholders   Json?
   // Per-slide HERO_IMAGE assignment chosen by the content agent: { "<slideId>": "<url>" }
   slideImages    Json?

@@ -79,8 +79,10 @@ consistent) and editable by a human via the post's edit modal:
 | `center-vignette` | `01-cover-center-vignette.html` |
 | `left-panel` | `01-cover-left-panel.html` |
 
-All 4 share the exact same placeholder set — they only differ visually (headline
-position, vignette style, etc).
+All 4 share the same core placeholder set and only differ visually (headline
+position, vignette style, etc) — except `left-panel`, which additionally renders
+`{{COVER_SUBTEXT}}` (a short lede sentence under the title). Since the agent can't
+control which variant gets picked, it should always supply `COVER_SUBTEXT`.
 
 ---
 
@@ -92,7 +94,6 @@ position, vignette style, etc).
 |---|---|---|
 | `{{HERO_IMAGE}}` | Image shown on this specific slide — chosen per-slide by the content agent (see "Per-slide images" below) | `https://cdn.kghub...` |
 | `{{ART_TITLE}}` | Article headline | `Embracing Luxury: A Guide...` |
-| `{{HOOK}}` | Opening hook sentence | `Living above the city...` |
 | `{{QUOTE}}` | Pull quote from article | `In a penthouse, the city...` |
 | `{{STAT_N}}` | Stat figure | `2.4×` |
 | `{{STAT_L}}` | Stat label | `price premium on penthouse units` |
@@ -109,14 +110,24 @@ position, vignette style, etc).
 
 ### Carousel-only placeholders
 
+Every placeholder below belongs to exactly one slide — no two slides in the same
+carousel post ever share a content placeholder, so the content agent must write
+genuinely distinct copy for each one (no reusing the same sentence, or a trivial
+reword of it, across fields):
+
 | Placeholder | Slide | Description |
 |---|---|---|
+| `{{COVER_SUBTEXT}}` | `01-cover-left-panel` | Lede sentence under the title — only rendered when the "left panel" cover variant is chosen, but the agent can't control the variant, so it must always supply a value |
+| `{{STATEMENT_TEXT}}` | `02-statement` | Single bold declarative sentence |
+| `{{IMAGE_TEXT_HOOK}}` | `03-image-text` | Short paragraph below the image |
+| `{{HOWTO_INTRO}}` | `08-how-to` | One-line intro above the numbered steps |
 | `{{NARRATIVE}}` | `04-narrative` | Full paragraph combining hook + context |
 | `{{FEAT_1_LABEL}}` … `{{FEAT_4_LABEL}}` | `07-features` | Feature row titles |
 | `{{FEAT_1_DESC}}` … `{{FEAT_4_DESC}}` | `07-features` | Feature row descriptions |
 | `{{STEP_1_TITLE}}` … `{{STEP_3_TITLE}}` | `08-how-to` | Step titles |
 | `{{STEP_1_DESC}}` … `{{STEP_3_DESC}}` | `08-how-to` | Step descriptions |
-| `{{IMGBOX_CAPTION}}` | `09-full-image`, `10-image-box` | Caption overlaid on/under the image |
+| `{{FULL_IMAGE_CAPTION}}` | `09-full-image` | Caption overlaid near the bottom of the full-bleed image |
+| `{{IMAGE_BOX_CAPTION}}` | `10-image-box` | Caption under the boxed image |
 | `{{END_CARD_BIO}}` | `11-end-card` | Short writer bio / section tagline |
 
 There is no `{{ARTICLE_URL}}` placeholder in the new templates — the "insights.kghub.ca"

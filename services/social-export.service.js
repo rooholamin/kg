@@ -143,8 +143,15 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
     SLIDE_INDEX: slideIndex != null ? String(slideIndex) : '',
     SLIDE_TOTAL: slideTotal != null ? String(slideTotal) : '',
     SLIDE_PROGRESS: (slideIndex != null && slideTotal) ? String(Math.round((slideIndex / slideTotal) * 100)) : '0',
-    // AI-generated placeholders
-    HOOK: p.HOOK || '',
+    // AI-generated placeholders — each carousel slide that needs a
+    // hook-style line or a caption gets its own dedicated key (COVER_SUBTEXT,
+    // STATEMENT_TEXT, IMAGE_TEXT_HOOK, HOWTO_INTRO, FULL_IMAGE_CAPTION,
+    // IMAGE_BOX_CAPTION) so no two slides in the same post ever render
+    // identical AI copy — see template-system/SYSTEM.md.
+    COVER_SUBTEXT: p.COVER_SUBTEXT || '',
+    STATEMENT_TEXT: p.STATEMENT_TEXT || '',
+    IMAGE_TEXT_HOOK: p.IMAGE_TEXT_HOOK || '',
+    HOWTO_INTRO: p.HOWTO_INTRO || '',
     QUOTE: p.QUOTE || '',
     STAT_N: p.STAT_N || '',
     STAT_L: p.STAT_L || '',
@@ -163,7 +170,8 @@ function buildPlaceholders(post, article, section, articleUrl, slideIndex, slide
     STEP_2_DESC: p.STEP_2_DESC || '',
     STEP_3_TITLE: p.STEP_3_TITLE || '',
     STEP_3_DESC: p.STEP_3_DESC || '',
-    IMGBOX_CAPTION: p.IMGBOX_CAPTION || '',
+    FULL_IMAGE_CAPTION: p.FULL_IMAGE_CAPTION || '',
+    IMAGE_BOX_CAPTION: p.IMAGE_BOX_CAPTION || '',
     END_CARD_BIO: p.END_CARD_BIO || '',
   };
 }
