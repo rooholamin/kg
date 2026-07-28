@@ -130,17 +130,39 @@ function CharacterCard({ section }) {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['video-characters'] });
 
+  // Training itself takes minutes on Higgsfield's side, but the request now
+  // returns immediately (see higgsfield.service.js's createCharacter) — this
+  // mutation only waits for that quick "training started" response, not for
+  // training to finish. Actual progress is polled separately below.
   const trainMutation = useMutation({
     mutationFn: async () => {
       const res = await apiFetch(`/api/video/characters/${section.id}/train`, { method: 'POST' });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || 'Training failed');
+        throw new Error(j.message || 'Training failed to start');
       }
       return res.json();
     },
-    onSuccess: () => { toast.success(`Trained a Soul Character for ${section.name}`); invalidate(); },
+    onSuccess: () => { toast.success(`Training started for ${section.name} — takes a few minutes`); invalidate(); },
     onError: (e) => toast.error(e.message),
+  });
+
+  // Polls Higgsfield directly for this character's current training status.
+  // Auto-refreshes every 10s whenever a character ID exists and hasn't
+  // reached a terminal state yet, so the badge below updates on its own.
+  const { data: liveStatus } = useQuery({
+    queryKey: ['video-character-status', section.id, section.videoCharacterId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/video/characters/${section.id}/status`);
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.data;
+    },
+    enabled: Boolean(section.videoCharacterId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'completed' || status === 'failed' ? false : 10000;
+    },
   });
 
   const saveOutfitMutation = useMutation({
@@ -157,6 +179,16 @@ function CharacterCard({ section }) {
   });
 
   const isTrained = Boolean(section.videoCharacterId);
+  const status = liveStatus?.status; // 'queued' | 'in_progress' | 'completed' | 'failed' | undefined (not checked yet)
+
+  const STATUS_BADGE = {
+    completed: { label: 'Trained', icon: CheckCircle2, variant: 'default' },
+    in_progress: { label: 'Training…', icon: Loader2, variant: 'secondary', spin: true },
+    queued: { label: 'Queued', icon: Loader2, variant: 'secondary', spin: true },
+    failed: { label: 'Training failed', icon: AlertCircle, variant: 'destructive' },
+  };
+  const badge = isTrained ? (STATUS_BADGE[status] ?? { label: 'Checking…', icon: Loader2, variant: 'secondary', spin: true }) : { label: 'Not trained', icon: AlertCircle, variant: 'secondary' };
+  const BadgeIcon = badge.icon;
 
   return (
     <Card>
@@ -174,11 +206,10 @@ function CharacterCard({ section }) {
               <CardDescription className="text-xs truncate">{section.characterName || 'No character name set'}</CardDescription>
             </div>
           </div>
-          {isTrained ? (
-            <Badge className="shrink-0"><CheckCircle2 className="size-3 mr-1" />Trained</Badge>
-          ) : (
-            <Badge variant="secondary" className="shrink-0"><AlertCircle className="size-3 mr-1" />Not trained</Badge>
-          )}
+          <Badge variant={badge.variant} className="shrink-0">
+            <BadgeIcon className={`size-3 mr-1 ${badge.spin ? 'animate-spin' : ''}`} />
+            {badge.label}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -209,10 +240,15 @@ function CharacterCard({ section }) {
               if (isTrained && !window.confirm(`Retrain the Soul Character for ${section.name}? This creates a new character ID.`)) return;
               trainMutation.mutate();
             }}
-            disabled={trainMutation.isPending || (!section.characterImage && !section.videoRefImageUrls?.length)}
+            disabled={
+              trainMutation.isPending ||
+              status === 'queued' ||
+              status === 'in_progress' ||
+              (!section.characterImage && !section.videoRefImageUrls?.length)
+            }
           >
             {trainMutation.isPending ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Sparkles className="size-3.5 mr-1" />}
-            {isTrained ? 'Retrain' : 'Train'} Character
+            {status === 'queued' || status === 'in_progress' ? 'Training in progress…' : isTrained ? 'Retrain' : 'Train'} Character
           </Button>
         </div>
 

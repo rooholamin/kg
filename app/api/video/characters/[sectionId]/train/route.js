@@ -31,6 +31,11 @@ export async function POST(_req, { params }) {
       );
     }
 
+    // Async — returns immediately with a queued/in_progress status. Save the
+    // ID right away regardless of status; it's stable, and training keeps
+    // running on Higgsfield's side even if this request or the server
+    // restarts. Poll actual completion via the status route instead of
+    // blocking here (see higgsfield.service.js's createCharacter doc comment).
     const character = await createCharacter({
       name: `KG Hub — ${section.name}`,
       referenceImageUrls,
