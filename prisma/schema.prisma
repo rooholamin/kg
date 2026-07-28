@@ -232,6 +232,11 @@ model Section {
   colorDark             String?
   // Baseline hashtags prepended to AI-generated hashtags for social posts
   socialHashtags        String[]      @default([])
+  // Video pipeline — Higgsfield Soul Character trained from characterImage
+  // (+ any extra ref shots), reused as this section's on-screen avatar
+  videoCharacterId       String?
+  videoRefImageUrls      String[]     @default([])
+  videoOutfitDescription String?      @db.Text
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   categories            Category[]
@@ -322,6 +327,7 @@ model Article {
   automationRuns       ArticleAutomationRun[]
   pipelineEngineLogs   PipelineEngineLog[]
   socialPosts          SocialPost[]
+  videoPosts           VideoPost[]
 
   @@index([topicId])
   @@index([categoryId])
@@ -940,4 +946,189 @@ model SocialAiMemory {
   // Handoff summary written by the agent at rotation; injected as first message in new session
   handoffSummary       String?  @db.Text
   updatedAt            DateTime @updatedAt
+}
+
+// ─── Video Campaign Pipeline ──────────────────────────────────────────────────
+// Two Managed Agents: a Video Approval Agent selects which published articles
+// get a video this cycle, then a Video Director Agent writes an independent
+// multi-shot script (shotList) per approved article and directs the Higgsfield
+// shoot via custom tools (generate_image/generate_video/get_generation_status).
+// Each section's existing character persona (Section.videoCharacterId, a
+// trained Higgsfield Soul Character) is the on-screen avatar; every video
+// shares the one VideoEnvironment singleton ("KG Media Loft").
+
+enum VideoCampaignStatus {
+  pending
+  running
+  approving
+  directing
+  exporting
+  reviewing
+  scheduling
+  paused
+  done
+  failed
+  cancelled
+}
+
+enum VideoPostStatus {
+  pending
+  directing
+  content_ready
+  exporting
+  uploaded
+  scheduling
+  scheduled
+  failed
+}
+
+/// Singleton — the one shared environment every video is shot "in"
+model VideoEnvironment {
+  id              String   @id @default("singleton")
+  name            String   @default("KG Media Loft")
+  // 7-point descriptor (architecture, texture, scale, atmosphere, light, colour, mood) —
+  // dropped into the director agent's prompt as TEXT rather than an image ref, to
+  // avoid "ref bleeding" (see Universal AI Cinematic Automation/env-descriptors.md)
+  textDescriptor  String?  @db.Text
+  refImageUrl     String?
+  higgsfieldRefId String?
+  updatedAt       DateTime @updatedAt
+}
+
+model VideoCampaign {
+  id          String              @id @default(uuid())
+  weekStart   DateTime
+  weekEnd     DateTime
+  status      VideoCampaignStatus @default(pending)
+  // Article publishDate filter, independent of weekStart/weekEnd (same pattern as SocialCampaign)
+  articleDateStart DateTime?
+  articleDateEnd   DateTime?
+  // Selection guidance for the Video Approval Agent — NOT a shared script;
+  // each approved article gets its own independently-written shotList.
+  campaignBrief     String?  @db.Text
+  editorsChoiceOnly Boolean  @default(false)
+  includeSections   String[] @default([])
+  maxVideos         Int?
+  // Managed Agent session ID used for this campaign's approval (audit trail)
+  approvalSessionId String?
+  posts     VideoPost[]
+  logs      VideoCampaignLog[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([status])
+  @@index([weekStart])
+}
+
+model VideoPost {
+  id         String          @id @default(uuid())
+  campaignId String
+  articleId  String
+  status     VideoPostStatus @default(pending)
+  // Video Director Agent session — one per post, so a regenerate/instruction
+  // continues the same session instead of starting from scratch
+  directorSessionId String?
+  // Optional one-off human creative direction (mirrors the `instruction` param
+  // on regeneratePostContent), applied on the next regenerate
+  directorNote String? @db.Text
+  // The script the director agent wrote: ordered shots — timestamp, camera,
+  // action, lighting, sound — per the seedance-prompt-framework structure
+  shotList Json?
+  // Caption editable by user before scheduling; AI-generated initially
+  generatedText String? @db.Text
+  hashtags      String[] @default([])
+  // Start-frame still (Nano Banana Pro) used as --start-image for the video generation
+  stillAssetUrl String?
+  // Final rendered clip, uploaded to DigitalOcean Spaces
+  videoUrl      String?
+  duration      Int?
+  aspectRatio   String?
+  genre         String?
+  higgsfieldJobId String?
+  // Which Buffer channels this same video fans out to (e.g. ["instagram_carousel","linkedin","twitter"])
+  platforms     String[] @default([])
+  // Buffer post ID per platform: { "instagram_carousel": "...", "linkedin": "..." }
+  bufferPostIds Json?
+  scheduledAt   DateTime?
+  analyticsData Json?
+  errorMessage  String? @db.Text
+  campaign   VideoCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  article    Article       @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([campaignId])
+  @@index([articleId])
+  @@index([status])
+}
+
+/// Detailed trace of every pipeline step — used for the live run log UI (mirrors SocialCampaignLog)
+model VideoCampaignLog {
+  id         String   @id @default(uuid())
+  campaignId String
+  postId     String?
+  step       String
+  status     String   @default("running")
+  message    String?  @db.Text
+  input      Json?
+  output     Json?
+  campaign   VideoCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([postId])
+  @@index([step])
+}
+
+/// Global defaults + Anthropic Managed Agent references for the video pipeline.
+/// Buffer channel IDs are intentionally NOT duplicated here — reuses SocialSettings'
+/// instagramChannelId/linkedinChannelId/twitterChannelId.
+model VideoSettings {
+  id                    String   @id @default("singleton")
+  // Video Approval Agent — selects which articles get a video this cycle
+  approvalAgentId       String?
+  approvalEnvironmentId String?
+  // Video Director Agent — one session per post, writes the script + directs the shoot
+  directorAgentId       String?
+  directorEnvironmentId String?
+  defaultMaxVideosPerCampaign Int    @default(5)
+  defaultDuration             Int    @default(15)
+  defaultAspectRatio          String @default("9:16")
+  defaultGenre                String @default("auto")
+  defaultPlatforms            String[] @default(["instagram_carousel", "linkedin", "twitter"])
+  maxGenerationsPerPost       Int    @default(4)
+  // When false: pipeline auto-schedules immediately after upload (no review pause)
+  requireReview               Boolean @default(true)
+  updatedAt                   DateTime @updatedAt
+}
+
+/// Runtime state for the ongoing Video Approval Agent session (mirrors SocialAiMemory)
+model VideoAiMemory {
+  id                   String   @id @default("singleton")
+  activeSessionId      String?
+  sessionCampaignCount Int      @default(0)
+  sessionRotateAfter   Int      @default(10)
+  handoffSummary       String?  @db.Text
+  updatedAt            DateTime @updatedAt
+}
+
+enum VideoFailureType {
+  nsfw
+  ip_detected
+  quality
+  timeout
+}
+
+/// DB-backed, ever-growing equivalent of seedance-failures.md — injected as
+/// dynamic context into each director session so the content-filter map keeps
+/// improving without re-uploading the director agent's Skill.
+model VideoPromptLearning {
+  id            String           @id @default(uuid())
+  triggerPhrase String
+  failureType   VideoFailureType
+  safeRewrite   String?          @db.Text
+  notes         String?          @db.Text
+  createdAt     DateTime         @default(now())
+
+  @@index([failureType])
 }

@@ -1,0 +1,329 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Container } from '@/components/common/container';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { apiFetch } from '@/lib/api';
+import {
+  ArrowLeft,
+  Loader2,
+  Save,
+  RotateCw,
+  Brain,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CheckCircle2,
+} from 'lucide-react';
+
+const APPROVAL_AGENT_FIELDS = [
+  { key: 'approvalAgentId', label: 'Approval Agent ID' },
+  { key: 'approvalEnvironmentId', label: 'Environment ID' },
+];
+
+const DIRECTOR_AGENT_FIELDS = [
+  { key: 'directorAgentId', label: 'Director Agent ID' },
+  { key: 'directorEnvironmentId', label: 'Environment ID' },
+];
+
+const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5', '3:4', '21:9'];
+const GENRES = ['auto', 'action', 'epic', 'noir', 'drama', 'horror', 'comedy'];
+const PLATFORM_OPTIONS = [
+  { key: 'instagram_carousel', label: 'Instagram' },
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'twitter', label: 'Twitter / X' },
+];
+
+export default function VideoSettingsPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [form, setForm] = useState({});
+  const [memoryForm, setMemoryForm] = useState({});
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['video-settings-full'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/video/settings');
+      if (!res.ok) throw new Error('Failed to load settings');
+      const j = await res.json();
+      return j.data ?? {};
+    },
+  });
+
+  useEffect(() => {
+    if (data?.settings) setForm(data.settings);
+    if (data?.memory) setMemoryForm(data.memory);
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = { ...form, sessionRotateAfter: memoryForm.sessionRotateAfter };
+      const res = await apiFetch('/api/video/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-settings-full'] });
+      toast.success('Settings saved');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const resetSessionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch('/api/video/settings', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to reset session');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-settings-full'] });
+      toast.success('AI session reset. Next campaign will start a fresh session.');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function setField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function togglePlatform(key) {
+    setForm((prev) => {
+      const current = prev.defaultPlatforms || [];
+      const next = current.includes(key) ? current.filter((p) => p !== key) : [...current, key];
+      return { ...prev, defaultPlatforms: next };
+    });
+  }
+
+  if (isLoading) {
+    return (
+      <Container>
+        <div className="flex justify-center py-12"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
+      </Container>
+    );
+  }
+
+  const memory = data?.memory;
+
+  return (
+    <Container>
+      <div className="flex items-center gap-3 mb-6">
+        <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard/video')}>
+          <ArrowLeft className="size-4" />
+        </Button>
+        <div className="flex-1">
+          <h1 className="text-xl font-semibold">Video Settings</h1>
+          <p className="text-sm text-muted-foreground">Configure the two Managed Agents and pipeline defaults.</p>
+        </div>
+        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Save className="size-4 mr-1.5" />}
+          Save
+        </Button>
+      </div>
+
+      <div className="space-y-6 max-w-2xl">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Review Mode</CardTitle>
+            <CardDescription className="text-xs">
+              When disabled, videos are automatically scheduled via Buffer immediately after upload.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="requireReview">Require manual review before scheduling</Label>
+              <Switch id="requireReview" checked={form.requireReview ?? true} onCheckedChange={(v) => setField('requireReview', v)} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Publishing Channels</CardTitle>
+            <CardDescription className="text-xs">
+              Every video schedules the SAME clip to all selected channels (fan-out), reusing the
+              Buffer channel IDs already configured in Social → Settings.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {PLATFORM_OPTIONS.map(({ key, label }) => {
+              const active = (form.defaultPlatforms || []).includes(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => togglePlatform(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    active ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Production Defaults</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Max videos / cycle</Label>
+              <Input type="number" min={1} value={form.defaultMaxVideosPerCampaign ?? 5} onChange={(e) => setField('defaultMaxVideosPerCampaign', Number(e.target.value))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Duration (seconds)</Label>
+              <Input type="number" min={4} max={15} value={form.defaultDuration ?? 15} onChange={(e) => setField('defaultDuration', Number(e.target.value))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Aspect ratio</Label>
+              <Select value={form.defaultAspectRatio ?? '9:16'} onValueChange={(v) => setField('defaultAspectRatio', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ASPECT_RATIOS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Genre</Label>
+              <Select value={form.defaultGenre ?? 'auto'} onValueChange={(v) => setField('defaultGenre', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {GENRES.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Max generations / video</Label>
+              <Input type="number" min={1} max={10} value={form.maxGenerationsPerPost ?? 4} onChange={(e) => setField('maxGenerationsPerPost', Number(e.target.value))} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Brain className="size-4" />
+              Anthropic Managed Agents
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Create both agents in the Anthropic Console (see <code>video-approval-agent.yaml</code> and{' '}
+              <code>video-director-agent.yaml</code> at the project root) and paste their IDs here. The{' '}
+              <strong>Approval Agent</strong> runs once per campaign; the <strong>Director Agent</strong> opens
+              one session per video and directs the Higgsfield shoot itself via custom tools.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-end">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setShowPasswords(!showPasswords)}>
+                {showPasswords ? <EyeOff className="size-3.5 mr-1" /> : <Eye className="size-3.5 mr-1" />}
+                {showPasswords ? 'Hide' : 'Show'} IDs
+              </Button>
+            </div>
+
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Approval Agent</p>
+            {APPROVAL_AGENT_FIELDS.map(({ key, label }) => (
+              <div key={key} className="grid grid-cols-2 gap-3 items-center">
+                <Label>{label}</Label>
+                <Input type={showPasswords ? 'text' : 'password'} value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} placeholder="ant_xxxxxxxx" />
+              </div>
+            ))}
+
+            <Separator />
+
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Director Agent</p>
+            {DIRECTOR_AGENT_FIELDS.map(({ key, label }) => (
+              <div key={key} className="grid grid-cols-2 gap-3 items-center">
+                <Label>{label}</Label>
+                <Input type={showPasswords ? 'text' : 'password'} value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} placeholder="ant_xxxxxxxx" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Brain className="size-4" />
+              AI Session Memory
+            </CardTitle>
+            <CardDescription className="text-xs">
+              The approval agent maintains editorial memory within a session. After N campaigns, it writes a
+              handoff summary and starts a fresh session.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-xs font-medium">Active session</p>
+                {memory?.activeSessionId ? (
+                  <p className="text-xs text-muted-foreground font-mono">{memory.activeSessionId}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">None — new session on next run</p>
+                )}
+              </div>
+              {memory?.activeSessionId ? (
+                <Badge variant="default" className="text-xs"><CheckCircle2 className="size-3 mr-1" />Active</Badge>
+              ) : (
+                <Badge variant="secondary" className="text-xs"><AlertCircle className="size-3 mr-1" />Inactive</Badge>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Campaigns in session</p>
+              <p className="text-xs font-medium">{memory?.sessionCampaignCount ?? 0} / {memory?.sessionRotateAfter ?? 10}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label className="text-xs">Rotate after N campaigns</Label>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={memoryForm.sessionRotateAfter ?? 10}
+                onChange={(e) => setMemoryForm((prev) => ({ ...prev, sessionRotateAfter: Number(e.target.value) }))}
+              />
+            </div>
+
+            {memory?.handoffSummary && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Handoff summary</p>
+                <div className="text-xs text-muted-foreground bg-muted rounded p-2 max-h-24 overflow-y-auto">{memory.handoffSummary}</div>
+              </div>
+            )}
+
+            <Separator />
+
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (window.confirm('This will clear the active session and all handoff context. Continue?')) {
+                  resetSessionMutation.mutate();
+                }
+              }}
+              disabled={resetSessionMutation.isPending}
+            >
+              {resetSessionMutation.isPending ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <RotateCw className="size-3.5 mr-1.5" />}
+              Force Rotate Now
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </Container>
+  );
+}

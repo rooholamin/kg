@@ -404,6 +404,166 @@ export async function pullAnalytics(postId) {
 }
 
 // ---------------------------------------------------------------------------
+// Video Campaign Pipeline — schedules the SAME finished video to every
+// channel in VideoPost.platforms (fan-out), unlike SocialPost which is
+// already one row per platform. Reuses SocialSettings' channel IDs — video
+// publishes to the same Instagram/LinkedIn/Twitter channels as image posts,
+// there's no separate "video channel" concept.
+//
+// NOTE: Buffer's exact schema for video assets/Reels metadata should be
+// confirmed against their current GraphQL docs during ops setup (see
+// VIDEO_CAMPAIGN_OPS.md) — the shapes below follow the same pattern as the
+// image/PDF asset handling above but haven't been exercised against a real
+// video post yet.
+// ---------------------------------------------------------------------------
+
+export async function scheduleVideoPost({ postId }) {
+  const post = await prisma.videoPost.findUnique({
+    where: { id: postId },
+    include: {
+      article: { include: { category: { include: { section: true } } } },
+    },
+  });
+  if (!post) throw new Error(`VideoPost not found: ${postId}`);
+  if (!post.videoUrl) throw new Error('Post has no uploaded video to schedule');
+  if (!post.platforms?.length) throw new Error('Post has no target platforms configured');
+
+  if (post.scheduledAt && post.article?.publishDate && new Date(post.scheduledAt) < new Date(post.article.publishDate)) {
+    throw new Error(
+      `Refusing to schedule: post is set for ${new Date(post.scheduledAt).toISOString()}, ` +
+      `which is before the article publishes on ${new Date(post.article.publishDate).toISOString()}.`,
+    );
+  }
+
+  const settings = await prisma.socialSettings.upsert({ where: { id: 'singleton' }, update: {}, create: { id: 'singleton' } });
+  const section = post.article?.category?.section;
+
+  await prisma.videoPost.update({ where: { id: postId }, data: { status: 'scheduling' } });
+
+  const bufferPostIds = { ...(post.bufferPostIds || {}) };
+  const errors = [];
+
+  for (const platform of post.platforms) {
+    if (bufferPostIds[platform]) continue; // already sent to this channel
+
+    try {
+      const channelId = getChannelId(platform, settings);
+      let caption = await appendArticleCta(post.generatedText || '', platform, post.article, section);
+      caption = caption.replace(/\{\{([A-Z0-9_]+)\}\}/g, '');
+
+      const input = {
+        channelId,
+        text: caption,
+        schedulingType: 'automatic',
+        assets: [{ video: { url: post.videoUrl } }],
+      };
+
+      if (post.scheduledAt) {
+        input.mode = 'customScheduled';
+        input.dueAt = new Date(post.scheduledAt).toISOString();
+      } else {
+        input.mode = 'addToQueue';
+      }
+
+      if (platform === 'instagram_carousel' || platform === 'instagram_story') {
+        input.metadata = { instagram: { type: 'reel', shouldShareToFeed: true } };
+      }
+
+      const { data, raw, status } = await bufferQuery(CREATE_POST_MUTATION, { input });
+      const result = data?.createPost;
+
+      await logInfo(
+        post.campaignId, 'buffer_raw_response',
+        result?.message ? `Buffer rejected ${platform} video post` : `Buffer accepted ${platform} video post`,
+        { input, raw, status },
+        postId,
+      );
+
+      if (result?.message) throw new Error(`Buffer rejected post: ${result.message}`);
+
+      bufferPostIds[platform] = result?.post?.id;
+    } catch (error) {
+      errors.push(`${platform}: ${error.message}`);
+    }
+  }
+
+  const allSucceeded = post.platforms.every((p) => bufferPostIds[p]);
+
+  await prisma.videoPost.update({
+    where: { id: postId },
+    data: {
+      status: allSucceeded ? 'scheduled' : 'uploaded',
+      bufferPostIds,
+      errorMessage: errors.length ? errors.join('; ') : null,
+    },
+  });
+
+  if (errors.length) throw new Error(errors.join('; '));
+
+  return bufferPostIds;
+}
+
+export async function unscheduleVideoPost(postId) {
+  const post = await prisma.videoPost.findUnique({ where: { id: postId } });
+  if (!post) throw new Error(`VideoPost not found: ${postId}`);
+  if (!post.bufferPostIds || !Object.keys(post.bufferPostIds).length) {
+    throw new Error('Post has no Buffer post IDs — nothing to remove');
+  }
+
+  const errors = [];
+  for (const [platform, bufferPostId] of Object.entries(post.bufferPostIds)) {
+    try {
+      const { data, raw, status } = await bufferQuery(DELETE_POST_MUTATION, { input: { id: bufferPostId } });
+      const result = data?.deletePost;
+      await logInfo(
+        post.campaignId, 'buffer_raw_response',
+        result?.message ? `Buffer rejected delete for ${platform} video post` : `Removed ${platform} video post from Buffer`,
+        { bufferPostId, raw, status },
+        postId,
+      );
+      if (result?.message) throw new Error(result.message);
+    } catch (error) {
+      errors.push(`${platform}: ${error.message}`);
+    }
+  }
+
+  await prisma.videoPost.update({
+    where: { id: postId },
+    data: { status: 'uploaded', bufferPostIds: null, errorMessage: errors.length ? errors.join('; ') : null },
+  });
+
+  if (errors.length) throw new Error(errors.join('; '));
+  return true;
+}
+
+export async function pullVideoAnalytics(postId) {
+  const post = await prisma.videoPost.findUnique({ where: { id: postId } });
+  if (!post?.bufferPostIds || !Object.keys(post.bufferPostIds).length) return null;
+
+  const analyticsData = {};
+  for (const [platform, bufferPostId] of Object.entries(post.bufferPostIds)) {
+    try {
+      const { data } = await bufferQuery(buildGetPostMetricsQuery(bufferPostId));
+      const metrics = data?.post?.metrics ?? [];
+      const find = (type) => metrics.find((m) => m.type === type)?.value ?? 0;
+      analyticsData[platform] = {
+        impressions: find('impressions'),
+        reach: find('reach'),
+        likes: find('reactions'),
+        comments: find('comments'),
+        shares: find('reposts'),
+      };
+    } catch (error) {
+      console.error(`[buffer.pullVideoAnalytics] ${platform} failed:`, error.message);
+    }
+  }
+  analyticsData.pulledAt = new Date().toISOString();
+
+  await prisma.videoPost.update({ where: { id: postId }, data: { analyticsData } });
+  return analyticsData;
+}
+
+// ---------------------------------------------------------------------------
 // computeScheduledAt — distribute posts evenly across the posting window
 // (unchanged from previous version)
 // ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@faker-js/faker": "^9.8.0",
     "@headless-tree/core": "^1.2.0",
+    "@higgsfield/client": "^0.2.1",
     "@hookform/resolvers": "^5.1.1",
     "@ianvs/prettier-plugin-sort-imports": "^4.6.2",
     "@next-auth/prisma-adapter": "^1.0.7",

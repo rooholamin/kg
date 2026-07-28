@@ -63,6 +63,7 @@ import {
   Lightbulb,
   ListChecks,
   Cpu,
+  Clapperboard,
 } from 'lucide-react';
 
 export const MENU_SIDEBAR = [
@@ -129,6 +130,11 @@ export const MENU_SIDEBAR = [
     title: 'Social Media',
     icon: Share2,
     path: '/dashboard/social',
+  },
+  {
+    title: 'Video Campaigns',
+    icon: Clapperboard,
+    path: '/dashboard/video',
   },
   { heading: 'Intelligence' },
   {
