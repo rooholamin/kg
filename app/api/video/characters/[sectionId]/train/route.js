@@ -43,6 +43,7 @@ export async function POST(_req, { params }) {
 
     return NextResponse.json({ data: updated, character });
   } catch (e) {
-    return routeError(e, 'Failed to train video character');
+    console.error('[POST /api/video/characters/[sectionId]/train]', e);
+    return routeError(e, e?.message || 'Failed to train video character');
   }
 }
