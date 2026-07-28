@@ -29,7 +29,13 @@ export const SectionFormSchema = z.object({
   wpSiteUrl: z.string().url({ message: 'Must be a valid URL.' }).max(500).optional().nullable().or(z.literal('')),
   wpUsername: z.string().max(200).optional().nullable(),
   wpAppPassword: z.string().max(500).optional().nullable(),
-  wpAuthorId: z.coerce.number().int().positive().optional().nullable(),
+  // Empty-string input must become undefined BEFORE coercion — z.coerce.number()
+  // turns '' into 0 (JS: Number('') === 0), which then fails .positive() and
+  // blocks the whole form save even though this field is meant to be optional.
+  wpAuthorId: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.coerce.number().int().positive().optional().nullable(),
+  ),
   // Social media colors
   colorAccent: z.string().max(20).optional().nullable(),
   colorLight: z.string().max(20).optional().nullable(),

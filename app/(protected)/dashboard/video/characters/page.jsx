@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,7 +11,116 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/api';
-import { ArrowLeft, Loader2, Sparkles, CheckCircle2, AlertCircle, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles, CheckCircle2, AlertCircle, Save, Upload, X, ImagePlus } from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Reference image uploader — additional shots beyond the primary
+// characterImage (which is set on the Sections page). Uploads go through the
+// same /api/uploads endpoint (directory: 'characters') the Sections form
+// uses for characterImage, then append the returned URL onto
+// Section.videoRefImageUrls via PATCH /api/video/characters/[sectionId].
+// ---------------------------------------------------------------------------
+function RefImageGrid({ section }) {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const urls = section.videoRefImageUrls || [];
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['video-characters'] });
+
+  const saveUrlsMutation = useMutation({
+    mutationFn: async (nextUrls) => {
+      const res = await apiFetch(`/api/video/characters/${section.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoRefImageUrls: nextUrls }),
+      });
+      if (!res.ok) throw new Error('Failed to save reference images');
+    },
+    onSuccess: () => invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const uploaded = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('directory', 'characters');
+        const res = await apiFetch('/api/uploads', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.message || `Failed to upload ${file.name}`);
+        }
+        const { data } = await res.json();
+        uploaded.push(data.url);
+      }
+      await saveUrlsMutation.mutateAsync([...urls, ...uploaded]);
+      toast.success(`Uploaded ${uploaded.length} reference image${uploaded.length !== 1 ? 's' : ''}`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  function removeUrl(url) {
+    saveUrlsMutation.mutate(urls.filter((u) => u !== url));
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs">Additional reference images ({urls.length})</Label>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Upload className="size-3.5 mr-1" />}
+          Upload
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+      </div>
+
+      {urls.length > 0 ? (
+        <div className="grid grid-cols-4 gap-1.5">
+          {urls.map((url) => (
+            <div key={url} className="relative group aspect-square rounded-md overflow-hidden border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="Reference" className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={() => removeUrl(url)}
+                className="absolute top-0.5 right-0.5 size-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground border border-dashed rounded-md p-2.5">
+          <ImagePlus className="size-3.5 shrink-0" />
+          No extra reference shots yet — 2-4 more (different angles/expressions) improves training quality.
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CharacterCard({ section }) {
   const queryClient = useQueryClient();
@@ -76,6 +185,8 @@ function CharacterCard({ section }) {
         {isTrained && (
           <p className="text-xs text-muted-foreground font-mono truncate">characterId: {section.videoCharacterId}</p>
         )}
+
+        <RefImageGrid section={section} />
 
         <div className="space-y-1">
           <Label className="text-xs">Outfit description (for the director agent's prompts)</Label>
