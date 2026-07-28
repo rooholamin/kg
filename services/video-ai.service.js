@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/prisma';
 import { logStart, logDone, logError } from '@/lib/video-logger';
+import { estimateSegmentCost } from '@/lib/video-cost';
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -8,11 +9,25 @@ const client = new Anthropic({
 });
 
 // ---------------------------------------------------------------------------
+// resolveVideoConfig
+// Effective Plan → Approve → Execute config for a post: per-post override,
+// falling back to the campaign's cycle-level default, falling back to the
+// global VideoSettings default.
+// ---------------------------------------------------------------------------
+export function resolveVideoConfig({ post, campaign, settings }) {
+  return {
+    platform: post?.targetPlatform || campaign?.targetPlatform || settings?.defaultTargetPlatform || 'auto',
+    style: post?.videoStyle || campaign?.videoStyle || settings?.defaultVideoStyle || 'auto',
+    shotCount: post?.targetShotCount ?? campaign?.targetShotCount ?? settings?.defaultTargetShotCount ?? null,
+    orientation: post?.orientation || campaign?.orientation || settings?.defaultOrientation || '9:16',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // selectVideoArticles
-// Mirrors social-ai.service.js's selectApprovedPlatforms — reuses the same
-// Managed Agent session across campaigns, rotates after N runs — but returns
-// one flat list of approved article IDs instead of a per-platform map, since
-// video approval is a single yes/no decision, not a platform placement.
+// Unchanged from the previous pipeline — reuses the same Managed Agent
+// session across campaigns, rotates after N runs — returns one flat list of
+// approved article IDs.
 // ---------------------------------------------------------------------------
 export async function selectVideoArticles({ articles, campaign, settings, memory }) {
   let sessionId = memory.activeSessionId;
@@ -132,63 +147,15 @@ Based on your editorial memory of what has already received a video, select whic
   return approvedArticleIds;
 }
 
-// ---------------------------------------------------------------------------
-// directVideoPost
-// One Managed Agent session per post (VideoPost.directorSessionId). This
-// session directs the Higgsfield shoot itself via the hosted Higgsfield MCP
-// server (generate_image/generate_video/job_status, always_allow) rather
-// than custom tools — Anthropic executes those MCP calls server-side, so
-// streamAgentResponse below never actually needs to dispatch a tool call for
-// this agent; it just streams text/status until end_turn.
-// ---------------------------------------------------------------------------
-export async function directVideoPost({ campaignId, postId, article, section, environment, directorNote, settings, promptLearnings }) {
-  if (!settings?.directorAgentId || !settings?.directorEnvironmentId) {
-    throw new Error(
-      'Video Director Agent IDs not configured. Set directorAgentId and directorEnvironmentId in Video Settings.',
-    );
-  }
-  if (!settings?.higgsfieldVaultId) {
-    throw new Error('Higgsfield Vault ID not configured in Video Settings — required to authenticate the director agent\'s MCP calls.');
-  }
-  if (!section?.videoCharacterId) {
-    throw new Error(`Section "${section?.name}" has no Higgsfield Reference Element yet — create one from Video → Characters first.`);
-  }
-
+function buildBriefHeader({ article, section, environment, config, directorNote, promptLearnings }) {
   const bodyText = extractPlainText(article.content);
-
-  const freshPost = await prisma.videoPost.findUnique({
-    where: { id: postId },
-    select: { directorSessionId: true },
-  });
-  let sessionId = freshPost?.directorSessionId;
-  const isFirstCall = !sessionId;
-
-  if (isFirstCall) {
-    const sessionLogId = await logStart(campaignId, 'director_session', `Creating director agent session for "${article.title}"`, null, postId);
-    const session = await client.beta.sessions.create({
-      agent: settings.directorAgentId,
-      environment_id: settings.directorEnvironmentId,
-      vault_ids: [settings.higgsfieldVaultId],
-    });
-    sessionId = session.id;
-    await logDone(sessionLogId, `Session created: ${sessionId}`, { sessionId });
-
-    await prisma.videoPost.update({
-      where: { id: postId },
-      data: { directorSessionId: sessionId },
-    });
-  } else {
-    await logStart(campaignId, 'director_session', `Reusing director session for "${article.title}"`, { sessionId }, postId);
-  }
-
   const learningsBlock = promptLearnings?.length
     ? `\nRECENT CONTENT-FILTER LEARNINGS (avoid these patterns):\n${promptLearnings
         .map((l) => `- [${l.failureType}] "${l.triggerPhrase}"${l.safeRewrite ? ` → use: "${l.safeRewrite}"` : ''}`)
         .join('\n')}`
     : '';
 
-  const message = isFirstCall
-    ? `ARTICLE TITLE: ${article.title}
+  return `ARTICLE TITLE: ${article.title}
 ARTICLE SUMMARY: ${article.summary || ''}
 ARTICLE BODY:
 ${bodyText}
@@ -203,22 +170,57 @@ CHARACTER:
 ENVIRONMENT: ${environment?.name || 'KG Media Loft'}
 ${environment?.textDescriptor || ''}
 
-TARGET DURATION: ${settings.defaultDuration || 15}s
-TARGET ASPECT RATIO: ${settings.defaultAspectRatio || '9:16'}
-DEFAULT GENRE: ${settings.defaultGenre || 'auto'}
-${directorNote ? `\nDIRECTOR NOTE: ${directorNote}` : ''}${learningsBlock}
+CONFIG:
+- platform: ${config.platform}
+- style: ${config.style}
+- targetShotCount: ${config.shotCount ?? 'auto'}
+- orientation: ${config.orientation} (pass this EXACT value as aspect_ratio on every generate_image/generate_video call)
+${directorNote ? `\nDIRECTOR NOTE: ${directorNote}` : ''}${learningsBlock}`;
+}
 
-Write the narration script and shot script, then direct the full shoot yourself — still, silent base video, narration audio, and lip-sync — using generate_image, generate_video, generate_audio, and job_status until you have a completed, narrated, lip-synced video (or a clearly reported failure). Then respond with the final JSON described in your instructions.`
-    : `${directorNote ? `DIRECTOR NOTE: ${directorNote}` : 'Please regenerate this video.'}${learningsBlock}
+// ---------------------------------------------------------------------------
+// planVideoPost — Phase 1: text-only draft, no Higgsfield spend. Opens (or
+// reuses) the director agent session for this post and asks it to write the
+// full continuous narration + segment breakdown.
+// ---------------------------------------------------------------------------
+export async function planVideoPost({ campaignId, postId, article, section, environment, config, directorNote, settings, promptLearnings }) {
+  if (!settings?.directorAgentId || !settings?.directorEnvironmentId) {
+    throw new Error(
+      'Video Director Agent IDs not configured. Set directorAgentId and directorEnvironmentId in Video Settings.',
+    );
+  }
+  if (!settings?.higgsfieldVaultId) {
+    throw new Error('Higgsfield Vault ID not configured in Video Settings — required to authenticate the director agent\'s MCP calls.');
+  }
+  if (!section?.videoCharacterId) {
+    throw new Error(`Section "${section?.name}" has no Higgsfield Reference Element yet — create one from Video → Characters first.`);
+  }
 
-Write a fresh narration script and shot script and direct a new shoot using your tools, then respond with the final JSON.`;
+  const freshPost = await prisma.videoPost.findUnique({ where: { id: postId }, select: { directorSessionId: true } });
+  let sessionId = freshPost?.directorSessionId;
+  const isFirstCall = !sessionId;
 
-  const aiLogId = await logStart(
-    campaignId, 'director_ai_send',
-    `${isFirstCall ? 'Directing' : 'Regenerating'} video for "${article.title}"`,
-    { message, sessionId, isFirstCall },
-    postId,
-  );
+  if (isFirstCall) {
+    const sessionLogId = await logStart(campaignId, 'director_session', `Creating director agent session for "${article.title}"`, null, postId);
+    const session = await client.beta.sessions.create({
+      agent: settings.directorAgentId,
+      environment_id: settings.directorEnvironmentId,
+      vault_ids: [settings.higgsfieldVaultId],
+    });
+    sessionId = session.id;
+    await logDone(sessionLogId, `Session created: ${sessionId}`, { sessionId });
+    await prisma.videoPost.update({ where: { id: postId }, data: { directorSessionId: sessionId } });
+  } else {
+    await logStart(campaignId, 'director_session', `Reusing director session for "${article.title}" (re-plan)`, { sessionId }, postId);
+  }
+
+  const message = isFirstCall
+    ? `PHASE: plan\n\n${buildBriefHeader({ article, section, environment, config, directorNote, promptLearnings })}
+
+Write the full continuous narration script and the segment breakdown now. Do not call any generation tool yet. Respond with ONLY the PLAN OUTPUT FORMAT JSON described in your instructions.`
+    : `PHASE: plan\n\n${directorNote ? `DIRECTOR NOTE: ${directorNote}\n\n` : ''}Please write a fresh narration script and segment breakdown (re-plan). Do not call any generation tool yet. Respond with ONLY the PLAN OUTPUT FORMAT JSON.`;
+
+  const aiLogId = await logStart(campaignId, 'director_plan_send', `${isFirstCall ? 'Drafting' : 'Redrafting'} plan for "${article.title}"`, { message, sessionId, isFirstCall }, postId);
 
   let responseText;
   try {
@@ -232,30 +234,191 @@ Write a fresh narration script and shot script and direct a new shoot using your
   }
 
   try {
-    const result = JSON.parse(extractJson(responseText));
-    await logDone(
-      aiLogId,
-      result.videoUrl
-        ? `Video directed — ${(result.shotList || []).length} shots, ${result.duration || '?'}s`
-        : `Director reported failure: ${result.errorMessage || 'unknown'}`,
-      { response: responseText, parsed: result },
-    );
-    return { result, sessionId };
+    const plan = JSON.parse(extractJson(responseText));
+    await logDone(aiLogId, `Plan drafted — ${(plan.segments || []).length} segment(s)`, { response: responseText, parsed: plan });
+    return { plan, sessionId };
   } catch {
     await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
-    throw new Error(`Director agent returned invalid JSON: ${responseText.slice(0, 200)}`);
+    throw new Error(`Director agent returned invalid plan JSON: ${responseText.slice(0, 200)}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// executeVideoPost — Phase 3: the plan was approved (optionally edited).
+// Sends the approved plan back to the SAME session and tells the agent to
+// direct the real shoot. Creates one VideoSegment row per planned segment
+// up front (status "generating"), then updates each row with the agent's
+// final per-segment result (or failure) once the response comes back.
+// ---------------------------------------------------------------------------
+export async function executeVideoPost({ campaignId, postId, article, plan, directorNote, settings }) {
+  const post = await prisma.videoPost.findUnique({ where: { id: postId }, select: { directorSessionId: true } });
+  const sessionId = post?.directorSessionId;
+  if (!sessionId) throw new Error('Cannot execute a plan with no director session — run planVideoPost first.');
+
+  const plannedSegments = plan.segments || [];
+  const startedAt = new Date();
+
+  await prisma.videoSegment.deleteMany({ where: { postId } });
+  await prisma.videoSegment.createMany({
+    data: plannedSegments.map((s) => ({
+      postId,
+      order: s.order,
+      hasCharacter: !!s.hasCharacter,
+      spokenPortion: s.spokenPortion || null,
+      visualDescription: s.visualDescription || null,
+      status: 'generating',
+      generationStartedAt: startedAt,
+    })),
+  });
+
+  const planText = JSON.stringify(
+    {
+      narration: plan.narration,
+      segments: plannedSegments.map((s) => ({
+        order: s.order,
+        hasCharacter: s.hasCharacter,
+        spokenPortion: s.spokenPortion,
+        visualDescription: s.visualDescription,
+        estimatedDuration: s.estimatedDuration,
+      })),
+    },
+    null,
+    2,
+  );
+
+  const message = `PHASE: execute\n\nThe plan below was approved${directorNote ? ' with this note: ' + directorNote : ''}. Treat any edits here as authoritative over what you originally drafted.
+
+APPROVED PLAN:
+${planText}
+
+Direct the full shoot now — generate_image + generate_video per segment, in order, with native audio and the exact configured orientation on every call. Respond with ONLY the EXECUTE OUTPUT FORMAT JSON described in your instructions.`;
+
+  const aiLogId = await logStart(campaignId, 'director_execute_send', `Executing approved plan for "${article.title}" (${plannedSegments.length} segments)`, { message, sessionId }, postId);
+
+  let responseText;
+  try {
+    await client.beta.sessions.events.send(sessionId, {
+      events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
+    });
+    responseText = await streamAgentResponse(sessionId);
+  } catch (err) {
+    await logError(aiLogId, err.message);
+    await prisma.videoSegment.updateMany({ where: { postId }, data: { status: 'failed', errorMessage: err.message, generationCompletedAt: new Date() } });
+    throw err;
+  }
+
+  let result;
+  try {
+    result = JSON.parse(extractJson(responseText));
+  } catch {
+    await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
+    await prisma.videoSegment.updateMany({ where: { postId }, data: { status: 'failed', errorMessage: 'Director agent returned invalid JSON', generationCompletedAt: new Date() } });
+    throw new Error(`Director agent returned invalid execute JSON: ${responseText.slice(0, 200)}`);
+  }
+
+  const completedAt = new Date();
+  const resultSegments = result.segments || [];
+  for (const seg of resultSegments) {
+    const hasVideo = !!seg.videoUrl;
+    await prisma.videoSegment.updateMany({
+      where: { postId, order: seg.order },
+      data: {
+        spokenPortion: seg.spokenPortion || undefined,
+        visualDescription: seg.visualDescription || undefined,
+        videoUrl: seg.videoUrl || null,
+        duration: seg.duration || null,
+        higgsfieldJobId: seg.higgsfieldJobId || null,
+        status: hasVideo ? 'completed' : 'failed',
+        errorMessage: hasVideo ? null : (seg.errorMessage || 'Segment generation failed'),
+        generationCompletedAt: completedAt,
+        estimatedCost: estimateSegmentCost({ hasCharacter: seg.hasCharacter, duration: seg.duration }),
+      },
+    });
+  }
+
+  const succeeded = resultSegments.filter((s) => s.videoUrl).length;
+  await logDone(aiLogId, `Execution complete — ${succeeded}/${plannedSegments.length} segments generated`, { response: responseText, parsed: result });
+
+  return { result, sessionId };
+}
+
+// ---------------------------------------------------------------------------
+// regenerateVideoSegment — redoes exactly one segment, reusing the post's
+// existing director session so the agent retains full context of the rest
+// of the video, without touching any other VideoSegment row.
+// ---------------------------------------------------------------------------
+export async function regenerateVideoSegment({ postId, segment, note, settings }) {
+  const post = await prisma.videoPost.findUnique({ where: { id: postId }, select: { directorSessionId: true, campaignId: true } });
+  const sessionId = post?.directorSessionId;
+  if (!sessionId) throw new Error('Cannot regenerate a segment with no director session.');
+
+  const startedAt = new Date();
+  await prisma.videoSegment.update({
+    where: { id: segment.id },
+    data: { status: 'generating', errorMessage: null, generationStartedAt: startedAt, generationCompletedAt: null },
+  });
+
+  const message = `PHASE: regenerate_segment\n\nRegenerate ONLY this one segment — do not touch or re-mention any other segment.
+
+SEGMENT TO REGENERATE:
+{
+  "order": ${segment.order},
+  "hasCharacter": ${segment.hasCharacter},
+  "spokenPortion": ${JSON.stringify(segment.spokenPortion || '')},
+  "visualDescription": ${JSON.stringify(segment.visualDescription || '')}
+}
+${note ? `\nHUMAN NOTE: ${note}` : ''}
+
+Respond with ONLY the REGENERATE OUTPUT FORMAT JSON described in your instructions.`;
+
+  const aiLogId = await logStart(post.campaignId, 'director_segment_regenerate', `Regenerating segment ${segment.order}`, { message, sessionId }, postId);
+
+  let responseText;
+  try {
+    await client.beta.sessions.events.send(sessionId, {
+      events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
+    });
+    responseText = await streamAgentResponse(sessionId);
+  } catch (err) {
+    await logError(aiLogId, err.message);
+    await prisma.videoSegment.update({ where: { id: segment.id }, data: { status: 'failed', errorMessage: err.message, generationCompletedAt: new Date() } });
+    throw err;
+  }
+
+  let result;
+  try {
+    result = JSON.parse(extractJson(responseText));
+  } catch {
+    await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
+    await prisma.videoSegment.update({ where: { id: segment.id }, data: { status: 'failed', errorMessage: 'Director agent returned invalid JSON', generationCompletedAt: new Date() } });
+    throw new Error(`Director agent returned invalid regenerate JSON: ${responseText.slice(0, 200)}`);
+  }
+
+  const hasVideo = !!result.videoUrl;
+  const updated = await prisma.videoSegment.update({
+    where: { id: segment.id },
+    data: {
+      spokenPortion: result.spokenPortion || segment.spokenPortion,
+      visualDescription: result.visualDescription || segment.visualDescription,
+      videoUrl: result.videoUrl || null,
+      duration: result.duration || null,
+      higgsfieldJobId: result.higgsfieldJobId || null,
+      status: hasVideo ? 'completed' : 'failed',
+      errorMessage: hasVideo ? null : (result.errorMessage || 'Segment generation failed'),
+      generationCompletedAt: new Date(),
+      estimatedCost: estimateSegmentCost({ hasCharacter: result.hasCharacter ?? segment.hasCharacter, duration: result.duration }),
+    },
+  });
+
+  await logDone(aiLogId, hasVideo ? `Segment ${segment.order} regenerated` : `Segment ${segment.order} failed: ${result.errorMessage || 'unknown'}`, { response: responseText, parsed: result });
+
+  return updated;
 }
 
 // ---------------------------------------------------------------------------
 // createReferenceElement
 // ADMIN ONLY — one-off session per section (see
-// app/api/video/characters/[sectionId]/train). Uses the dedicated Character
-// Admin Agent (video-character-admin-agent.yaml), which imports the given
-// reference image URLs and creates a Higgsfield Reference Element via MCP
-// (media_import_url + show_reference_elements — both synchronous, so this
-// resolves in one request/response round trip, no separate polling needed).
-// Never called by the per-post Director Agent.
+// app/api/video/characters/[sectionId]/train). Unchanged.
 // ---------------------------------------------------------------------------
 export async function createReferenceElement({ sectionName, referenceImageUrls, settings }) {
   if (!settings?.characterAdminAgentId || !settings?.characterAdminEnvironmentId) {

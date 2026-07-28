@@ -1,0 +1,229 @@
+/**
+ * ffmpeg-based video assembly — concatenates the director agent's ordered
+ * VideoSegment clips (each already carrying Higgsfield's native Seedance
+ * audio, on-camera dialogue or off-screen voiceover alike), mixes in a
+ * duration-matched ElevenLabs music bed, and optionally sends the result to
+ * Captions.ai for styled captions. Always a MANUAL, standalone trigger —
+ * never auto-run after a segment (re)generates, so a post can accumulate
+ * several segment regenerations before paying for one assembly pass.
+ *
+ * Confirmed pitfall from testing: concatenating clips where some have an
+ * audio stream and some don't causes real audio/video desync (ffmpeg's
+ * concat demuxer doesn't insert silence correctly) — every clip is
+ * defensively normalized to a real audio stream before concatenation, even
+ * though every segment should already have native audio.
+ */
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { composeMusic, estimateMusicCost } from './elevenlabs.service';
+import { addCaptions, calculateCaptionsCost } from './captions-ai.service';
+import { uploadBufferToSpaces } from './video-export.service';
+
+const execFileAsync = promisify(execFile);
+const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
+const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
+
+// width/height for the orientations exposed in Video Settings / campaign config
+const ORIENTATION_RESOLUTIONS = {
+  '9:16': { width: 1080, height: 1920 },
+  '16:9': { width: 1920, height: 1080 },
+  '1:1': { width: 1080, height: 1080 },
+  '4:5': { width: 1080, height: 1350 },
+  '3:4': { width: 1080, height: 1440 },
+  '21:9': { width: 1920, height: 823 },
+};
+
+function getResolution(orientation) {
+  return ORIENTATION_RESOLUTIONS[orientation] || ORIENTATION_RESOLUTIONS['9:16'];
+}
+
+async function run(cmd, args) {
+  try {
+    return await execFileAsync(cmd, args, { maxBuffer: 1024 * 1024 * 64 });
+  } catch (err) {
+    throw new Error(`${cmd} failed: ${err.stderr?.slice(-2000) || err.message}`);
+  }
+}
+
+async function probeDuration(filePath) {
+  const { stdout } = await run(FFPROBE, [
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'csv=p=0',
+    filePath,
+  ]);
+  const seconds = parseFloat(stdout.trim());
+  return Number.isFinite(seconds) ? seconds : 0;
+}
+
+async function hasAudioStream(filePath) {
+  const { stdout } = await run(FFPROBE, [
+    '-v', 'error',
+    '-select_streams', 'a',
+    '-show_entries', 'stream=index',
+    '-of', 'csv=p=0',
+    filePath,
+  ]);
+  return stdout.trim().length > 0;
+}
+
+async function downloadToFile(url, destPath) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to download ${url} (HTTP ${res.status})`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  await fs.writeFile(destPath, buffer);
+  return destPath;
+}
+
+/**
+ * Scales/crops to the target orientation's resolution and guarantees a real
+ * (never absent) AAC audio stream, re-encoding to a uniform codec/fps so the
+ * subsequent concat-demuxer pass can safely stream-copy.
+ */
+async function normalizeClip(inputPath, outputPath, orientation) {
+  const { width, height } = getResolution(orientation);
+  const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=30`;
+  const clipHasAudio = await hasAudioStream(inputPath);
+
+  if (clipHasAudio) {
+    await run(FFMPEG, [
+      '-y', '-i', inputPath,
+      '-vf', scaleFilter,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+      '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+      outputPath,
+    ]);
+  } else {
+    await run(FFMPEG, [
+      '-y', '-i', inputPath,
+      '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
+      '-vf', scaleFilter,
+      '-map', '0:v', '-map', '1:a', '-shortest',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+      '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+      outputPath,
+    ]);
+  }
+  return outputPath;
+}
+
+async function concatClips(clipPaths, outputPath, workDir) {
+  const listPath = path.join(workDir, 'concat_list.txt');
+  const listContent = clipPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
+  await fs.writeFile(listPath, listContent);
+  await run(FFMPEG, ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', outputPath]);
+  return outputPath;
+}
+
+async function mixMusicUnderNarration(videoPath, musicPath, volume, outputPath) {
+  const filter =
+    `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${volume}[music];` +
+    `[0:a]aformat=sample_rates=44100:channel_layouts=stereo[narr];` +
+    `[narr][music]amix=inputs=2:duration=first:dropout_transition=3[aout]`;
+  await run(FFMPEG, [
+    '-y', '-i', videoPath, '-i', musicPath,
+    '-filter_complex', filter,
+    '-map', '0:v', '-map', '[aout]',
+    '-c:v', 'copy', '-c:a', 'aac',
+    outputPath,
+  ]);
+  return outputPath;
+}
+
+/**
+ * Full manual assembly pass for one post: concat -> (music) -> (captions) -> upload.
+ *
+ * @param {Object} params
+ * @param {Object} params.post - VideoPost row (needs id, orientation/campaign orientation, musicVolume, captionsEnabled)
+ * @param {Array}  params.segments - ordered VideoSegment rows (status completed, videoUrl set)
+ * @param {string} params.orientation - resolved effective orientation ("9:16" etc.)
+ * @param {Object} params.musicConfig - { enabled, volume, prompt, modelId }
+ * @param {Object} params.captionsConfig - { enabled, templateId }
+ * @returns {Promise<{ videoUrl: string, musicUrl: string|null, duration: number, captionsApplied: boolean, additionalCost: number }>}
+ */
+export async function assembleVideo({ post, segments, orientation, musicConfig, captionsConfig }) {
+  const completedSegments = segments
+    .filter((s) => s.status === 'completed' && s.videoUrl)
+    .sort((a, b) => a.order - b.order);
+
+  if (!completedSegments.length) {
+    throw new Error('No completed segments to assemble — generate/regenerate segments first.');
+  }
+
+  const workDir = path.join(os.tmpdir(), `video-assembly-${post.id}-${randomUUID()}`);
+  await fs.mkdir(workDir, { recursive: true });
+  let additionalCost = 0;
+
+  try {
+    const normalizedPaths = [];
+    for (const [i, segment] of completedSegments.entries()) {
+      const rawPath = path.join(workDir, `raw_${i}.mp4`);
+      const normPath = path.join(workDir, `norm_${i}.mp4`);
+      await downloadToFile(segment.videoUrl, rawPath);
+      await normalizeClip(rawPath, normPath, orientation);
+      normalizedPaths.push(normPath);
+    }
+
+    const concatPath = path.join(workDir, 'concatenated.mp4');
+    await concatClips(normalizedPaths, concatPath, workDir);
+    const totalDurationSeconds = await probeDuration(concatPath);
+    const totalDurationMs = Math.round(totalDurationSeconds * 1000);
+
+    let currentPath = concatPath;
+    let musicUrl = null;
+
+    if (musicConfig?.enabled) {
+      const { buffer: musicBuffer } = await composeMusic({
+        prompt: musicConfig.prompt,
+        durationMs: totalDurationMs,
+        modelId: musicConfig.modelId,
+      });
+      const musicPath = path.join(workDir, 'music.mp3');
+      await fs.writeFile(musicPath, musicBuffer);
+
+      const mixedPath = path.join(workDir, 'mixed.mp4');
+      await mixMusicUnderNarration(currentPath, musicPath, musicConfig.volume ?? 0.3, mixedPath);
+      currentPath = mixedPath;
+      additionalCost += estimateMusicCost(totalDurationMs);
+
+      musicUrl = await uploadBufferToSpaces(musicBuffer, `video/music/${post.id}-${Date.now()}.mp3`, 'audio/mpeg');
+    }
+
+    let captionsApplied = false;
+    if (captionsConfig?.enabled && orientation === '9:16') {
+      const currentBuffer = await fs.readFile(currentPath);
+      if (currentBuffer.length <= 50 * 1024 * 1024) {
+        const { buffer: captionedBuffer } = await addCaptions({
+          videoBuffer: currentBuffer,
+          templateId: captionsConfig.templateId,
+        });
+        const captionedPath = path.join(workDir, 'captioned.mp4');
+        await fs.writeFile(captionedPath, captionedBuffer);
+        currentPath = captionedPath;
+        captionsApplied = true;
+        additionalCost += calculateCaptionsCost(totalDurationMs);
+      }
+    }
+
+    const finalBuffer = await fs.readFile(currentPath);
+    const videoUrl = await uploadBufferToSpaces(
+      finalBuffer,
+      `video/clips/${post.id}-${Date.now()}.mp4`,
+      'video/mp4',
+    );
+
+    return {
+      videoUrl,
+      musicUrl,
+      duration: Math.round(totalDurationSeconds),
+      captionsApplied,
+      additionalCost,
+    };
+  } finally {
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+}

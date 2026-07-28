@@ -14,7 +14,16 @@ export async function uploadUrlToSpaces(sourceUrl, key, contentType) {
     throw new Error(`Failed to download Higgsfield asset (HTTP ${res.status}): ${sourceUrl}`);
   }
   const buffer = Buffer.from(await res.arrayBuffer());
+  return uploadBufferToSpaces(buffer, key, contentType);
+}
 
+/**
+ * Uploads a raw buffer (e.g. an ffmpeg-assembled video, an ElevenLabs music
+ * track, or a Captions.ai-captioned render) straight to Spaces — used by
+ * video-assembly.service.js, which produces local buffers rather than
+ * externally-hosted URLs.
+ */
+export async function uploadBufferToSpaces(buffer, key, contentType) {
   const s3Client = getS3ClientInstance();
   const bucket = process.env.STORAGE_BUCKET || 'kghub';
   const cdnUrl = process.env.STORAGE_CDN_URL?.replace(/\/$/, '');

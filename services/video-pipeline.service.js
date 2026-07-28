@@ -1,8 +1,14 @@
 import { prisma } from '@/lib/prisma';
-import { selectVideoArticles, directVideoPost } from './video-ai.service';
+import {
+  selectVideoArticles,
+  planVideoPost,
+  executeVideoPost,
+  regenerateVideoSegment,
+  resolveVideoConfig,
+} from './video-ai.service';
+import { assembleVideo } from './video-assembly.service';
 import { deleteFromS3 } from './social-export.service';
 import { scheduleVideoPost as bufferScheduleVideoPost, unscheduleVideoPost as bufferUnscheduleVideoPost, pullVideoAnalytics } from './buffer.service';
-import { uploadUrlToSpaces } from './video-export.service';
 import { logStart, logDone, logError, logInfo } from '@/lib/video-logger';
 
 // ---------------------------------------------------------------------------
@@ -40,34 +46,21 @@ async function getRecentPromptLearnings(limit = 10) {
   });
 }
 
-/**
- * Persists a directVideoPost() result onto a post.
- */
-async function saveDirectedContent(post, result) {
-  const hasVideo = !!result.videoUrl;
-  await prisma.videoPost.update({
-    where: { id: post.id },
-    data: {
-      status: hasVideo ? 'content_ready' : 'failed',
-      shotList: result.shotList || [],
-      narration: result.narration || null,
-      generatedText: result.text || '',
-      hashtags: result.hashtags || [],
-      stillAssetUrl: result.stillAssetUrl || null,
-      videoUrl: result.videoUrl || null,
-      duration: result.duration || null,
-      aspectRatio: result.aspectRatio || null,
-      genre: result.genre || null,
-      errorMessage: hasVideo ? null : (result.errorMessage || 'Director agent did not produce a video'),
-    },
-  });
+function musicPromptFor(article, config) {
+  const styleWords = {
+    explainer: 'clear, focused, gently building',
+    diy: 'warm, relaxed, craftsman workshop feel',
+    listicle: 'upbeat but calm, tidy and structured',
+    testimonial: 'warm, intimate, conversational',
+    auto: 'warm, unobtrusive',
+  };
+  const mood = styleWords[config.style] || styleWords.auto;
+  return `${mood} instrumental background music for a short-form video about "${article.title}" — no vocals, no drums or only very light percussion, sits gently under spoken narration, subtle enough not to compete with voice.`;
 }
 
 // ---------------------------------------------------------------------------
-// 1. runVideoApproval
-// Mirrors runApproval in social-pipeline.service.js — calls the Video
-// Approval Agent to decide which articles get a video this cycle, then
-// creates VideoPost rows.
+// 1. runVideoApproval — unchanged: selects which articles get a video this
+// cycle, creates VideoPost rows with status "pending".
 // ---------------------------------------------------------------------------
 export async function runVideoApproval(campaignId) {
   const campaign = await prisma.videoCampaign.findUnique({ where: { id: campaignId } });
@@ -101,10 +94,6 @@ export async function runVideoApproval(campaignId) {
     throw new Error('No eligible articles found in the selected date range');
   }
 
-  // Only articles whose section already has a trained video character can
-  // actually be directed — surfacing this here (rather than failing later,
-  // one post at a time) keeps the approval agent from picking articles that
-  // can never be produced.
   const eligibleArticles = articles.filter((a) => a.category?.section?.videoCharacterId);
   if (!eligibleArticles.length) {
     await logError(fetchLogId, 'No eligible articles belong to a section with a trained video character');
@@ -141,10 +130,11 @@ export async function runVideoApproval(campaignId) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. runVideoDirecting
-// Mirrors runContentGeneration — directs every pending post in a campaign.
+// 2. runVideoPlanning — Phase 1 for every pending post in a campaign. Drafts
+// a narration + segment breakdown (no Higgsfield spend) and moves each post
+// to "plan_ready" for human review, or "failed" if planning itself errors.
 // ---------------------------------------------------------------------------
-export async function runVideoDirecting(campaignId) {
+export async function runVideoPlanning(campaignId) {
   const posts = await prisma.videoPost.findMany({
     where: { campaignId, status: 'pending' },
     include: { article: { include: { category: { include: { section: true } } } } },
@@ -152,9 +142,10 @@ export async function runVideoDirecting(campaignId) {
 
   if (!posts.length) return 0;
 
-  await logInfo(campaignId, 'directing_start', `Starting directing for ${posts.length} post${posts.length !== 1 ? 's' : ''}`);
+  await logInfo(campaignId, 'planning_start', `Starting planning for ${posts.length} post${posts.length !== 1 ? 's' : ''}`);
 
   const settings = await getVideoSettings();
+  const campaign = await prisma.videoCampaign.findUnique({ where: { id: campaignId } });
   const environment = await getVideoEnvironment();
   const promptLearnings = await getRecentPromptLearnings();
 
@@ -167,20 +158,33 @@ export async function runVideoDirecting(campaignId) {
       const section = post.article.category?.section;
       if (!section?.videoCharacterId) throw new Error('Article\'s section has no trained video character');
 
-      await prisma.videoPost.update({ where: { id: post.id }, data: { status: 'directing' } });
+      await prisma.videoPost.update({ where: { id: post.id }, data: { status: 'planning' } });
+      const config = resolveVideoConfig({ post, campaign, settings });
 
-      const { result } = await directVideoPost({
+      const { plan } = await planVideoPost({
         campaignId,
         postId: post.id,
         article: post.article,
         section,
         environment,
+        config,
+        directorNote: post.directorNote,
         settings,
         promptLearnings,
       });
 
-      await saveDirectedContent(post, result);
-      if (result.videoUrl) succeeded++;
+      await prisma.videoPost.update({
+        where: { id: post.id },
+        data: {
+          status: 'plan_ready',
+          plan,
+          narration: plan.narration || null,
+          generatedText: plan.text || null,
+          hashtags: plan.hashtags || [],
+          genre: plan.genre || null,
+        },
+      });
+      succeeded++;
     } catch (error) {
       await prisma.videoPost.update({
         where: { id: post.id },
@@ -189,16 +193,15 @@ export async function runVideoDirecting(campaignId) {
     }
   }
 
-  await logInfo(campaignId, 'directing_done', `Directing complete — ${succeeded}/${posts.length} succeeded`);
+  await logInfo(campaignId, 'planning_done', `Planning complete — ${succeeded}/${posts.length} succeeded`);
   return succeeded;
 }
 
 // ---------------------------------------------------------------------------
-// 2b. regenerateVideoPost
-// Continues the existing director session so the agent remembers what it
-// directed before and can make targeted revisions.
+// 2b. rePlanPost — re-draft the plan for one post (Phase 1 again), reusing
+// the same director session so revision notes land with full context.
 // ---------------------------------------------------------------------------
-export async function regenerateVideoPost(postId, directorNote) {
+export async function rePlanPost(postId, directorNote) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
     include: { article: { include: { category: { include: { section: true } } } } },
@@ -206,38 +209,97 @@ export async function regenerateVideoPost(postId, directorNote) {
   if (!post) throw new Error(`Post not found: ${postId}`);
 
   const settings = await getVideoSettings();
+  const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
   const environment = await getVideoEnvironment();
   const promptLearnings = await getRecentPromptLearnings();
   const section = post.article.category?.section;
   if (!section?.videoCharacterId) throw new Error('Article\'s section has no trained video character');
 
-  // Clean up previously exported assets before regenerating — same reasoning
-  // as regeneratePostContent in social-pipeline.service.js: stale assets tied
-  // to the old script shouldn't linger once a new one is generated.
-  const staleUrls = [post.stillAssetUrl, post.videoUrl].filter(Boolean);
-  if (staleUrls.length) {
-    await Promise.allSettled(staleUrls.map(deleteFromS3));
-  }
-
-  await prisma.videoPost.update({
-    where: { id: postId },
-    data: { status: 'directing', errorMessage: null, stillAssetUrl: null, videoUrl: null },
-  });
+  await prisma.videoPost.update({ where: { id: postId }, data: { status: 'planning', errorMessage: null } });
+  const config = resolveVideoConfig({ post, campaign, settings });
 
   try {
-    const { result } = await directVideoPost({
+    const { plan } = await planVideoPost({
       campaignId: post.campaignId,
       postId,
       article: post.article,
       section,
       environment,
+      config,
       directorNote: directorNote || post.directorNote || undefined,
       settings,
       promptLearnings,
     });
 
-    await prisma.videoPost.update({ where: { id: postId }, data: { directorNote: directorNote || post.directorNote || null } });
-    await saveDirectedContent(post, result);
+    await prisma.videoPost.update({
+      where: { id: postId },
+      data: {
+        status: 'plan_ready',
+        plan,
+        narration: plan.narration || null,
+        generatedText: plan.text || null,
+        hashtags: plan.hashtags || [],
+        genre: plan.genre || null,
+        directorNote: directorNote || post.directorNote || null,
+      },
+    });
+    return plan;
+  } catch (error) {
+    await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: error.message } });
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. approvePlan — Phase 2 -> Phase 3. Human approves (optionally edited)
+// plan; triggers real Higgsfield generation for every planned segment.
+// ---------------------------------------------------------------------------
+export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
+  const post = await prisma.videoPost.findUnique({
+    where: { id: postId },
+    include: { article: true },
+  });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+  if (!post.plan) throw new Error('Post has no draft plan to approve — run planning first.');
+
+  const plan = editedPlan || post.plan;
+
+  await prisma.videoPost.update({
+    where: { id: postId },
+    data: {
+      status: 'approved',
+      plan,
+      narration: plan.narration || post.narration,
+      directorNote: directorNote ?? post.directorNote,
+    },
+  });
+
+  await prisma.videoPost.update({ where: { id: postId }, data: { status: 'directing' } });
+
+  try {
+    const { result } = await executeVideoPost({
+      campaignId: post.campaignId,
+      postId,
+      article: post.article,
+      plan,
+      directorNote: directorNote ?? post.directorNote,
+    });
+
+    const segments = await prisma.videoSegment.findMany({ where: { postId } });
+    const anySucceeded = segments.some((s) => s.status === 'completed');
+
+    await prisma.videoPost.update({
+      where: { id: postId },
+      data: {
+        status: anySucceeded ? 'directing' : 'failed',
+        narration: result.narration || plan.narration,
+        generatedText: result.text || post.generatedText,
+        hashtags: result.hashtags || post.hashtags,
+        genre: result.genre || post.genre,
+        errorMessage: anySucceeded ? null : 'All segments failed to generate',
+      },
+    });
+
     return result;
   } catch (error) {
     await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: error.message } });
@@ -245,33 +307,118 @@ export async function regenerateVideoPost(postId, directorNote) {
   }
 }
 
-export async function regenerateAllContent(campaignId, directorNote) {
-  const posts = await prisma.videoPost.findMany({
-    where: { campaignId, status: { notIn: ['directing', 'scheduled'] } },
-  });
-  if (!posts.length) return { count: 0, succeeded: 0 };
+// ---------------------------------------------------------------------------
+// 4. regenerateSegment — redo exactly one segment, without touching the
+// rest or the post's assembled video (assembly is always a separate,
+// manual step — see reassemblePost below).
+// ---------------------------------------------------------------------------
+export async function regenerateSegment(segmentId, note) {
+  const segment = await prisma.videoSegment.findUnique({ where: { id: segmentId } });
+  if (!segment) throw new Error(`Segment not found: ${segmentId}`);
 
-  await logInfo(campaignId, 'regenerate_all_start', `Regenerating ${posts.length} post${posts.length !== 1 ? 's' : ''}`);
+  const staleUrl = segment.videoUrl;
+  const updated = await regenerateVideoSegment({ postId: segment.postId, segment, note });
 
-  let succeeded = 0;
-  for (const post of posts) {
-    try {
-      await regenerateVideoPost(post.id, directorNote);
-      succeeded++;
-    } catch (error) {
-      console.error(`[regenerateAllContent] post ${post.id} failed:`, error.message);
-    }
+  if (staleUrl && staleUrl !== updated.videoUrl) {
+    await deleteFromS3(staleUrl).catch(() => {});
   }
 
-  await logInfo(campaignId, 'regenerate_all_done', `Regenerated ${succeeded}/${posts.length} post${posts.length !== 1 ? 's' : ''}`);
-  return { count: posts.length, succeeded };
+  return updated;
 }
 
 // ---------------------------------------------------------------------------
-// 3. runExport
-// Downloads the Higgsfield-hosted still/video and re-uploads to DigitalOcean
-// Spaces (same CDN every other asset in the app lives on), then auto-
-// schedules if requireReview is disabled.
+// 5. reassemblePost — ALWAYS a manual, standalone trigger (never auto-run
+// after planning/execution/segment regeneration). Concatenates every
+// completed segment, mixes in duration-matched music, optionally applies
+// Captions.ai, uploads the result, and updates the post's aggregate
+// cost/time fields.
+// ---------------------------------------------------------------------------
+export async function reassemblePost(postId) {
+  const post = await prisma.videoPost.findUnique({
+    where: { id: postId },
+    include: { article: true, segments: { orderBy: { order: 'asc' } } },
+  });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+
+  const settings = await getVideoSettings();
+  const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
+  const config = resolveVideoConfig({ post, campaign, settings });
+
+  const completedSegments = post.segments.filter((s) => s.status === 'completed' && s.videoUrl);
+  if (!completedSegments.length) {
+    throw new Error('No completed segments to assemble yet.');
+  }
+
+  const staleUrls = [post.videoUrl, post.musicUrl].filter(Boolean);
+
+  const logId = await logStart(post.campaignId, 'assembly_start', `Assembling ${completedSegments.length} segment(s)`, null, postId);
+
+  try {
+    const captionsEnabled = post.captionsEnabled ?? settings.captionsEnabled;
+
+    const { videoUrl, musicUrl, duration, captionsApplied, additionalCost } = await assembleVideo({
+      post,
+      segments: post.segments,
+      orientation: config.orientation,
+      musicConfig: settings.musicEnabled
+        ? {
+            enabled: true,
+            volume: post.musicVolume ?? settings.musicVolume,
+            prompt: musicPromptFor(post.article, config),
+            modelId: 'music_v2',
+          }
+        : { enabled: false },
+      captionsConfig: captionsEnabled
+        ? { enabled: true, templateId: settings.captionsTemplateId }
+        : { enabled: false },
+    });
+
+    const segmentCost = post.segments.reduce((sum, s) => sum + (s.estimatedCost || 0), 0);
+    const segmentTimeMs = post.segments.reduce((sum, s) => {
+      if (s.generationStartedAt && s.generationCompletedAt) {
+        return sum + (new Date(s.generationCompletedAt) - new Date(s.generationStartedAt));
+      }
+      return sum;
+    }, 0);
+
+    await prisma.videoPost.update({
+      where: { id: postId },
+      data: {
+        status: 'content_ready',
+        videoUrl,
+        musicUrl,
+        duration,
+        aspectRatio: config.orientation,
+        totalEstimatedCost: Math.round((segmentCost + additionalCost) * 100) / 100,
+        totalGenerationTimeMs: segmentTimeMs,
+        errorMessage: null,
+      },
+    });
+
+    await logDone(logId, `Assembled — ${duration}s${captionsApplied ? ', captions applied' : ''}`, { videoUrl, musicUrl, duration, captionsApplied });
+
+    if (staleUrls.length) {
+      await Promise.allSettled(staleUrls.map(deleteFromS3));
+    }
+
+    if (!settings.requireReview) {
+      await schedulePost(postId);
+    }
+
+    return { videoUrl, musicUrl, duration, captionsApplied };
+  } catch (err) {
+    await logError(logId, err.message);
+    await prisma.videoPost.update({ where: { id: postId }, data: { errorMessage: err.message } });
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 6. schedulePost / unschedulePost — unchanged from previous pipeline; the
+// assembled video already lives on Spaces (assembleVideo uploads directly),
+// so there's no separate "export" download/re-upload step anymore. "export"
+// now just means: finalize target platforms and move the post from
+// content_ready -> uploaded, ready to schedule.
 // ---------------------------------------------------------------------------
 export async function runExport(postId) {
   const settings = await getVideoSettings();
@@ -279,47 +426,23 @@ export async function runExport(postId) {
   if (!post) throw new Error(`Post not found: ${postId}`);
 
   if (!post.videoUrl) {
-    throw new Error('Post has no directed video yet — run/regenerate directing first.');
+    throw new Error('Post has no assembled video yet — run/re-assemble first.');
   }
 
-  const retryStatuses = ['failed', 'exporting', 'uploaded'];
-  if (retryStatuses.includes(post.status)) {
-    await prisma.videoPost.update({ where: { id: postId }, data: { status: 'content_ready', errorMessage: null } });
-  }
-
-  const exportLogId = await logStart(post.campaignId, 'export_start', 'Uploading directed still + video to Spaces', null, postId);
-
-  try {
-    const [stillUrl, videoUrl] = await Promise.all([
-      post.stillAssetUrl ? uploadUrlToSpaces(post.stillAssetUrl, `video/stills/${postId}.jpg`, 'image/jpeg') : Promise.resolve(null),
-      uploadUrlToSpaces(post.videoUrl, `video/clips/${postId}.mp4`, 'video/mp4'),
-    ]);
-
-    await prisma.videoPost.update({
-      where: { id: postId },
-      data: {
-        status: 'uploaded',
-        stillAssetUrl: stillUrl || post.stillAssetUrl,
-        videoUrl: videoUrl,
-        platforms: post.platforms?.length ? post.platforms : settings.defaultPlatforms,
-      },
-    });
-
-    await logDone(exportLogId, 'Uploaded still + video to Spaces', { stillUrl, videoUrl });
-  } catch (err) {
-    await logError(exportLogId, err.message);
-    await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: err.message } });
-    throw err;
-  }
+  await prisma.videoPost.update({
+    where: { id: postId },
+    data: {
+      status: 'uploaded',
+      platforms: post.platforms?.length ? post.platforms : settings.defaultPlatforms,
+      errorMessage: null,
+    },
+  });
 
   if (!settings.requireReview) {
     await schedulePost(postId);
   }
 }
 
-// ---------------------------------------------------------------------------
-// 4. schedulePost / unschedulePost
-// ---------------------------------------------------------------------------
 export async function schedulePost(postId) {
   const post = await prisma.videoPost.findUnique({ where: { id: postId }, select: { campaignId: true, scheduledAt: true } });
 
@@ -375,6 +498,34 @@ export async function scheduleAllPosts(campaignId) {
   return succeeded;
 }
 
+// ---------------------------------------------------------------------------
+// 5b. rePlanAllPosts — bulk re-draft (Phase 1 only, no Higgsfield spend) for
+// every post not yet approved/executing/scheduled. Deliberately does NOT
+// re-execute already-approved posts — that would re-spend real generation
+// credits in bulk, defeating the whole point of per-post approval.
+// ---------------------------------------------------------------------------
+export async function rePlanAllPosts(campaignId, directorNote) {
+  const posts = await prisma.videoPost.findMany({
+    where: { campaignId, status: { in: ['pending', 'plan_ready', 'failed'] } },
+  });
+  if (!posts.length) return { count: 0, succeeded: 0 };
+
+  await logInfo(campaignId, 'replan_all_start', `Re-planning ${posts.length} post${posts.length !== 1 ? 's' : ''}`);
+
+  let succeeded = 0;
+  for (const post of posts) {
+    try {
+      await rePlanPost(post.id, directorNote);
+      succeeded++;
+    } catch (error) {
+      console.error(`[rePlanAllPosts] post ${post.id} failed:`, error.message);
+    }
+  }
+
+  await logInfo(campaignId, 'replan_all_done', `Re-planned ${succeeded}/${posts.length} post${posts.length !== 1 ? 's' : ''}`);
+  return { count: posts.length, succeeded };
+}
+
 export async function exportAllContent(campaignId) {
   const posts = await prisma.videoPost.findMany({ where: { campaignId, status: 'content_ready' } });
   if (!posts.length) return 0;
@@ -403,20 +554,18 @@ export async function retryFailedExports(campaignId) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. runFullPipeline — fire-and-forget: approval → directing → export all.
+// 7. runFullPipeline — fire-and-forget: approval → planning. Stops there —
+// execution now always requires an explicit human plan approval, and
+// assembly is always a separate manual trigger (see approvePlan/reassemblePost).
 // ---------------------------------------------------------------------------
 export async function runFullPipeline(campaignId) {
   try {
     await runVideoApproval(campaignId);
 
-    await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'directing' } });
-    await runVideoDirecting(campaignId);
+    await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'planning' } });
+    await runVideoPlanning(campaignId);
 
-    await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'exporting' } });
-    const posts = await prisma.videoPost.findMany({ where: { campaignId, status: 'content_ready' } });
-    await Promise.allSettled(posts.map((p) => runExport(p.id)));
-
-    await checkAndFinalizeCampaign(campaignId);
+    await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'reviewing' } });
   } catch (error) {
     console.error('[video-pipeline.runFullPipeline]', error);
     await logInfo(campaignId, 'pipeline_error', `Pipeline failed: ${error.message}`);
@@ -425,7 +574,7 @@ export async function runFullPipeline(campaignId) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. checkAndFinalizeCampaign
+// 8. checkAndFinalizeCampaign
 // ---------------------------------------------------------------------------
 export async function checkAndFinalizeCampaign(campaignId) {
   const posts = await prisma.videoPost.findMany({ where: { campaignId }, select: { status: true } });
@@ -447,13 +596,13 @@ export async function checkAndFinalizeCampaign(campaignId) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. resumePipeline
+// 9. resumePipeline
 // ---------------------------------------------------------------------------
 export async function resumePipeline(campaignId) {
   await logInfo(campaignId, 'pipeline_resume', 'Pipeline resumed by user');
 
   await prisma.videoPost.updateMany({
-    where: { campaignId, status: 'directing' },
+    where: { campaignId, status: 'planning' },
     data: { status: 'pending', errorMessage: null },
   });
   await prisma.videoPost.updateMany({
@@ -462,24 +611,18 @@ export async function resumePipeline(campaignId) {
   });
 
   const pendingCount = await prisma.videoPost.count({ where: { campaignId, status: 'pending' } });
-  const contentReadyCount = await prisma.videoPost.count({ where: { campaignId, status: 'content_ready' } });
 
   if (pendingCount > 0) {
-    await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'directing' } });
-    await runVideoDirecting(campaignId);
+    await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'planning' } });
+    await runVideoPlanning(campaignId);
   }
 
-  if (pendingCount > 0 || contentReadyCount > 0) {
-    await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'exporting' } });
-    const posts = await prisma.videoPost.findMany({ where: { campaignId, status: 'content_ready' } });
-    await Promise.allSettled(posts.map((p) => runExport(p.id)));
-  }
-
+  await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'reviewing' } });
   await checkAndFinalizeCampaign(campaignId);
 }
 
 // ---------------------------------------------------------------------------
-// 8. pullAnalyticsForCampaign
+// 10. pullAnalyticsForCampaign
 // ---------------------------------------------------------------------------
 export async function pullAnalyticsForCampaign(campaignId) {
   const posts = await prisma.videoPost.findMany({

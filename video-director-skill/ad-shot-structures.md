@@ -1,42 +1,91 @@
-# Example Multi-Shot Sequences
+# Example Plans (Narration + Segment Breakdown)
 
-Reference sequences to adapt, not templates to fill in blindly — always ground the actual beats in the article being covered. These are for the silent `seedance_2_0` base video (production chain step 2); the narration audio and lip-sync happen separately afterward, but write the shots as if the character is speaking throughout — lip-sync needs a face to animate, so keep the character on-screen and reasonably front-facing for most of the runtime, even in shots built around a prop or detail.
+Reference sequences to adapt, not templates to fill in blindly — always ground the actual beats in the article being covered. Every segment below carries `generate_audio: true` — avatar segments render on-camera dialogue, b-roll segments render off-screen narration continuing the exact same script. No segment is ever silent.
 
-## Market/data story (~15s, 3 shots)
+## Explainer style (~24s, 3 segments — article: "Types of brick for a garden wall")
 
-```
-00:00-00:05: Medium, static. Character faces camera in the KG Media Loft, morning
-light across the room — this is where the narration's opening line lands.
-00:05-00:11: Medium-close, slow push-in. Character stays on camera as the
-narration gets to the specific stat/finding — the push-in tracks the emphasis.
-00:11-00:15: Close, static. Character delivers the closing line direct to
-camera, measured and confident.
-```
-
-## Design/reveal story (~15s, 3 shots)
+Full continuous narration (written first, then split below):
+> "Not all brick is the same — the type you pick changes how your wall ages. Red clay brick is the classic choice: fired hot, it gets harder and more weather-resistant over decades. Concrete brick costs less up front but chips more easily in a hard freeze. If you want texture with a story, reclaimed brick brings both — just budget more time for sourcing it."
 
 ```
-00:00-00:05: Medium, static. Character direct-to-camera, one hand gesturing
-toward a material/texture detail relevant to the article as the narration
-introduces it — the detail is present in frame with the character, not an
-isolated cutaway.
-00:05-00:11: Medium-close, slow reveal (rack focus or gentle pan) as the
-narration gets specific about the technique/material — character stays
-visible and speaking throughout.
-00:11-00:15: Close on the character delivering the payoff line, direct to
-camera.
+Segment 1 — order 1, hasCharacter: true, ~10s
+  spokenPortion: "Not all brick is the same — the type you pick changes how your wall ages."
+  visualDescription: Medium shot, character direct-to-camera in the KG Media Loft, morning light — this is the hook.
+
+Segment 2 — order 2, hasCharacter: false, ~6s
+  spokenPortion: "Red clay brick is the classic choice: fired hot, it gets harder and more weather-resistant over decades."
+  visualDescription: Close b-roll on a stacked red clay brick wall section, warm directional light raking across the texture. <<<elementId>>> continues narrating from just off camera.
+
+Segment 3 — order 3, hasCharacter: false, ~6s
+  spokenPortion: "Concrete brick costs less up front but chips more easily in a hard freeze."
+  visualDescription: Close b-roll on a grey concrete brick corner showing a small chip/weathering detail, cooler flat light. <<<elementId>>> continues narrating from just off camera.
+
+Segment 4 — order 4, hasCharacter: true, ~8s
+  spokenPortion: "If you want texture with a story, reclaimed brick brings both — just budget more time for sourcing it."
+  visualDescription: Medium-close, character delivers the payoff line direct to camera, same Loft setting as segment 1 for continuity.
 ```
 
-## Explainer/how-to story (~15s, 3 shots)
+## DIY / tutorial style (~30s, 4 segments — article: "Building a backyard fire pit in a weekend")
+
+Full continuous narration:
+> "You can build a real backyard fire pit in a weekend, no mason required. Start with a compacted gravel base — it's what keeps the whole ring from shifting after the first frost. Stack your fire-rated block dry first to check the fit before you ever touch mortar. Once it's mortared and cured, you've got a fire pit that'll outlast the patio furniture around it."
 
 ```
-00:00-00:05: Medium, static. Character direct-to-camera intro line, establishing
-what the viewer is about to learn.
-00:05-00:11: Medium-close, slight handheld drift. Character stays on camera
-while gesturing toward a chart/model/prop relevant to the article, still
-speaking.
-00:11-00:15: Close, static. Character delivers the payoff line, direct to
-camera.
+Segment 1 — order 1, hasCharacter: true, ~9s
+  spokenPortion: "You can build a real backyard fire pit in a weekend, no mason required."
+  visualDescription: Medium shot, character direct-to-camera in the Loft, confident and casual — the intro/hook.
+
+Segment 2 — order 2, hasCharacter: false, ~6s
+  spokenPortion: "Start with a compacted gravel base — it's what keeps the whole ring from shifting after the first frost."
+  visualDescription: Close b-roll, hands tamping a gravel base into a circular outline, overhead-ish angle. <<<elementId>>> continues narrating from just off camera.
+
+Segment 3 — order 3, hasCharacter: false, ~6s
+  spokenPortion: "Stack your fire-rated block dry first to check the fit before you ever touch mortar."
+  visualDescription: Close b-roll, fire-rated blocks being dry-stacked in a ring, natural daylight. <<<elementId>>> continues narrating from just off camera.
+
+Segment 4 — order 4, hasCharacter: true, ~9s
+  spokenPortion: "Once it's mortared and cured, you've got a fire pit that'll outlast the patio furniture around it."
+  visualDescription: Medium-close, character delivers the payoff line direct to camera, same Loft setting as segment 1.
 ```
 
-No `[SFX:]` block in any of these — the base video's own audio is discarded (`generate_audio: false`); the only audio in the final output is the lip-synced narration track (see SKILL.md's Production chain).
+## Listicle style (~28s, 4 segments — article: "3 cooling paint colors for a south-facing room")
+
+Full continuous narration:
+> "Three paint colors that actually cool down a south-facing room. First: a chalky pale blue — it reads calm and pulls the eye away from the heat of direct sun. Second: soft sage green, close enough to blue-green to feel cooler than it measures on a swatch. Third, and the boldest of the three: a true dove grey with a blue undertone, especially at midday. Any of these will make a hot room feel a few degrees calmer."
+
+```
+Segment 1 — order 1, hasCharacter: true, ~8s
+  spokenPortion: "Three paint colors that actually cool down a south-facing room."
+  visualDescription: Medium shot, character direct-to-camera in the Loft — sets up the list.
+
+Segment 2 — order 2, hasCharacter: false, ~5s
+  spokenPortion: "First: a chalky pale blue — it reads calm and pulls the eye away from the heat of direct sun."
+  visualDescription: Close b-roll on a pale blue painted wall swatch in soft daylight. <<<elementId>>> continues narrating from just off camera.
+
+Segment 3 — order 3, hasCharacter: false, ~5s
+  spokenPortion: "Second: soft sage green, close enough to blue-green to feel cooler than it measures on a swatch."
+  visualDescription: Close b-roll on a sage green painted wall swatch, similar lighting. <<<elementId>>> continues narrating from just off camera.
+
+Segment 4 — order 4, hasCharacter: false, ~5s
+  spokenPortion: "Third, and the boldest of the three: a true dove grey with a blue undertone, especially at midday."
+  visualDescription: Close b-roll on a dove grey painted wall swatch, brighter midday-toned light. <<<elementId>>> continues narrating from just off camera.
+
+Segment 5 — order 5, hasCharacter: true, ~5s
+  spokenPortion: "Any of these will make a hot room feel a few degrees calmer."
+  visualDescription: Medium-close, character delivers the closing line direct to camera, same Loft setting as segment 1.
+```
+
+## Testimonial style (~20s, 2 segments — avatar-forward, minimal b-roll)
+
+Full continuous narration:
+> "I get asked constantly whether it's worth resealing a deck every year — honestly, it depends more on sun exposure than most people think. A deck that gets full afternoon sun needs it annually; one that's mostly shaded can often go two years without visible damage."
+
+```
+Segment 1 — order 1, hasCharacter: true, ~11s
+  spokenPortion: "I get asked constantly whether it's worth resealing a deck every year — honestly, it depends more on sun exposure than most people think."
+  visualDescription: Medium shot, character direct-to-camera in the Loft, conversational and direct — testimonial format is avatar-forward throughout, minimal cutaways.
+
+Segment 2 — order 2, hasCharacter: true, ~9s
+  spokenPortion: "A deck that gets full afternoon sun needs it annually; one that's mostly shaded can often go two years without visible damage."
+  visualDescription: Slight reframe (push-in or angle change) on the same character/setting, delivering the payoff detail direct to camera.
+```

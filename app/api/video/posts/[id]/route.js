@@ -14,7 +14,10 @@ export async function GET(_req, { params }) {
     const { id } = await params;
     const post = await prisma.videoPost.findUnique({
       where: { id },
-      include: { article: { select: { id: true, title: true, publishDate: true } } },
+      include: {
+        article: { select: { id: true, title: true, publishDate: true } },
+        segments: { orderBy: { order: 'asc' } },
+      },
     });
     if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });
 
@@ -33,7 +36,11 @@ export async function PATCH(req, { params }) {
     const { id } = await params;
     const body = await req.json();
 
-    const allowed = ['generatedText', 'hashtags', 'scheduledAt', 'directorNote', 'platforms'];
+    const allowed = [
+      'generatedText', 'hashtags', 'scheduledAt', 'directorNote', 'platforms',
+      'plan', 'musicVolume', 'captionsEnabled',
+      'targetPlatform', 'videoStyle', 'targetShotCount', 'orientation',
+    ];
     const data = {};
     for (const key of allowed) {
       if (key in body) data[key] = body[key];

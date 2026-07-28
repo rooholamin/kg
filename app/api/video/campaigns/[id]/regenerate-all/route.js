@@ -4,8 +4,12 @@ import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
-import { regenerateAllContent } from '@/services/video-pipeline.service';
+import { rePlanAllPosts } from '@/services/video-pipeline.service';
 
+// Bulk re-DRAFT only (Phase 1, no Higgsfield spend) — posts already approved/
+// executing/scheduled are left untouched. Re-executing an approved post in
+// bulk would re-spend real generation credits, which defeats the point of
+// per-post plan approval.
 export async function POST(req, { params }) {
   try {
     const session = await getServerSession(authOptions);
@@ -17,13 +21,13 @@ export async function POST(req, { params }) {
     const directorNote = body.directorNote || body.instruction || null;
 
     const count = await prisma.videoPost.count({
-      where: { campaignId: id, status: { notIn: ['directing', 'scheduled'] } },
+      where: { campaignId: id, status: { in: ['pending', 'plan_ready', 'failed'] } },
     });
 
-    regenerateAllContent(id, directorNote).catch((err) => console.error('[video regenerate-all background]', err));
+    rePlanAllPosts(id, directorNote).catch((err) => console.error('[video replan-all background]', err));
 
-    return NextResponse.json({ message: 'Regeneration started', count });
+    return NextResponse.json({ message: 'Re-planning started', count });
   } catch (e) {
-    return routeError(e, 'Failed to start regeneration');
+    return routeError(e, 'Failed to start re-planning');
   }
 }

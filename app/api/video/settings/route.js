@@ -45,6 +45,15 @@ export async function PATCH(req) {
       'defaultPlatforms',
       'maxGenerationsPerPost',
       'requireReview',
+      'musicEnabled',
+      'musicVolume',
+      'captionsEnabled',
+      'captionsTemplateId',
+      'captionsTemplateName',
+      'defaultTargetPlatform',
+      'defaultVideoStyle',
+      'defaultTargetShotCount',
+      'defaultOrientation',
     ];
     const memoryAllowed = ['sessionRotateAfter'];
 

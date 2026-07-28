@@ -965,6 +965,7 @@ enum VideoCampaignStatus {
   pending
   running
   approving
+  planning
   directing
   exporting
   reviewing
@@ -975,8 +976,15 @@ enum VideoCampaignStatus {
   cancelled
 }
 
+// pending -> planning (Phase 1, agent drafts plan) -> plan_ready (Phase 2, awaiting
+// human approval) -> approved (Phase 3 about to execute) -> directing (executing,
+// materializing VideoSegment rows) -> content_ready (assembled by our own
+// video-assembly.service.js) -> exporting -> uploaded -> scheduling -> scheduled
 enum VideoPostStatus {
   pending
+  planning
+  plan_ready
+  approved
   directing
   content_ready
   exporting
@@ -984,6 +992,31 @@ enum VideoPostStatus {
   scheduling
   scheduled
   failed
+}
+
+enum VideoSegmentStatus {
+  pending
+  generating
+  completed
+  failed
+}
+
+/// Platform presets feed sensible defaults (aspect ratio, duration range, tone) into
+/// the Plan phase brief — all four still overridable per campaign/post.
+enum VideoTargetPlatform {
+  instagram_reels
+  tiktok
+  youtube_shorts
+  linkedin
+  auto
+}
+
+enum VideoStyle {
+  auto
+  explainer
+  diy
+  listicle
+  testimonial
 }
 
 /// Singleton — the one shared environment every video is shot "in"
@@ -1013,6 +1046,14 @@ model VideoCampaign {
   editorsChoiceOnly Boolean  @default(false)
   includeSections   String[] @default([])
   maxVideos         Int?
+  // Plan → Approve → Execute configuration — cycle-level defaults, each
+  // individually overridable per-post (VideoPost has the same four fields).
+  targetPlatform    VideoTargetPlatform? @default(auto)
+  videoStyle        VideoStyle?          @default(auto)
+  // Optional exact/target segment count — null means the director agent
+  // decides freely (confirmed working well in testing).
+  targetShotCount   Int?
+  orientation       String?              @default("9:16")
   // Managed Agent session ID used for this campaign's approval (audit trail)
   approvalSessionId String?
   posts     VideoPost[]
@@ -1029,32 +1070,49 @@ model VideoPost {
   campaignId String
   articleId  String
   status     VideoPostStatus @default(pending)
-  // Video Director Agent session — one per post, so a regenerate/instruction
-  // continues the same session instead of starting from scratch
+  // Video Director Agent session — one per post, reused across Phase 1 (plan),
+  // Phase 3 (execute), and any later single-segment regeneration, so the agent
+  // always retains full context of the rest of the video.
   directorSessionId String?
   // Optional one-off human creative direction (mirrors the `instruction` param
-  // on regeneratePostContent), applied on the next regenerate
+  // on regeneratePostContent), applied on the next regenerate/re-plan
   directorNote String? @db.Text
-  // The script the director agent wrote: ordered shots — timestamp, camera,
-  // action, lighting, ambient sound-bed — per the seedance-prompt-framework
-  // structure. Distinct from `narration` below — these are visual/ambient
-  // directions, not the spoken words.
-  shotList Json?
-  // The actual spoken voiceover script (tied to the article's real content)
-  // that generate_audio→sync_so renders and lip-syncs onto the video — this
-  // is what's actually said out loud, not just a caption.
+  // Per-post overrides of the campaign's Plan → Approve → Execute config
+  // (null = inherit the campaign's value)
+  targetPlatform  VideoTargetPlatform?
+  videoStyle      VideoStyle?
+  targetShotCount Int?
+  orientation     String?
+  // Phase 1 output — the agent's DRAFT narration + segment breakdown, before
+  // approval and before anything is generated. Distinct from the VideoSegment
+  // rows below: `plan` is the pre-approval proposal (editable, no video URLs),
+  // VideoSegment rows are what Phase 3 execution actually materializes as it
+  // generates each segment (or regenerates one later).
+  plan Json?
+  // The full continuous narration script (spoken across all segments, on-camera
+  // and voiceover-b-roll alike) — set once the plan is approved/executed.
   narration String? @db.Text
+  segments  VideoSegment[]
   // Caption editable by user before scheduling; AI-generated initially
   generatedText String? @db.Text
   hashtags      String[] @default([])
-  // Start-frame still (Nano Banana Pro) used as --start-image for the video generation
-  stillAssetUrl String?
-  // Final rendered clip, uploaded to DigitalOcean Spaces
+  // Assembled (concat + music + optional captions) final clip, uploaded to
+  // DigitalOcean Spaces. Only ever produced by the manual "re-assemble" step.
   videoUrl      String?
   duration      Int?
   aspectRatio   String?
   genre         String?
-  higgsfieldJobId String?
+  // Background music — generated once per assembly pass, re-usable across
+  // re-assembles unless segments/duration changed enough to warrant a fresh track
+  musicUrl      String?
+  // Per-post override of VideoSettings.musicVolume (null = inherit default)
+  musicVolume   Float?
+  // Per-post override of VideoSettings.captionsEnabled (null = inherit default)
+  captionsEnabled Boolean?
+  // Aggregate cost/time across all segments + assembly, refreshed on every
+  // re-assemble (see VideoSegment for the per-segment breakdown)
+  totalGenerationTimeMs Int?
+  totalEstimatedCost    Float?
   // Which Buffer channels this same video fans out to (e.g. ["instagram_carousel","linkedin","twitter"])
   platforms     String[] @default([])
   // Buffer post ID per platform: { "instagram_carousel": "...", "linkedin": "..." }
@@ -1070,6 +1128,40 @@ model VideoPost {
   @@index([campaignId])
   @@index([articleId])
   @@index([status])
+}
+
+/// One row per directed segment — materialized during Phase 3 execution from the
+/// post's approved `plan`. Lets a single segment be regenerated (reusing the
+/// director's existing session) without touching/re-generating the rest of the
+/// (expensive) video. See VIDEO_CAMPAIGN_OPS.md / the plan doc for the full
+/// cost-control rationale.
+model VideoSegment {
+  id                    String             @id @default(uuid())
+  postId                String
+  order                 Int
+  hasCharacter          Boolean            @default(false)
+  // This segment's slice of the post's full continuous narration
+  spokenPortion         String?            @db.Text
+  visualDescription     String?            @db.Text
+  // Raw Higgsfield clip (native audio already baked in — dialogue if
+  // hasCharacter, off-screen voiceover narration otherwise)
+  videoUrl              String?
+  duration              Float?
+  status                VideoSegmentStatus @default(pending)
+  higgsfieldJobId       String?
+  errorMessage          String?            @db.Text
+  generationStartedAt   DateTime?
+  generationCompletedAt DateTime?
+  // Always a rate-card ESTIMATE — Higgsfield exposes no cost/credits API at all
+  // (confirmed: dashboard-only, cloud.higgsfield.ai). Never a real billed value.
+  estimatedCost         Float?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  post                  VideoPost          @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([status])
+  @@index([postId, order])
 }
 
 /// Detailed trace of every pipeline step — used for the live run log UI (mirrors SocialCampaignLog)
@@ -1120,6 +1212,18 @@ model VideoSettings {
   maxGenerationsPerPost       Int    @default(4)
   // When false: pipeline auto-schedules immediately after upload (no review pause)
   requireReview               Boolean @default(true)
+  // ElevenLabs Music — background bed mixed under the narration at assembly time
+  musicEnabled                Boolean @default(true)
+  musicVolume                 Float   @default(0.3)
+  // Captions.ai (Mirage API) — animated captions burned in at assembly time
+  captionsEnabled             Boolean @default(true)
+  captionsTemplateId          String?
+  captionsTemplateName        String? @default("Aries")
+  // Plan → Approve → Execute defaults (each overridable per-campaign/per-post)
+  defaultTargetPlatform       VideoTargetPlatform @default(auto)
+  defaultVideoStyle           VideoStyle          @default(auto)
+  defaultTargetShotCount      Int?
+  defaultOrientation          String              @default("9:16")
   updatedAt                   DateTime @updatedAt
 }
 

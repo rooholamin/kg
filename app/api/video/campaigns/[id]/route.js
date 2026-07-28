@@ -35,6 +35,7 @@ export async function GET(_req, { params }) {
                 },
               },
             },
+            segments: { orderBy: { order: 'asc' } },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -62,7 +63,7 @@ export async function PATCH(req, { params }) {
 
     if (action === 'stop') {
       await prisma.videoPost.updateMany({
-        where: { campaignId: id, status: { in: ['pending', 'directing'] } },
+        where: { campaignId: id, status: { in: ['pending', 'planning', 'plan_ready', 'approved', 'directing'] } },
         data: { status: 'failed', errorMessage: 'Pipeline stopped by user' },
       });
       await prisma.videoCampaign.update({ where: { id }, data: { status: 'cancelled' } });
@@ -97,13 +98,17 @@ export async function DELETE(_req, { params }) {
 
     const campaign = await prisma.videoCampaign.findUnique({
       where: { id },
-      include: { posts: { select: { videoUrl: true, stillAssetUrl: true } } },
+      include: { posts: { select: { videoUrl: true, musicUrl: true, segments: { select: { videoUrl: true } } } } },
     });
     if (!campaign) {
       return NextResponse.json({ message: 'Campaign not found' }, { status: 404 });
     }
 
-    const allUrls = campaign.posts.flatMap((p) => [p.videoUrl, p.stillAssetUrl]).filter(Boolean);
+    const allUrls = campaign.posts.flatMap((p) => [
+      p.videoUrl,
+      p.musicUrl,
+      ...p.segments.map((s) => s.videoUrl),
+    ]).filter(Boolean);
     await Promise.all(allUrls.map((url) => deleteFromS3(url)));
 
     await prisma.videoCampaignLog.deleteMany({ where: { campaignId: id } });

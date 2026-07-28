@@ -4,12 +4,10 @@ import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
-import { rePlanPost } from '@/services/video-pipeline.service';
+import { approvePlan } from '@/services/video-pipeline.service';
 
-// Re-drafts the plan (Phase 1, no Higgsfield spend) — was previously a full
-// video regeneration; superseded by the Plan -> Approve -> Execute flow.
-// Once a plan is approved, use /approve-plan (Phase 3) or regenerate a single
-// segment via /segments/[segmentId]/regenerate instead.
+// Phase 2 -> Phase 3: approves the (optionally human-edited) draft plan and
+// kicks off real Higgsfield generation for every planned segment.
 export async function POST(req, { params }) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,13 +16,16 @@ export async function POST(req, { params }) {
 
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    const directorNote = body.directorNote || body.instruction || null;
+    const { plan: editedPlan, directorNote } = body;
 
-    const plan = await rePlanPost(id, directorNote);
+    const result = await approvePlan(id, { editedPlan, directorNote });
 
-    const updated = await prisma.videoPost.findUnique({ where: { id } });
-    return NextResponse.json({ data: updated, plan });
+    const updated = await prisma.videoPost.findUnique({
+      where: { id },
+      include: { segments: { orderBy: { order: 'asc' } } },
+    });
+    return NextResponse.json({ data: updated, result });
   } catch (e) {
-    return routeError(e, 'Failed to re-plan video');
+    return routeError(e, 'Failed to approve plan');
   }
 }

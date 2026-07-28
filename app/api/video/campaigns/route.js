@@ -21,8 +21,9 @@ export async function GET() {
             id: true,
             status: true,
             videoUrl: true,
-            stillAssetUrl: true,
             scheduledAt: true,
+            totalEstimatedCost: true,
+            totalGenerationTimeMs: true,
             article: { select: { title: true } },
           },
         },
@@ -45,6 +46,7 @@ export async function POST(req) {
     const {
       weekStart, weekEnd, articleDateStart, articleDateEnd,
       campaignBrief, editorsChoiceOnly, includeSections, maxVideos,
+      targetPlatform, videoStyle, targetShotCount, orientation,
     } = body;
 
     if (!weekStart || !weekEnd) {
@@ -68,6 +70,10 @@ export async function POST(req) {
         editorsChoiceOnly: editorsChoiceOnly || false,
         includeSections: includeSections || [],
         maxVideos: maxVideos || settings.defaultMaxVideosPerCampaign,
+        targetPlatform: targetPlatform || settings.defaultTargetPlatform,
+        videoStyle: videoStyle || settings.defaultVideoStyle,
+        targetShotCount: targetShotCount ?? settings.defaultTargetShotCount ?? null,
+        orientation: orientation || settings.defaultOrientation,
       },
     });
 

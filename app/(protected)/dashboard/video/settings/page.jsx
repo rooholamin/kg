@@ -24,6 +24,8 @@ import {
   EyeOff,
   AlertCircle,
   CheckCircle2,
+  Music,
+  Captions,
 } from 'lucide-react';
 
 const APPROVAL_AGENT_FIELDS = [
@@ -48,6 +50,9 @@ const PLATFORM_OPTIONS = [
   { key: 'linkedin', label: 'LinkedIn' },
   { key: 'twitter', label: 'Twitter / X' },
 ];
+
+const TARGET_PLATFORMS = ['auto', 'instagram_reels', 'tiktok', 'youtube_shorts', 'linkedin'];
+const VIDEO_STYLES = ['auto', 'explainer', 'diy', 'listicle', 'testimonial'];
 
 export default function VideoSettingsPage() {
   const router = useRouter();
@@ -86,6 +91,17 @@ export default function VideoSettingsPage() {
       toast.success('Settings saved');
     },
     onError: (e) => toast.error(e.message),
+  });
+
+  const { data: captionTemplates = [] } = useQuery({
+    queryKey: ['captions-templates'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/video/captions/templates');
+      if (!res.ok) return [];
+      const j = await res.json();
+      return Array.isArray(j.data) ? j.data : (j.data?.templates ?? []);
+    },
+    retry: false,
   });
 
   const resetSessionMutation = useMutation({
@@ -215,6 +231,121 @@ export default function VideoSettingsPage() {
             <div className="grid grid-cols-2 gap-3 items-center">
               <Label>Max generations / video</Label>
               <Input type="number" min={1} max={10} value={form.maxGenerationsPerPost ?? 4} onChange={(e) => setField('maxGenerationsPerPost', Number(e.target.value))} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Plan → Approve → Execute Defaults</CardTitle>
+            <CardDescription className="text-xs">
+              Cycle-level defaults for the director agent&apos;s Phase 1 plan — each is still overridable per
+              campaign or per post.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Target platform</Label>
+              <Select value={form.defaultTargetPlatform ?? 'auto'} onValueChange={(v) => setField('defaultTargetPlatform', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TARGET_PLATFORMS.map((p) => <SelectItem key={p} value={p}>{p.replace(/_/g, ' ')}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Video style</Label>
+              <Select value={form.defaultVideoStyle ?? 'auto'} onValueChange={(v) => setField('defaultVideoStyle', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {VIDEO_STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Target shot count</Label>
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                placeholder="auto"
+                value={form.defaultTargetShotCount ?? ''}
+                onChange={(e) => setField('defaultTargetShotCount', e.target.value ? Number(e.target.value) : null)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Orientation</Label>
+              <Select value={form.defaultOrientation ?? '9:16'} onValueChange={(v) => setField('defaultOrientation', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ASPECT_RATIOS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Music className="size-4" />
+              Background Music (ElevenLabs)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              A duration-matched instrumental track is generated per assembly pass and mixed under the narration.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="musicEnabled">Enable background music</Label>
+              <Switch id="musicEnabled" checked={form.musicEnabled ?? true} onCheckedChange={(v) => setField('musicEnabled', v)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Default volume</Label>
+              <Input
+                type="number" min={0} max={1} step={0.05}
+                value={form.musicVolume ?? 0.3}
+                onChange={(e) => setField('musicVolume', Number(e.target.value))}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Captions className="size-4" />
+              Captions (Captions.ai)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Animated word-by-word captions burned in after assembly. Requires 9:16 orientation and a video under 50MB.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="captionsEnabled">Enable captions</Label>
+              <Switch id="captionsEnabled" checked={form.captionsEnabled ?? true} onCheckedChange={(v) => setField('captionsEnabled', v)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Template</Label>
+              {captionTemplates.length > 0 ? (
+                <Select value={form.captionsTemplateId ?? ''} onValueChange={(v) => {
+                  setField('captionsTemplateId', v);
+                  const t = captionTemplates.find((tpl) => tpl.id === v);
+                  if (t?.name) setField('captionsTemplateName', t.name);
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Select a template" /></SelectTrigger>
+                  <SelectContent>
+                    {captionTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={form.captionsTemplateId || ''}
+                  onChange={(e) => setField('captionsTemplateId', e.target.value)}
+                  placeholder="ctpl_xxxxxxxx (Aries recommended)"
+                />
+              )}
             </div>
           </CardContent>
         </Card>
