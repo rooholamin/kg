@@ -4,14 +4,20 @@ import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
-import { createCharacter } from '@/services/higgsfield.service';
+import { createReferenceElement } from '@/services/video-ai.service';
+
+async function getVideoSettings() {
+  return prisma.videoSettings.upsert({ where: { id: 'singleton' }, update: {}, create: { id: 'singleton' } });
+}
 
 /**
- * ADMIN-ONLY. Trains a Higgsfield Soul Character from a section's existing
- * characterImage plus any extra videoRefImageUrls, and stores the returned
- * character ID on Section.videoCharacterId. This is intentionally not
- * something the Video Director Agent can trigger itself — see
- * services/higgsfield.service.js's createCharacter doc comment.
+ * ADMIN-ONLY. Creates a Higgsfield Reference Element from a section's
+ * existing characterImage plus any extra videoRefImageUrls (via the
+ * Character Admin Agent, MCP-based — see video-character-admin-agent.yaml),
+ * and stores the returned element ID on Section.videoCharacterId. This whole
+ * call is synchronous (media_import_url + show_reference_elements both
+ * resolve inline), so unlike the old Soul Character training flow there is
+ * no separate async status to poll — the response here is final.
  */
 export async function POST(_req, { params }) {
   try {
@@ -26,29 +32,33 @@ export async function POST(_req, { params }) {
     const referenceImageUrls = [section.characterImage, ...(section.videoRefImageUrls || [])].filter(Boolean);
     if (!referenceImageUrls.length) {
       return NextResponse.json(
-        { message: 'Section has no characterImage or videoRefImageUrls to train from' },
+        { message: 'Section has no characterImage or videoRefImageUrls to create a Reference Element from' },
         { status: 422 },
       );
     }
 
-    // Async — returns immediately with a queued/in_progress status. Save the
-    // ID right away regardless of status; it's stable, and training keeps
-    // running on Higgsfield's side even if this request or the server
-    // restarts. Poll actual completion via the status route instead of
-    // blocking here (see higgsfield.service.js's createCharacter doc comment).
-    const character = await createCharacter({
-      name: `KG Hub — ${section.name}`,
+    const settings = await getVideoSettings();
+    const result = await createReferenceElement({
+      sectionName: `KG Hub — ${section.name}`,
       referenceImageUrls,
+      settings,
     });
+
+    if (!result.elementId || result.status === 'failed' || result.status === 'nsfw') {
+      return NextResponse.json(
+        { message: result.errorMessage || `Reference Element creation failed (status: ${result.status || 'unknown'})` },
+        { status: 422 },
+      );
+    }
 
     const updated = await prisma.section.update({
       where: { id: sectionId },
-      data: { videoCharacterId: character.id },
+      data: { videoCharacterId: result.elementId },
     });
 
-    return NextResponse.json({ data: updated, character });
+    return NextResponse.json({ data: updated, character: { id: result.elementId, status: result.status } });
   } catch (e) {
     console.error('[POST /api/video/characters/[sectionId]/train]', e);
-    return routeError(e, e?.message || 'Failed to train video character');
+    return routeError(e, e?.message || 'Failed to create video character');
   }
 }

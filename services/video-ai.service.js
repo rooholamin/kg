@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/prisma';
 import { logStart, logDone, logError } from '@/lib/video-logger';
-import * as higgsfield from '@/services/higgsfield.service';
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -135,11 +134,12 @@ Based on your editorial memory of what has already received a video, select whic
 
 // ---------------------------------------------------------------------------
 // directVideoPost
-// One Managed Agent session per post (VideoPost.directorSessionId). Unlike
-// the Social content agent, this session actually calls custom tools
-// (generate_image/generate_video/get_generation_status) to direct the shoot
-// itself, so streamAgentResponse below handles agent.custom_tool_use events
-// instead of assuming a pure text-in/JSON-out turn.
+// One Managed Agent session per post (VideoPost.directorSessionId). This
+// session directs the Higgsfield shoot itself via the hosted Higgsfield MCP
+// server (generate_image/generate_video/job_status, always_allow) rather
+// than custom tools — Anthropic executes those MCP calls server-side, so
+// streamAgentResponse below never actually needs to dispatch a tool call for
+// this agent; it just streams text/status until end_turn.
 // ---------------------------------------------------------------------------
 export async function directVideoPost({ campaignId, postId, article, section, environment, directorNote, settings, promptLearnings }) {
   if (!settings?.directorAgentId || !settings?.directorEnvironmentId) {
@@ -147,11 +147,12 @@ export async function directVideoPost({ campaignId, postId, article, section, en
       'Video Director Agent IDs not configured. Set directorAgentId and directorEnvironmentId in Video Settings.',
     );
   }
-  if (!section?.videoCharacterId) {
-    throw new Error(`Section "${section?.name}" has no trained video character yet — train one from Video → Characters first.`);
+  if (!settings?.higgsfieldVaultId) {
+    throw new Error('Higgsfield Vault ID not configured in Video Settings — required to authenticate the director agent\'s MCP calls.');
   }
-
-  higgsfield.resetGenerationBudget(postId);
+  if (!section?.videoCharacterId) {
+    throw new Error(`Section "${section?.name}" has no Higgsfield Reference Element yet — create one from Video → Characters first.`);
+  }
 
   const bodyText = extractPlainText(article.content);
 
@@ -167,6 +168,7 @@ export async function directVideoPost({ campaignId, postId, article, section, en
     const session = await client.beta.sessions.create({
       agent: settings.directorAgentId,
       environment_id: settings.directorEnvironmentId,
+      vault_ids: [settings.higgsfieldVaultId],
     });
     sessionId = session.id;
     await logDone(sessionLogId, `Session created: ${sessionId}`, { sessionId });
@@ -196,7 +198,7 @@ CHARACTER:
 - Biography/Persona: ${section.characterPersona || section.characterBiography || ''}
 - Tone: ${section.characterTone || ''}
 - Outfit: ${section.videoOutfitDescription || ''}
-- characterId (pass to generate_image): ${section.videoCharacterId}
+- elementId (embed as <<<elementId>>> in every generate_image/generate_video prompt): ${section.videoCharacterId}
 
 ENVIRONMENT: ${environment?.name || 'KG Media Loft'}
 ${environment?.textDescriptor || ''}
@@ -206,7 +208,7 @@ TARGET ASPECT RATIO: ${settings.defaultAspectRatio || '9:16'}
 DEFAULT GENRE: ${settings.defaultGenre || 'auto'}
 ${directorNote ? `\nDIRECTOR NOTE: ${directorNote}` : ''}${learningsBlock}
 
-Write the script, then direct the shoot yourself using generate_image, generate_video, and get_generation_status until you have a completed video (or a clearly reported failure). Then respond with the final JSON described in your instructions.`
+Write the script, then direct the shoot yourself using generate_image, generate_video, and job_status until you have a completed video (or a clearly reported failure). Then respond with the final JSON described in your instructions.`
     : `${directorNote ? `DIRECTOR NOTE: ${directorNote}` : 'Please regenerate this video.'}${learningsBlock}
 
 Write a fresh script and direct a new shoot using your tools, then respond with the final JSON.`;
@@ -218,19 +220,12 @@ Write a fresh script and direct a new shoot using your tools, then respond with 
     postId,
   );
 
-  const toolContext = {
-    postId,
-    characterId: section.videoCharacterId,
-    maxGenerationsPerPost: settings.maxGenerationsPerPost,
-    campaignId,
-  };
-
   let responseText;
   try {
     await client.beta.sessions.events.send(sessionId, {
       events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
     });
-    responseText = await streamAgentResponse(sessionId, toolContext);
+    responseText = await streamAgentResponse(sessionId);
   } catch (err) {
     await logError(aiLogId, err.message);
     throw err;
@@ -253,6 +248,55 @@ Write a fresh script and direct a new shoot using your tools, then respond with 
 }
 
 // ---------------------------------------------------------------------------
+// createReferenceElement
+// ADMIN ONLY — one-off session per section (see
+// app/api/video/characters/[sectionId]/train). Uses the dedicated Character
+// Admin Agent (video-character-admin-agent.yaml), which imports the given
+// reference image URLs and creates a Higgsfield Reference Element via MCP
+// (media_import_url + show_reference_elements — both synchronous, so this
+// resolves in one request/response round trip, no separate polling needed).
+// Never called by the per-post Director Agent.
+// ---------------------------------------------------------------------------
+export async function createReferenceElement({ sectionName, referenceImageUrls, settings }) {
+  if (!settings?.characterAdminAgentId || !settings?.characterAdminEnvironmentId) {
+    throw new Error(
+      'Character Admin Agent not configured. Set characterAdminAgentId and characterAdminEnvironmentId in Video Settings.',
+    );
+  }
+  if (!settings?.higgsfieldVaultId) {
+    throw new Error('Higgsfield Vault ID not configured in Video Settings — required to authenticate the character admin agent\'s MCP calls.');
+  }
+  if (!referenceImageUrls?.length) {
+    throw new Error('createReferenceElement requires at least one reference image URL');
+  }
+
+  const session = await client.beta.sessions.create({
+    agent: settings.characterAdminAgentId,
+    environment_id: settings.characterAdminEnvironmentId,
+    vault_ids: [settings.higgsfieldVaultId],
+  });
+
+  const message = `SECTION: ${sectionName}
+
+REFERENCE IMAGE URLS:
+${referenceImageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
+
+Import these images and create a Higgsfield Reference Element for this character, then respond with the final JSON described in your instructions.`;
+
+  await client.beta.sessions.events.send(session.id, {
+    events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
+  });
+
+  const responseText = await streamAgentResponse(session.id);
+  try {
+    const result = JSON.parse(extractJson(responseText));
+    return { ...result, sessionId: session.id };
+  } catch {
+    throw new Error(`Character admin agent returned invalid JSON: ${responseText.slice(0, 300)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -269,67 +313,21 @@ async function sendSessionMessageAndParse(sessionId, message) {
 }
 
 /**
- * Dispatches one agent.custom_tool_use call to the matching higgsfield.service
- * function. Returns a JSON string — custom tool results are always plain text
- * content blocks, so structured results are stringified.
+ * Stream events from the session until the agent signals end_turn. All
+ * generation tools this codebase's agents use (Higgsfield MCP, always_allow)
+ * are executed by Anthropic server-side, so a well-behaved session should
+ * never actually pause on requires_action — if one does, something needs
+ * manual approval we didn't anticipate, so surface it as an explicit error
+ * rather than silently deadlocking waiting for a tool result nobody sends.
  */
-async function dispatchToolCall(name, input, context) {
-  const { postId, characterId, maxGenerationsPerPost, campaignId } = context;
-  const logId = await logStart(campaignId, `tool_${name}`, `Director called ${name}`, input, postId);
-
-  try {
-    let output;
-    switch (name) {
-      case 'generate_image':
-        output = await higgsfield.generateImage({
-          postId,
-          prompt: input.prompt,
-          aspectRatio: input.aspectRatio,
-          characterId,
-          maxGenerationsPerPost,
-        });
-        break;
-      case 'generate_video':
-        output = await higgsfield.generateVideo({
-          postId,
-          prompt: input.prompt,
-          startImageUrl: input.startImageUrl,
-          aspectRatio: input.aspectRatio,
-          duration: input.duration,
-          maxGenerationsPerPost,
-        });
-        break;
-      case 'get_generation_status':
-        output = await higgsfield.getGenerationStatus(input.requestId);
-        break;
-      default:
-        throw new Error(`Unknown custom tool: ${name}`);
-    }
-    await logDone(logId, `${name} → ${output?.status || 'ok'}`, output);
-    return JSON.stringify(output);
-  } catch (err) {
-    await logError(logId, err.message);
-    return JSON.stringify({ error: err.message });
-  }
-}
-
-/**
- * Stream events from the session until the agent signals end_turn, resolving
- * any custom tool calls (agent.custom_tool_use / requires_action) along the
- * way by dispatching to Higgsfield and sending user.custom_tool_result back.
- * toolContext is omitted for sessions that never use custom tools (the
- * approval agent) — dispatchToolCall is simply never reached in that case.
- */
-async function streamAgentResponse(sessionId, toolContext) {
+async function streamAgentResponse(sessionId) {
   const textParts = [];
-  const eventsById = new Map();
   let done = false;
 
   while (!done) {
     const stream = await client.beta.sessions.events.stream(sessionId);
 
     for await (const event of stream) {
-      if (event.id) eventsById.set(event.id, event);
       const evType = event.type;
 
       if (evType === 'agent.message') {
@@ -342,23 +340,7 @@ async function streamAgentResponse(sessionId, toolContext) {
           break;
         }
         if (event.stop_reason?.type === 'requires_action') {
-          const eventIds = event.stop_reason.event_ids || [];
-          const results = [];
-          for (const eventId of eventIds) {
-            const toolEvent = eventsById.get(eventId);
-            if (!toolEvent || toolEvent.type !== 'agent.custom_tool_use') continue;
-            const resultText = await dispatchToolCall(toolEvent.name, toolEvent.input || {}, toolContext || {});
-            results.push({
-              type: 'user.custom_tool_result',
-              custom_tool_use_id: eventId,
-              content: [{ type: 'text', text: resultText }],
-            });
-          }
-          if (results.length) {
-            await client.beta.sessions.events.send(sessionId, { events: results });
-          }
-          // Keep consuming the same stream — the session transitions back to
-          // "running" and continues emitting events without needing a reconnect.
+          throw new Error(`Session ${sessionId} unexpectedly requires manual action: ${JSON.stringify(event.stop_reason)}`);
         }
       } else if (
         evType === 'session.status_terminated' ||

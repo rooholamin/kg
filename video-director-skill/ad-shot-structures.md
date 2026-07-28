@@ -37,4 +37,4 @@ to the core idea (a chart, a model, a prop relevant to the article).
 00:11-00:15: Close, static. Character delivers the payoff line, direct to camera.
 ```
 
-Every sequence still ends its prompt with sound design escalating beat-to-beat and the line `No music.`
+Every sequence still ends its prompt with sound design escalating beat-to-beat — physical, material-specific, and (per Golden Rule 4) non-musical by default, since `generate_audio` genuinely renders it.

@@ -36,6 +36,11 @@ const DIRECTOR_AGENT_FIELDS = [
   { key: 'directorEnvironmentId', label: 'Environment ID' },
 ];
 
+const CHARACTER_ADMIN_AGENT_FIELDS = [
+  { key: 'characterAdminAgentId', label: 'Character Admin Agent ID' },
+  { key: 'characterAdminEnvironmentId', label: 'Environment ID' },
+];
+
 const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5', '3:4', '21:9'];
 const GENRES = ['auto', 'action', 'epic', 'noir', 'drama', 'horror', 'comedy'];
 const PLATFORM_OPTIONS = [
@@ -221,10 +226,14 @@ export default function VideoSettingsPage() {
               Anthropic Managed Agents
             </CardTitle>
             <CardDescription className="text-xs">
-              Create both agents in the Anthropic Console (see <code>video-approval-agent.yaml</code> and{' '}
-              <code>video-director-agent.yaml</code> at the project root) and paste their IDs here. The{' '}
-              <strong>Approval Agent</strong> runs once per campaign; the <strong>Director Agent</strong> opens
-              one session per video and directs the Higgsfield shoot itself via custom tools.
+              Create all three agents in the Anthropic Console (see <code>video-approval-agent.yaml</code>,{' '}
+              <code>video-director-agent.yaml</code>, and <code>video-character-admin-agent.yaml</code> at the
+              project root) and paste their IDs here. The <strong>Approval Agent</strong> runs once per
+              campaign; the <strong>Director Agent</strong> opens one session per video and directs the
+              Higgsfield shoot itself via Higgsfield&apos;s hosted MCP server; the{' '}
+              <strong>Character Admin Agent</strong> is an admin-only, one-off session that creates a
+              Higgsfield Reference Element per section (Video → Characters). The Director and Character Admin
+              agents both need the <strong>Higgsfield Vault ID</strong> below to authenticate MCP calls.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -252,6 +261,23 @@ export default function VideoSettingsPage() {
                 <Input type={showPasswords ? 'text' : 'password'} value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} placeholder="ant_xxxxxxxx" />
               </div>
             ))}
+
+            <Separator />
+
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Character Admin Agent</p>
+            {CHARACTER_ADMIN_AGENT_FIELDS.map(({ key, label }) => (
+              <div key={key} className="grid grid-cols-2 gap-3 items-center">
+                <Label>{label}</Label>
+                <Input type={showPasswords ? 'text' : 'password'} value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} placeholder="ant_xxxxxxxx" />
+              </div>
+            ))}
+
+            <Separator />
+
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <Label>Higgsfield Vault ID</Label>
+              <Input type={showPasswords ? 'text' : 'password'} value={form.higgsfieldVaultId || ''} onChange={(e) => setField('higgsfieldVaultId', e.target.value)} placeholder="vlt_xxxxxxxx" />
+            </div>
           </CardContent>
         </Card>
 

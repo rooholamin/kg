@@ -232,8 +232,12 @@ model Section {
   colorDark             String?
   // Baseline hashtags prepended to AI-generated hashtags for social posts
   socialHashtags        String[]      @default([])
-  // Video pipeline — Higgsfield Soul Character trained from characterImage
-  // (+ any extra ref shots), reused as this section's on-screen avatar
+  // Video pipeline — Higgsfield Reference Element ID created from characterImage
+  // (+ any extra ref shots) via the Character Admin Agent, reused as this
+  // section's on-screen avatar in generate_image/generate_video prompts
+  // (embedded as a <<<elementId>>> placeholder). NOT a Soul Character ID —
+  // those are a separate, incompatible system only usable with Soul V2/Cinema
+  // still-image models, not with Seedance 2.0/Kling 3.0 video generation.
   videoCharacterId       String?
   videoRefImageUrls      String[]     @default([])
   videoOutfitDescription String?      @db.Text
@@ -1089,8 +1093,19 @@ model VideoSettings {
   approvalAgentId       String?
   approvalEnvironmentId String?
   // Video Director Agent — one session per post, writes the script + directs the shoot
+  // via Higgsfield's hosted MCP server (mcp.higgsfield.ai) rather than custom tools —
+  // this is what actually unlocks Seedance 2.0 / Kling 3.0 / native audio, which the
+  // Developer/Partner REST API (services/higgsfield.service.js) does not expose.
   directorAgentId       String?
   directorEnvironmentId String?
+  // Character Admin Agent — one-off sessions only, creates/updates the Higgsfield
+  // Reference Element each section's characterId points to (see app/api/video/characters).
+  // Never used by the per-post director.
+  characterAdminAgentId       String?
+  characterAdminEnvironmentId String?
+  // Vault holding the Higgsfield MCP OAuth credential (see docs/managed-agents/vaults) —
+  // referenced as vault_ids on every session that talks to the Higgsfield MCP server.
+  higgsfieldVaultId           String?
   defaultMaxVideosPerCampaign Int    @default(5)
   defaultDuration             Int    @default(15)
   defaultAspectRatio          String @default("9:16")
