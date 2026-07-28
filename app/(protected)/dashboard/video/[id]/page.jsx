@@ -146,6 +146,13 @@ function VideoPostCard({ post, campaignId }) {
           <p className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-2">{post.errorMessage}</p>
         )}
 
+        {post.narration && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Narration (spoken, lip-synced)</p>
+            <p className="text-xs bg-muted rounded-lg p-2 italic">&ldquo;{post.narration}&rdquo;</p>
+          </div>
+        )}
+
         <Textarea
           value={post.generatedText || ''}
           readOnly
@@ -174,6 +181,7 @@ function VideoPostCard({ post, campaignId }) {
                   <p><span className="font-medium">Action:</span> {shot.action}</p>
                   {shot.lighting && <p><span className="font-medium">Lighting:</span> {shot.lighting}</p>}
                   {shot.sound && <p><span className="font-medium">Sound:</span> {shot.sound}</p>}
+                  {/* `sound` is legacy — current shotList entries have no audio field, since all audio now comes from the narration/lip-sync pass */}
                 </div>
               ))}
             </CollapsibleContent>

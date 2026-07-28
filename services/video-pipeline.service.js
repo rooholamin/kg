@@ -50,6 +50,7 @@ async function saveDirectedContent(post, result) {
     data: {
       status: hasVideo ? 'content_ready' : 'failed',
       shotList: result.shotList || [],
+      narration: result.narration || null,
       generatedText: result.text || '',
       hashtags: result.hashtags || [],
       stillAssetUrl: result.stillAssetUrl || null,

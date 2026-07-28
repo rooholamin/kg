@@ -1036,8 +1036,14 @@ model VideoPost {
   // on regeneratePostContent), applied on the next regenerate
   directorNote String? @db.Text
   // The script the director agent wrote: ordered shots — timestamp, camera,
-  // action, lighting, sound — per the seedance-prompt-framework structure
+  // action, lighting, ambient sound-bed — per the seedance-prompt-framework
+  // structure. Distinct from `narration` below — these are visual/ambient
+  // directions, not the spoken words.
   shotList Json?
+  // The actual spoken voiceover script (tied to the article's real content)
+  // that generate_audio→sync_so renders and lip-syncs onto the video — this
+  // is what's actually said out loud, not just a caption.
+  narration String? @db.Text
   // Caption editable by user before scheduling; AI-generated initially
   generatedText String? @db.Text
   hashtags      String[] @default([])

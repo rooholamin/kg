@@ -1,40 +1,42 @@
 # Example Multi-Shot Sequences
 
-Reference sequences to adapt, not templates to fill in blindly — always ground the actual beats in the article being covered.
+Reference sequences to adapt, not templates to fill in blindly — always ground the actual beats in the article being covered. These are for the silent `seedance_2_0` base video (production chain step 2); the narration audio and lip-sync happen separately afterward, but write the shots as if the character is speaking throughout — lip-sync needs a face to animate, so keep the character on-screen and reasonably front-facing for most of the runtime, even in shots built around a prop or detail.
 
-## Market/data story (15s, 4 shots)
-
-```
-00:00-00:04: Wide, static. Character stands in the KG Media Loft, morning light
-across the room. Establishes place and presence.
-00:04-00:08: Medium, slow push-in. Character turns toward camera, reacting to
-a market shift — a beat of realization, not exaggerated.
-00:08-00:12: Close, static. Character delivers the key line direct to camera,
-measured and confident.
-00:12-00:15: Wide, slow pull-back. Character resumes stance in the loft — a
-button on the sequence, not a new idea.
-```
-
-## Design/reveal story (15s, 4 shots)
+## Market/data story (~15s, 3 shots)
 
 ```
-00:00-00:03: Extreme close, static. A material/texture detail relevant to the
-article — the actual subject of the reveal, not the character yet.
-00:03-00:08: Medium, slow reveal (rack focus or gentle pan). Full subject comes
-into view; character enters frame reacting to it.
-00:08-00:12: Close on the character's reaction — genuine, understated.
-00:12-00:15: Wide, static. Subject and character together in the Loft, final
-framing that reads as the "after" state.
+00:00-00:05: Medium, static. Character faces camera in the KG Media Loft, morning
+light across the room — this is where the narration's opening line lands.
+00:05-00:11: Medium-close, slow push-in. Character stays on camera as the
+narration gets to the specific stat/finding — the push-in tracks the emphasis.
+00:11-00:15: Close, static. Character delivers the closing line direct to
+camera, measured and confident.
 ```
 
-## Explainer/how-to story (15s, 3 shots)
+## Design/reveal story (~15s, 3 shots)
+
+```
+00:00-00:05: Medium, static. Character direct-to-camera, one hand gesturing
+toward a material/texture detail relevant to the article as the narration
+introduces it — the detail is present in frame with the character, not an
+isolated cutaway.
+00:05-00:11: Medium-close, slow reveal (rack focus or gentle pan) as the
+narration gets specific about the technique/material — character stays
+visible and speaking throughout.
+00:11-00:15: Close on the character delivering the payoff line, direct to
+camera.
+```
+
+## Explainer/how-to story (~15s, 3 shots)
 
 ```
 00:00-00:05: Medium, static. Character direct-to-camera intro line, establishing
 what the viewer is about to learn.
-00:05-00:11: Medium-close, slight handheld drift. Character demonstrates/points
-to the core idea (a chart, a model, a prop relevant to the article).
-00:11-00:15: Close, static. Character delivers the payoff line, direct to camera.
+00:05-00:11: Medium-close, slight handheld drift. Character stays on camera
+while gesturing toward a chart/model/prop relevant to the article, still
+speaking.
+00:11-00:15: Close, static. Character delivers the payoff line, direct to
+camera.
 ```
 
-Every sequence still ends its prompt with sound design escalating beat-to-beat — physical, material-specific, and (per Golden Rule 4) non-musical by default, since `generate_audio` genuinely renders it.
+No `[SFX:]` block in any of these — the base video's own audio is discarded (`generate_audio: false`); the only audio in the final output is the lip-synced narration track (see SKILL.md's Production chain).

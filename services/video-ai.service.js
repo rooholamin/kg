@@ -208,10 +208,10 @@ TARGET ASPECT RATIO: ${settings.defaultAspectRatio || '9:16'}
 DEFAULT GENRE: ${settings.defaultGenre || 'auto'}
 ${directorNote ? `\nDIRECTOR NOTE: ${directorNote}` : ''}${learningsBlock}
 
-Write the script, then direct the shoot yourself using generate_image, generate_video, and job_status until you have a completed video (or a clearly reported failure). Then respond with the final JSON described in your instructions.`
+Write the narration script and shot script, then direct the full shoot yourself — still, silent base video, narration audio, and lip-sync — using generate_image, generate_video, generate_audio, and job_status until you have a completed, narrated, lip-synced video (or a clearly reported failure). Then respond with the final JSON described in your instructions.`
     : `${directorNote ? `DIRECTOR NOTE: ${directorNote}` : 'Please regenerate this video.'}${learningsBlock}
 
-Write a fresh script and direct a new shoot using your tools, then respond with the final JSON.`;
+Write a fresh narration script and shot script and direct a new shoot using your tools, then respond with the final JSON.`;
 
   const aiLogId = await logStart(
     campaignId, 'director_ai_send',
