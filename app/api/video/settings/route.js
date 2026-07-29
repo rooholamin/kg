@@ -50,6 +50,8 @@ export async function PATCH(req) {
       'captionsEnabled',
       'captionsTemplateId',
       'captionsTemplateName',
+      'outroEnabled',
+      'outroVideoUrl',
       'defaultTargetPlatform',
       'defaultVideoStyle',
       'defaultTargetShotCount',

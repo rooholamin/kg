@@ -1,11 +1,12 @@
 /**
  * ffmpeg-based video assembly — concatenates the director agent's ordered
  * VideoSegment clips (each already carrying Higgsfield's native Seedance
- * audio, on-camera dialogue or off-screen voiceover alike), mixes in a
- * duration-matched ElevenLabs music bed, and optionally sends the result to
- * Captions.ai for styled captions. Always a MANUAL, standalone trigger —
- * never auto-run after a segment (re)generates, so a post can accumulate
- * several segment regenerations before paying for one assembly pass.
+ * audio, on-camera dialogue or off-screen voiceover alike), optionally
+ * appends a fixed branded outro clip, mixes in a duration-matched ElevenLabs
+ * music bed (covering segments+outro together), and optionally sends the
+ * result to Captions.ai for styled captions. Always a MANUAL, standalone
+ * trigger — never auto-run after a segment (re)generates, so a post can
+ * accumulate several segment regenerations before paying for one assembly pass.
  *
  * Confirmed pitfall from testing: concatenating clips where some have an
  * audio stream and some don't causes real audio/video desync (ffmpeg's
@@ -212,10 +213,14 @@ async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orienta
 }
 
 /**
- * Full manual assembly pass for one post: concat -> (music) -> (captions) -> upload.
+ * Full manual assembly pass for one post: concat -> (outro) -> (music) -> (captions) -> upload.
  * Also uploads and returns the pre-music, pre-captions concatenated render
  * (`narrationVideoUrl`) so a later music-only regeneration doesn't have to
- * re-download/re-normalize/re-concatenate every segment again.
+ * re-download/re-normalize/re-concatenate every segment (or the outro) again.
+ *
+ * The outro (if configured) is appended BEFORE `totalDurationMs` is measured,
+ * so the ElevenLabs music track is generated to cover segments+outro and
+ * keeps playing under the outro instead of cutting off when it starts.
  *
  * @param {Object} params
  * @param {Object} params.post - VideoPost row (needs id, orientation/campaign orientation, musicVolume, captionsEnabled)
@@ -223,9 +228,10 @@ async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orienta
  * @param {string} params.orientation - resolved effective orientation ("9:16" etc.)
  * @param {Object} params.musicConfig - { enabled, volume, prompt, modelId }
  * @param {Object} params.captionsConfig - { enabled, templateId }
+ * @param {Object} [params.outroConfig] - { enabled, videoUrl } — branded clip appended to the end
  * @returns {Promise<{ videoUrl, narrationVideoUrl, musicUrl, duration, captionsApplied, captionsSkipReason, additionalCost }>}
  */
-export async function assembleVideo({ post, segments, orientation, musicConfig, captionsConfig }) {
+export async function assembleVideo({ post, segments, orientation, musicConfig, captionsConfig, outroConfig }) {
   const completedSegments = segments
     .filter((s) => s.status === 'completed' && s.videoUrl)
     .sort((a, b) => a.order - b.order);
@@ -245,6 +251,14 @@ export async function assembleVideo({ post, segments, orientation, musicConfig, 
       await downloadToFile(segment.videoUrl, rawPath);
       await normalizeClip(rawPath, normPath, orientation);
       normalizedPaths.push(normPath);
+    }
+
+    if (outroConfig?.enabled && outroConfig.videoUrl) {
+      const rawOutroPath = path.join(workDir, 'raw_outro.mp4');
+      const normOutroPath = path.join(workDir, 'norm_outro.mp4');
+      await downloadToFile(outroConfig.videoUrl, rawOutroPath);
+      await normalizeClip(rawOutroPath, normOutroPath, orientation);
+      normalizedPaths.push(normOutroPath);
     }
 
     const concatPath = path.join(workDir, 'concatenated.mp4');

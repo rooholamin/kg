@@ -376,6 +376,10 @@ export async function reassemblePost(postId) {
       captionsConfig: captionsEnabled
         ? { enabled: true, templateId: settings.captionsTemplateId }
         : { enabled: false },
+      outroConfig: {
+        enabled: Boolean(settings.outroEnabled && settings.outroVideoUrl),
+        videoUrl: settings.outroVideoUrl,
+      },
     });
 
     const segmentCost = post.segments.reduce((sum, s) => sum + (s.estimatedCost || 0), 0);

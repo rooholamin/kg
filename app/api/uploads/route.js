@@ -11,16 +11,20 @@ const ALLOWED_DIRECTORIES = new Set([
   'editor-inline',
   'covers',
   'characters',
+  'video-outro',
 ]);
 
-const ALLOWED_MIMES = new Set([
+const ALLOWED_IMAGE_MIMES = new Set([
   'image/png',
   'image/jpeg',
   'image/webp',
   'image/gif',
 ]);
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_VIDEO_MIMES = new Set(['video/mp4', 'video/quicktime']);
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024; // 200 MB
 
 /**
  * @param {Request} request
@@ -50,16 +54,20 @@ export async function POST(request) {
       );
     }
 
-    if (file.size > MAX_BYTES) {
+    const isVideoDir = directory === 'video-outro';
+    const maxBytes = isVideoDir ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    const allowedMimes = isVideoDir ? ALLOWED_VIDEO_MIMES : ALLOWED_IMAGE_MIMES;
+
+    if (file.size > maxBytes) {
       return NextResponse.json(
-        { message: 'File is too large (max 10 MB)' },
+        { message: `File is too large (max ${maxBytes / (1024 * 1024)} MB)` },
         { status: 400 },
       );
     }
 
-    if (!ALLOWED_MIMES.has(file.type)) {
+    if (!allowedMimes.has(file.type)) {
       return NextResponse.json(
-        { message: 'Invalid file type. Use PNG, JPEG, WebP, or GIF.' },
+        { message: isVideoDir ? 'Invalid file type. Use MP4 or MOV.' : 'Invalid file type. Use PNG, JPEG, WebP, or GIF.' },
         { status: 400 },
       );
     }

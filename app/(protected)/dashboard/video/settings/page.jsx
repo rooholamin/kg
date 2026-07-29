@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -26,6 +26,8 @@ import {
   CheckCircle2,
   Music,
   Captions,
+  Clapperboard,
+  Upload,
 } from 'lucide-react';
 
 const APPROVAL_AGENT_FIELDS = [
@@ -60,6 +62,8 @@ export default function VideoSettingsPage() {
   const [showPasswords, setShowPasswords] = useState(false);
   const [form, setForm] = useState({});
   const [memoryForm, setMemoryForm] = useState({});
+  const [uploadingOutro, setUploadingOutro] = useState(false);
+  const outroInputRef = useRef(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['video-settings-full'],
@@ -92,6 +96,43 @@ export default function VideoSettingsPage() {
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const saveOutroUrlMutation = useMutation({
+    mutationFn: async (outroVideoUrl) => {
+      const res = await apiFetch('/api/video/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outroVideoUrl }),
+      });
+      if (!res.ok) throw new Error('Failed to save outro clip');
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['video-settings-full'] }),
+    onError: (e) => toast.error(e.message),
+  });
+
+  async function handleOutroUpload(file) {
+    if (!file) return;
+    setUploadingOutro(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('directory', 'video-outro');
+      const res = await apiFetch('/api/uploads', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to upload outro clip');
+      }
+      const { data: uploaded } = await res.json();
+      setField('outroVideoUrl', uploaded.url);
+      await saveOutroUrlMutation.mutateAsync(uploaded.url);
+      toast.success('Outro clip uploaded');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUploadingOutro(false);
+      if (outroInputRef.current) outroInputRef.current.value = '';
+    }
+  }
 
   const { data: captionTemplates = [] } = useQuery({
     queryKey: ['captions-templates'],
@@ -282,6 +323,45 @@ export default function VideoSettingsPage() {
                 </SelectContent>
               </Select>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Clapperboard className="size-4" />
+              Branded Outro
+            </CardTitle>
+            <CardDescription className="text-xs">
+              A fixed clip appended to the end of every assembled video, before background music is
+              generated — so the music track is generated to cover the outro too instead of cutting off
+              when it starts.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="outroEnabled">Enable outro</Label>
+              <Switch id="outroEnabled" checked={form.outroEnabled ?? true} onCheckedChange={(v) => setField('outroEnabled', v)} />
+            </div>
+
+            {form.outroVideoUrl ? (
+              // eslint-disable-next-line jsx-a11y/media-has-caption
+              <video src={form.outroVideoUrl} controls className="w-full max-w-[180px] mx-auto rounded-lg bg-black border" />
+            ) : (
+              <p className="text-xs text-muted-foreground border border-dashed rounded-md p-2.5">No outro clip uploaded yet.</p>
+            )}
+
+            <Button type="button" size="sm" variant="outline" onClick={() => outroInputRef.current?.click()} disabled={uploadingOutro}>
+              {uploadingOutro ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Upload className="size-3.5 mr-1" />}
+              {form.outroVideoUrl ? 'Replace clip' : 'Upload clip'}
+            </Button>
+            <input
+              ref={outroInputRef}
+              type="file"
+              accept="video/mp4,video/quicktime"
+              className="hidden"
+              onChange={(e) => handleOutroUpload(e.target.files?.[0])}
+            />
           </CardContent>
         </Card>
 

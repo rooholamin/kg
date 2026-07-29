@@ -1225,6 +1225,12 @@ model VideoSettings {
   captionsEnabled             Boolean @default(true)
   captionsTemplateId          String? @default("ctpl_pUtOSPltDzsoYJgLBYmo")
   captionsTemplateName        String? @default("Aries")
+  // Branded outro clip appended to the end of every assembled video, BEFORE
+  // background music is generated/mixed — so the music bed is generated to
+  // cover the full segments+outro duration and continues playing under the
+  // outro too, rather than cutting off when the outro starts.
+  outroEnabled                Boolean @default(true)
+  outroVideoUrl               String?
   // Plan → Approve → Execute defaults (each overridable per-campaign/per-post)
   defaultTargetPlatform       VideoTargetPlatform @default(auto)
   defaultVideoStyle           VideoStyle          @default(auto)
