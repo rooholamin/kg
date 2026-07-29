@@ -6,7 +6,7 @@ import {
   regenerateVideoSegment,
   resolveVideoConfig,
 } from './video-ai.service';
-import { assembleVideo } from './video-assembly.service';
+import { assembleVideo, regenerateMusicOnly } from './video-assembly.service';
 import { deleteFromS3 } from './social-export.service';
 import { scheduleVideoPost as bufferScheduleVideoPost, unscheduleVideoPost as bufferUnscheduleVideoPost, pullVideoAnalytics } from './buffer.service';
 import { logStart, logDone, logError, logInfo } from '@/lib/video-logger';
@@ -46,7 +46,7 @@ async function getRecentPromptLearnings(limit = 10) {
   });
 }
 
-function musicPromptFor(article, config) {
+function musicPromptFor(article, config, note) {
   const styleWords = {
     explainer: 'clear, focused, gently building',
     diy: 'warm, relaxed, craftsman workshop feel',
@@ -55,7 +55,8 @@ function musicPromptFor(article, config) {
     auto: 'warm, unobtrusive',
   };
   const mood = styleWords[config.style] || styleWords.auto;
-  return `${mood} instrumental background music for a short-form video about "${article.title}" — no vocals, no drums or only very light percussion, sits gently under spoken narration, subtle enough not to compete with voice.`;
+  const noteText = note ? ` Additional direction: ${note}.` : '';
+  return `${mood} instrumental background music for a short-form video about "${article.title}" — no vocals, no drums or only very light percussion, sits gently under spoken narration, subtle enough not to compete with voice.${noteText}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +350,7 @@ export async function reassemblePost(postId) {
     throw new Error('No completed segments to assemble yet.');
   }
 
-  const staleUrls = [post.videoUrl, post.musicUrl].filter(Boolean);
+  const staleUrls = [post.videoUrl, post.musicUrl, post.narrationVideoUrl].filter(Boolean);
 
   const logId = await logStart(post.campaignId, 'assembly_start', `Assembling ${completedSegments.length} segment(s)`, null, postId);
 
@@ -360,7 +361,7 @@ export async function reassemblePost(postId) {
     // no reason to spend a real ElevenLabs credit on an inaudible track.
     const musicEnabled = settings.musicEnabled && effectiveVolume > 0;
 
-    const { videoUrl, musicUrl, duration, captionsApplied, captionsSkipReason, additionalCost } = await assembleVideo({
+    const { videoUrl, narrationVideoUrl, musicUrl, duration, captionsApplied, captionsSkipReason, additionalCost } = await assembleVideo({
       post,
       segments: post.segments,
       orientation: config.orientation,
@@ -390,6 +391,7 @@ export async function reassemblePost(postId) {
       data: {
         status: 'content_ready',
         videoUrl,
+        narrationVideoUrl,
         musicUrl,
         duration,
         aspectRatio: config.orientation,
@@ -417,6 +419,75 @@ export async function reassemblePost(postId) {
   } catch (err) {
     await logError(logId, err.message);
     await prisma.videoPost.update({ where: { id: postId }, data: { errorMessage: err.message } });
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5b. regenerateMusic — swaps in a fresh music track without re-touching
+// Higgsfield or re-downloading/re-normalizing/re-concatenating segments;
+// reuses the base render saved by the last full Re-assemble. Re-applies
+// captions afterward if enabled, since Captions.ai works on the final mix.
+// ---------------------------------------------------------------------------
+export async function regenerateMusic(postId, note) {
+  const post = await prisma.videoPost.findUnique({
+    where: { id: postId },
+    include: { article: true },
+  });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+  if (!post.narrationVideoUrl) {
+    throw new Error('No assembled video yet — run Re-assemble at least once before regenerating music.');
+  }
+
+  const settings = await getVideoSettings();
+  const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
+  const config = resolveVideoConfig({ post, campaign, settings });
+
+  const staleUrls = [post.videoUrl, post.musicUrl].filter(Boolean);
+  const logId = await logStart(post.campaignId, 'music_regenerate', 'Regenerating background music', { note }, postId);
+
+  try {
+    const captionsEnabled = post.captionsEnabled ?? settings.captionsEnabled;
+    const effectiveVolume = post.musicVolume ?? settings.musicVolume;
+    const musicEnabled = settings.musicEnabled && effectiveVolume > 0;
+    if (!musicEnabled) {
+      throw new Error('Music is disabled or muted for this post (volume is 0) — nothing to regenerate.');
+    }
+
+    const { videoUrl, musicUrl, duration, captionsApplied, captionsSkipReason, additionalCost } = await regenerateMusicOnly({
+      post,
+      orientation: config.orientation,
+      musicConfig: {
+        enabled: true,
+        volume: effectiveVolume,
+        prompt: musicPromptFor(post.article, config, note),
+        modelId: settings.elevenlabsMusicModelId,
+      },
+      captionsConfig: captionsEnabled
+        ? { enabled: true, templateId: settings.captionsTemplateId }
+        : { enabled: false },
+    });
+
+    await prisma.videoPost.update({
+      where: { id: postId },
+      data: {
+        videoUrl,
+        musicUrl,
+        duration,
+        totalEstimatedCost: post.totalEstimatedCost ? Math.round((post.totalEstimatedCost + additionalCost) * 100) / 100 : additionalCost,
+        errorMessage: null,
+      },
+    });
+
+    await logDone(logId, `Music regenerated${captionsApplied ? ', captions re-applied' : ''}`, { videoUrl, musicUrl, captionsApplied, captionsSkipReason });
+
+    if (staleUrls.length) {
+      await Promise.allSettled(staleUrls.map(deleteFromS3));
+    }
+
+    return { videoUrl, musicUrl, duration, captionsApplied, captionsSkipReason };
+  } catch (err) {
+    await logError(logId, err.message);
     throw err;
   }
 }

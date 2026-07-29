@@ -1102,6 +1102,9 @@ model VideoPost {
   duration      Int?
   aspectRatio   String?
   genre         String?
+  // Pre-music, pre-captions concatenated base render — kept so a music-only
+  // regeneration never has to re-download/re-normalize/re-concatenate segments
+  narrationVideoUrl String?
   // Background music — generated once per assembly pass, re-usable across
   // re-assembles unless segments/duration changed enough to warrant a fresh track
   musicUrl      String?

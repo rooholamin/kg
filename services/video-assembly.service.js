@@ -135,7 +135,87 @@ async function mixMusicUnderNarration(videoPath, musicPath, volume, outputPath) 
 }
 
 /**
+ * Shared tail end of the pipeline: (music) -> (captions) -> upload. Used by
+ * both a full assembly pass and a music-only regeneration, since neither
+ * needs to re-download/re-normalize/re-concatenate segments that haven't
+ * changed — only the un-mixed, un-captioned base render does.
+ */
+async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orientation, musicConfig, captionsConfig }) {
+  let additionalCost = 0;
+  let currentPath = basePath;
+  let musicUrl = null;
+
+  if (musicConfig?.enabled) {
+    const { buffer: musicBuffer } = await composeMusic({
+      prompt: musicConfig.prompt,
+      durationMs: totalDurationMs,
+      modelId: musicConfig.modelId,
+    });
+    const musicPath = path.join(workDir, 'music.mp3');
+    await fs.writeFile(musicPath, musicBuffer);
+
+    const mixedPath = path.join(workDir, 'mixed.mp4');
+    await mixMusicUnderNarration(currentPath, musicPath, musicConfig.volume ?? 0.3, mixedPath);
+    currentPath = mixedPath;
+    additionalCost += calculateMusicCost(totalDurationMs);
+
+    musicUrl = await uploadBufferToSpaces(musicBuffer, `video/music/${post.id}-${Date.now()}.mp3`, 'audio/mpeg');
+  }
+
+  // Captions is the LAST, most failure-prone step (external API, strict
+  // size/orientation limits) — a failure here should never lose the
+  // concat+music work already done. Falls back to the uncaptioned video
+  // rather than throwing, and always reports why captions weren't applied.
+  let captionsApplied = false;
+  let captionsSkipReason = null;
+  if (!captionsConfig?.enabled) {
+    captionsSkipReason = 'disabled';
+  } else if (orientation !== '9:16') {
+    captionsSkipReason = `Captions.ai requires 9:16, this video is ${orientation}`;
+  } else if (!captionsConfig.templateId) {
+    captionsSkipReason = 'no caption template configured';
+  } else {
+    try {
+      const currentBuffer = await fs.readFile(currentPath);
+      if (currentBuffer.length > 50 * 1024 * 1024) {
+        captionsSkipReason = `video is ${(currentBuffer.length / 1024 / 1024).toFixed(1)}MB, over Captions.ai's 50MB limit`;
+      } else {
+        const { buffer: captionedBuffer } = await addCaptions({
+          videoBuffer: currentBuffer,
+          templateId: captionsConfig.templateId,
+        });
+        const captionedPath = path.join(workDir, 'captioned.mp4');
+        await fs.writeFile(captionedPath, captionedBuffer);
+        currentPath = captionedPath;
+        captionsApplied = true;
+        additionalCost += calculateCaptionsCost(totalDurationMs);
+      }
+    } catch (err) {
+      captionsSkipReason = `Captions.ai failed: ${err.message}`;
+    }
+  }
+
+  const finalBuffer = await fs.readFile(currentPath);
+  const videoUrl = await uploadBufferToSpaces(
+    finalBuffer,
+    `video/clips/${post.id}-${Date.now()}.mp4`,
+    'video/mp4',
+  );
+
+  return {
+    videoUrl,
+    musicUrl,
+    captionsApplied,
+    captionsSkipReason: captionsApplied ? null : captionsSkipReason,
+    additionalCost,
+  };
+}
+
+/**
  * Full manual assembly pass for one post: concat -> (music) -> (captions) -> upload.
+ * Also uploads and returns the pre-music, pre-captions concatenated render
+ * (`narrationVideoUrl`) so a later music-only regeneration doesn't have to
+ * re-download/re-normalize/re-concatenate every segment again.
  *
  * @param {Object} params
  * @param {Object} params.post - VideoPost row (needs id, orientation/campaign orientation, musicVolume, captionsEnabled)
@@ -143,7 +223,7 @@ async function mixMusicUnderNarration(videoPath, musicPath, volume, outputPath) 
  * @param {string} params.orientation - resolved effective orientation ("9:16" etc.)
  * @param {Object} params.musicConfig - { enabled, volume, prompt, modelId }
  * @param {Object} params.captionsConfig - { enabled, templateId }
- * @returns {Promise<{ videoUrl: string, musicUrl: string|null, duration: number, captionsApplied: boolean, additionalCost: number }>}
+ * @returns {Promise<{ videoUrl, narrationVideoUrl, musicUrl, duration, captionsApplied, captionsSkipReason, additionalCost }>}
  */
 export async function assembleVideo({ post, segments, orientation, musicConfig, captionsConfig }) {
   const completedSegments = segments
@@ -156,7 +236,6 @@ export async function assembleVideo({ post, segments, orientation, musicConfig, 
 
   const workDir = path.join(os.tmpdir(), `video-assembly-${post.id}-${randomUUID()}`);
   await fs.mkdir(workDir, { recursive: true });
-  let additionalCost = 0;
 
   try {
     const normalizedPaths = [];
@@ -173,74 +252,46 @@ export async function assembleVideo({ post, segments, orientation, musicConfig, 
     const totalDurationSeconds = await probeDuration(concatPath);
     const totalDurationMs = Math.round(totalDurationSeconds * 1000);
 
-    let currentPath = concatPath;
-    let musicUrl = null;
-
-    if (musicConfig?.enabled) {
-      const { buffer: musicBuffer } = await composeMusic({
-        prompt: musicConfig.prompt,
-        durationMs: totalDurationMs,
-        modelId: musicConfig.modelId,
-      });
-      const musicPath = path.join(workDir, 'music.mp3');
-      await fs.writeFile(musicPath, musicBuffer);
-
-      const mixedPath = path.join(workDir, 'mixed.mp4');
-      await mixMusicUnderNarration(currentPath, musicPath, musicConfig.volume ?? 0.3, mixedPath);
-      currentPath = mixedPath;
-      additionalCost += calculateMusicCost(totalDurationMs);
-
-      musicUrl = await uploadBufferToSpaces(musicBuffer, `video/music/${post.id}-${Date.now()}.mp3`, 'audio/mpeg');
-    }
-
-    // Captions is the LAST, most failure-prone step (external API, strict
-    // size/orientation limits) — a failure here should never lose the
-    // concat+music work already done. Falls back to the uncaptioned video
-    // rather than throwing, and always reports why captions weren't applied.
-    let captionsApplied = false;
-    let captionsSkipReason = null;
-    if (!captionsConfig?.enabled) {
-      captionsSkipReason = 'disabled';
-    } else if (orientation !== '9:16') {
-      captionsSkipReason = `Captions.ai requires 9:16, this video is ${orientation}`;
-    } else if (!captionsConfig.templateId) {
-      captionsSkipReason = 'no caption template configured';
-    } else {
-      try {
-        const currentBuffer = await fs.readFile(currentPath);
-        if (currentBuffer.length > 50 * 1024 * 1024) {
-          captionsSkipReason = `video is ${(currentBuffer.length / 1024 / 1024).toFixed(1)}MB, over Captions.ai's 50MB limit`;
-        } else {
-          const { buffer: captionedBuffer } = await addCaptions({
-            videoBuffer: currentBuffer,
-            templateId: captionsConfig.templateId,
-          });
-          const captionedPath = path.join(workDir, 'captioned.mp4');
-          await fs.writeFile(captionedPath, captionedBuffer);
-          currentPath = captionedPath;
-          captionsApplied = true;
-          additionalCost += calculateCaptionsCost(totalDurationMs);
-        }
-      } catch (err) {
-        captionsSkipReason = `Captions.ai failed: ${err.message}`;
-      }
-    }
-
-    const finalBuffer = await fs.readFile(currentPath);
-    const videoUrl = await uploadBufferToSpaces(
-      finalBuffer,
-      `video/clips/${post.id}-${Date.now()}.mp4`,
+    const concatBuffer = await fs.readFile(concatPath);
+    const narrationVideoUrl = await uploadBufferToSpaces(
+      concatBuffer,
+      `video/narration/${post.id}-${Date.now()}.mp4`,
       'video/mp4',
     );
 
-    return {
-      videoUrl,
-      musicUrl,
-      duration: Math.round(totalDurationSeconds),
-      captionsApplied,
-      captionsSkipReason: captionsApplied ? null : captionsSkipReason,
-      additionalCost,
-    };
+    const result = await finalizeVideo({ post, basePath: concatPath, workDir, totalDurationMs, orientation, musicConfig, captionsConfig });
+
+    return { ...result, narrationVideoUrl, duration: Math.round(totalDurationSeconds) };
+  } finally {
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Music-only regeneration — reuses the already-assembled, pre-music base
+ * render (`post.narrationVideoUrl`) so it never has to re-download,
+ * re-normalize, or re-concatenate segments. Still re-applies captions
+ * afterward if enabled, since Captions.ai works on the final mixed render.
+ *
+ * @returns {Promise<{ videoUrl, musicUrl, duration, captionsApplied, captionsSkipReason, additionalCost }>}
+ */
+export async function regenerateMusicOnly({ post, orientation, musicConfig, captionsConfig }) {
+  if (!post.narrationVideoUrl) {
+    throw new Error('No base render to remix — run a full Re-assemble at least once first.');
+  }
+
+  const workDir = path.join(os.tmpdir(), `video-music-${post.id}-${randomUUID()}`);
+  await fs.mkdir(workDir, { recursive: true });
+
+  try {
+    const basePath = path.join(workDir, 'base.mp4');
+    await downloadToFile(post.narrationVideoUrl, basePath);
+    const totalDurationSeconds = await probeDuration(basePath);
+    const totalDurationMs = Math.round(totalDurationSeconds * 1000);
+
+    const result = await finalizeVideo({ post, basePath, workDir, totalDurationMs, orientation, musicConfig, captionsConfig });
+
+    return { ...result, duration: Math.round(totalDurationSeconds) };
   } finally {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }

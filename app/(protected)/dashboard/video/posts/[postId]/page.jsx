@@ -403,6 +403,8 @@ function SegmentTimeline({ post, invalidate }) {
   const [musicVolume, setMusicVolume] = useState([post.musicVolume ?? 0.3]);
   const [preMuteVolume, setPreMuteVolume] = useState(post.musicVolume || 0.3);
   const [captionsEnabled, setCaptionsEnabled] = useState(post.captionsEnabled ?? true);
+  const [musicNote, setMusicNote] = useState('');
+  const [showMusicNote, setShowMusicNote] = useState(false);
 
   useEffect(() => {
     setMusicVolume([post.musicVolume ?? 0.3]);
@@ -432,6 +434,23 @@ function SegmentTimeline({ post, invalidate }) {
       if (!res.ok) throw new Error('Failed to save captions setting');
     },
     onSuccess: () => invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+
+  const regenerateMusicMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${post.id}/regenerate-music`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: musicNote || undefined }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to regenerate music');
+      }
+      return res.json();
+    },
+    onSuccess: () => { toast.success('Music regenerated'); setShowMusicNote(false); setMusicNote(''); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -525,6 +544,31 @@ function SegmentTimeline({ post, invalidate }) {
           {post.musicUrl && (
             // eslint-disable-next-line jsx-a11y/media-has-caption
             <audio src={post.musicUrl} controls className="w-full h-8" />
+          )}
+
+          {post.narrationVideoUrl && (
+            <>
+              {showMusicNote && (
+                <Textarea
+                  value={musicNote}
+                  onChange={(e) => setMusicNote(e.target.value)}
+                  placeholder="Direction for the new track (optional) — e.g. more upbeat, less percussion…"
+                  rows={2}
+                  className="text-xs"
+                />
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full h-7 text-xs"
+                onClick={() => (showMusicNote ? regenerateMusicMutation.mutate() : setShowMusicNote(true))}
+                disabled={regenerateMusicMutation.isPending || musicVolume[0] === 0}
+                title={musicVolume[0] === 0 ? 'Unmute the music lane first' : undefined}
+              >
+                {regenerateMusicMutation.isPending ? <Loader2 className="size-3 mr-1 animate-spin" /> : <RefreshCw className="size-3 mr-1" />}
+                {showMusicNote ? 'Confirm regenerate music' : 'Regenerate music'}
+              </Button>
+            </>
           )}
 
           <div className="flex items-center justify-between pt-1">
