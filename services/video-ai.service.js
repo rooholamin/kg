@@ -9,6 +9,43 @@ const client = new Anthropic({
 });
 
 // ---------------------------------------------------------------------------
+// Per-session mutex. `sessions.events.stream()` is a live tail, not a replay
+// from a cursor — if two requests both send a message to the SAME session
+// and both start streaming around the same time, they each just see
+// whatever end_turn happens next, regardless of which of their own messages
+// it was actually replying to. Confirmed as a real production bug: two
+// "regenerate segment" clicks fired close together on the same post ended
+// up with THREE segments (all in flight against the same director session)
+// all receiving the identical single response meant for only the last one,
+// silently overwriting each other's video/text. Every place that sends a
+// message to a session that could conceivably be reused concurrently (i.e.
+// any session-reuse, not fresh-session-per-call) must serialize through
+// this so a second call always waits for the first call's full turn to
+// finish before sending its own message.
+// ---------------------------------------------------------------------------
+const sessionLocks = new Map();
+
+function withSessionLock(sessionId, fn) {
+  const previous = sessionLocks.get(sessionId) || Promise.resolve();
+  const run = previous.then(fn, fn);
+  const chained = run.catch(() => {});
+  sessionLocks.set(sessionId, chained);
+  chained.finally(() => {
+    if (sessionLocks.get(sessionId) === chained) sessionLocks.delete(sessionId);
+  });
+  return run;
+}
+
+async function sendAndAwaitResponse(sessionId, message) {
+  return withSessionLock(sessionId, async () => {
+    await client.beta.sessions.events.send(sessionId, {
+      events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
+    });
+    return streamAgentResponse(sessionId);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // resolveVideoConfig
 // Effective Plan → Approve → Execute config for a post: per-post override,
 // falling back to the campaign's cycle-level default, falling back to the
@@ -55,19 +92,21 @@ export async function selectVideoArticles({ articles, campaign, settings, memory
 
     if (memory.handoffSummary) {
       const handoffLogId = await logStart(campaign.id, 'approval_handoff', 'Injecting handoff context from previous session', { summary: memory.handoffSummary });
-      await client.beta.sessions.events.send(sessionId, {
-        events: [
-          {
-            type: 'user.message',
-            content: [
-              {
-                type: 'text',
-                text: `[EDITORIAL CONTEXT FROM PREVIOUS SESSION]\n\n${memory.handoffSummary}\n\n[END CONTEXT]`,
-              },
-            ],
-          },
-        ],
-      });
+      await withSessionLock(sessionId, () =>
+        client.beta.sessions.events.send(sessionId, {
+          events: [
+            {
+              type: 'user.message',
+              content: [
+                {
+                  type: 'text',
+                  text: `[EDITORIAL CONTEXT FROM PREVIOUS SESSION]\n\n${memory.handoffSummary}\n\n[END CONTEXT]`,
+                },
+              ],
+            },
+          ],
+        }),
+      );
       await logDone(handoffLogId, 'Handoff context injected');
     }
   } else {
@@ -247,10 +286,7 @@ export async function planVideoPost({ campaignId, postId, article, section, envi
 
   let responseText;
   try {
-    await client.beta.sessions.events.send(sessionId, {
-      events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
-    });
-    responseText = await streamAgentResponse(sessionId);
+    responseText = await sendAndAwaitResponse(sessionId, message);
   } catch (err) {
     await logError(aiLogId, err.message);
     throw err;
@@ -345,10 +381,7 @@ Direct the full shoot now — generate_image + generate_video per segment, in or
 
   let responseText;
   try {
-    await client.beta.sessions.events.send(sessionId, {
-      events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
-    });
-    responseText = await streamAgentResponse(sessionId);
+    responseText = await sendAndAwaitResponse(sessionId, message);
   } catch (err) {
     await logError(aiLogId, err.message);
     await prisma.videoSegment.updateMany({ where: { postId }, data: { status: 'failed', errorMessage: err.message, generationCompletedAt: new Date() } });
@@ -425,10 +458,7 @@ Respond with ONLY the REGENERATE OUTPUT FORMAT JSON described in your instructio
 
   let responseText;
   try {
-    await client.beta.sessions.events.send(sessionId, {
-      events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
-    });
-    responseText = await streamAgentResponse(sessionId);
+    responseText = await sendAndAwaitResponse(sessionId, message);
   } catch (err) {
     await logError(aiLogId, err.message);
     await prisma.videoSegment.update({ where: { id: segment.id }, data: { status: 'failed', errorMessage: err.message, generationCompletedAt: new Date() } });
@@ -496,11 +526,7 @@ ${referenceImageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
 
 Import these images and create a Higgsfield Reference Element for this character, then respond with the final JSON described in your instructions.`;
 
-  await client.beta.sessions.events.send(session.id, {
-    events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
-  });
-
-  const responseText = await streamAgentResponse(session.id);
+  const responseText = await sendAndAwaitResponse(session.id, message);
   try {
     const result = JSON.parse(extractJson(responseText));
     return { ...result, sessionId: session.id };
@@ -514,10 +540,7 @@ Import these images and create a Higgsfield Reference Element for this character
 // ---------------------------------------------------------------------------
 
 async function sendSessionMessageAndParse(sessionId, message) {
-  await client.beta.sessions.events.send(sessionId, {
-    events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
-  });
-  const text = await streamAgentResponse(sessionId);
+  const text = await sendAndAwaitResponse(sessionId, message);
   try {
     return JSON.parse(extractJson(text));
   } catch {
