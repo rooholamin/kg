@@ -371,8 +371,12 @@ function SegmentBlock({ segment, postId, invalidate }) {
         <p className="text-xs italic line-clamp-3 flex-1">&ldquo;{segment.spokenPortion || '—'}&rdquo;</p>
         {segment.errorMessage && <p className="text-[10px] text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-1 line-clamp-2">{segment.errorMessage}</p>}
         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-0.5"><Clock className="size-2.5" />{formatMs(generationMs)}</span>
-          <span className="flex items-center gap-0.5"><DollarSign className="size-2.5" />{formatCost(segment.estimatedCost)}</span>
+          <span className="flex items-center gap-0.5" title="Rate-card estimate — Higgsfield exposes no real cost API">
+            <Clock className="size-2.5" />{formatMs(generationMs)}
+          </span>
+          <span className="flex items-center gap-0.5" title="Rate-card estimate — Higgsfield exposes no real cost API">
+            <DollarSign className="size-2.5" />{formatCost(segment.estimatedCost)} est.
+          </span>
         </div>
         {showNote && (
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for regeneration…" rows={2} className="text-[11px]" />
@@ -397,10 +401,12 @@ function SegmentBlock({ segment, postId, invalidate }) {
 // ---------------------------------------------------------------------------
 function SegmentTimeline({ post, invalidate }) {
   const [musicVolume, setMusicVolume] = useState([post.musicVolume ?? 0.3]);
+  const [preMuteVolume, setPreMuteVolume] = useState(post.musicVolume || 0.3);
   const [captionsEnabled, setCaptionsEnabled] = useState(post.captionsEnabled ?? true);
 
   useEffect(() => {
     setMusicVolume([post.musicVolume ?? 0.3]);
+    if (post.musicVolume) setPreMuteVolume(post.musicVolume);
     setCaptionsEnabled(post.captionsEnabled ?? true);
   }, [post.musicVolume, post.captionsEnabled]);
 
@@ -438,7 +444,15 @@ function SegmentTimeline({ post, invalidate }) {
       }
       return res.json();
     },
-    onSuccess: () => { toast.success('Video assembled'); invalidate(); },
+    onSuccess: (data) => {
+      const skipReason = data?.result?.captionsSkipReason;
+      if (skipReason) {
+        toast.success(`Video assembled (captions skipped: ${skipReason})`);
+      } else {
+        toast.success('Video assembled');
+      }
+      invalidate();
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -456,7 +470,9 @@ function SegmentTimeline({ post, invalidate }) {
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Clock className="size-3" />{formatMs(post.totalGenerationTimeMs)}</span>
-            <span className="flex items-center gap-1"><DollarSign className="size-3" />{formatCost(post.totalEstimatedCost)}</span>
+            <span className="flex items-center gap-1" title="Includes rate-card Higgsfield estimates — exact for music/captions">
+              <DollarSign className="size-3" />~{formatCost(post.totalEstimatedCost)}
+            </span>
           </div>
         </div>
         <CardDescription className="text-xs">
@@ -477,7 +493,24 @@ function SegmentTimeline({ post, invalidate }) {
             <Music className="size-3.5" /> Music lane
           </div>
           <div className="flex items-center gap-3">
-            {musicVolume[0] === 0 ? <VolumeX className="size-4 text-muted-foreground" /> : <Volume2 className="size-4 text-muted-foreground" />}
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground shrink-0"
+              onClick={() => {
+                if (musicVolume[0] > 0) {
+                  setPreMuteVolume(musicVolume[0]);
+                  setMusicVolume([0]);
+                  saveMusicMutation.mutate(0);
+                } else {
+                  const restored = preMuteVolume || 0.3;
+                  setMusicVolume([restored]);
+                  saveMusicMutation.mutate(restored);
+                }
+              }}
+              title={musicVolume[0] === 0 ? 'Unmute' : 'Mute'}
+            >
+              {musicVolume[0] === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+            </button>
             <Slider
               value={musicVolume}
               onValueChange={setMusicVolume}

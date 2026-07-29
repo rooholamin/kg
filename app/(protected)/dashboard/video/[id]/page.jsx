@@ -91,7 +91,7 @@ function VideoPostSummaryCard({ post, campaignId }) {
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="flex items-center gap-1"><Clock className="size-3" />{formatMs(post.totalGenerationTimeMs)}</span>
-          <span className="flex items-center gap-1"><DollarSign className="size-3" />{post.totalEstimatedCost ? `$${post.totalEstimatedCost.toFixed(2)}` : '—'}</span>
+          <span className="flex items-center gap-1"><DollarSign className="size-3" />{post.totalEstimatedCost ? `~$${post.totalEstimatedCost.toFixed(2)}` : '—'}</span>
           <span className="flex items-center gap-0.5 text-primary">View <ChevronRight className="size-3" /></span>
         </div>
       </CardContent>
@@ -189,6 +189,15 @@ export default function VideoCampaignDetailPage() {
     for (const p of posts) c[p.status] = (c[p.status] || 0) + 1;
     return c;
   }, [posts]);
+  const totals = useMemo(() => {
+    let cost = 0;
+    let timeMs = 0;
+    for (const p of posts) {
+      cost += p.totalEstimatedCost || 0;
+      timeMs += p.totalGenerationTimeMs || 0;
+    }
+    return { cost, timeMs };
+  }, [posts]);
 
   if (isLoading) {
     return (
@@ -214,6 +223,12 @@ export default function VideoCampaignDetailPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {posts.length} video{posts.length !== 1 ? 's' : ''} · {Object.entries(counts).map(([s, n]) => `${n} ${s.replace(/_/g, ' ')}`).join(', ') || 'no posts yet'}
+            {(totals.cost > 0 || totals.timeMs > 0) && (
+              <>
+                {' '}· <Clock className="inline size-3 -mt-0.5" /> {formatMs(totals.timeMs)}
+                {' '}· <DollarSign className="inline size-3 -mt-0.5" /> ~${totals.cost.toFixed(2)}
+              </>
+            )}
           </p>
         </div>
         <Badge>{campaign.status.replace(/_/g, ' ')}</Badge>

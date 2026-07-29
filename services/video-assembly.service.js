@@ -19,7 +19,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { composeMusic, estimateMusicCost } from './elevenlabs.service';
+import { composeMusic, calculateMusicCost } from './elevenlabs.service';
 import { addCaptions, calculateCaptionsCost } from './captions-ai.service';
 import { uploadBufferToSpaces } from './video-export.service';
 
@@ -188,24 +188,41 @@ export async function assembleVideo({ post, segments, orientation, musicConfig, 
       const mixedPath = path.join(workDir, 'mixed.mp4');
       await mixMusicUnderNarration(currentPath, musicPath, musicConfig.volume ?? 0.3, mixedPath);
       currentPath = mixedPath;
-      additionalCost += estimateMusicCost(totalDurationMs);
+      additionalCost += calculateMusicCost(totalDurationMs);
 
       musicUrl = await uploadBufferToSpaces(musicBuffer, `video/music/${post.id}-${Date.now()}.mp3`, 'audio/mpeg');
     }
 
+    // Captions is the LAST, most failure-prone step (external API, strict
+    // size/orientation limits) — a failure here should never lose the
+    // concat+music work already done. Falls back to the uncaptioned video
+    // rather than throwing, and always reports why captions weren't applied.
     let captionsApplied = false;
-    if (captionsConfig?.enabled && orientation === '9:16') {
-      const currentBuffer = await fs.readFile(currentPath);
-      if (currentBuffer.length <= 50 * 1024 * 1024) {
-        const { buffer: captionedBuffer } = await addCaptions({
-          videoBuffer: currentBuffer,
-          templateId: captionsConfig.templateId,
-        });
-        const captionedPath = path.join(workDir, 'captioned.mp4');
-        await fs.writeFile(captionedPath, captionedBuffer);
-        currentPath = captionedPath;
-        captionsApplied = true;
-        additionalCost += calculateCaptionsCost(totalDurationMs);
+    let captionsSkipReason = null;
+    if (!captionsConfig?.enabled) {
+      captionsSkipReason = 'disabled';
+    } else if (orientation !== '9:16') {
+      captionsSkipReason = `Captions.ai requires 9:16, this video is ${orientation}`;
+    } else if (!captionsConfig.templateId) {
+      captionsSkipReason = 'no caption template configured';
+    } else {
+      try {
+        const currentBuffer = await fs.readFile(currentPath);
+        if (currentBuffer.length > 50 * 1024 * 1024) {
+          captionsSkipReason = `video is ${(currentBuffer.length / 1024 / 1024).toFixed(1)}MB, over Captions.ai's 50MB limit`;
+        } else {
+          const { buffer: captionedBuffer } = await addCaptions({
+            videoBuffer: currentBuffer,
+            templateId: captionsConfig.templateId,
+          });
+          const captionedPath = path.join(workDir, 'captioned.mp4');
+          await fs.writeFile(captionedPath, captionedBuffer);
+          currentPath = captionedPath;
+          captionsApplied = true;
+          additionalCost += calculateCaptionsCost(totalDurationMs);
+        }
+      } catch (err) {
+        captionsSkipReason = `Captions.ai failed: ${err.message}`;
       }
     }
 
@@ -221,6 +238,7 @@ export async function assembleVideo({ post, segments, orientation, musicConfig, 
       musicUrl,
       duration: Math.round(totalDurationSeconds),
       captionsApplied,
+      captionsSkipReason: captionsApplied ? null : captionsSkipReason,
       additionalCost,
     };
   } finally {

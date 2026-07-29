@@ -1215,9 +1215,12 @@ model VideoSettings {
   // ElevenLabs Music — background bed mixed under the narration at assembly time
   musicEnabled                Boolean @default(true)
   musicVolume                 Float   @default(0.3)
-  // Captions.ai (Mirage API) — animated captions burned in at assembly time
+  elevenlabsMusicModelId      String  @default("music_v2")
+  // Captions.ai (Mirage API) — animated captions burned in at assembly time.
+  // Default is the real "Aries" template ID confirmed in testing — condensed
+  // enough to stay within frame margins (unlike "Magazine", which overflowed).
   captionsEnabled             Boolean @default(true)
-  captionsTemplateId          String?
+  captionsTemplateId          String? @default("ctpl_pUtOSPltDzsoYJgLBYmo")
   captionsTemplateName        String? @default("Aries")
   // Plan → Approve → Execute defaults (each overridable per-campaign/per-post)
   defaultTargetPlatform       VideoTargetPlatform @default(auto)

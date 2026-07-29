@@ -15,7 +15,7 @@ const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1';
 const MIN_DURATION_MS = 3000;
 const MAX_DURATION_MS = 600000;
 
-export async function composeMusic({ prompt, durationMs, modelId = 'music_v2' }) {
+export async function composeMusic({ prompt, durationMs, modelId }) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not configured');
   if (!prompt) throw new Error('composeMusic requires a prompt');
@@ -32,7 +32,7 @@ export async function composeMusic({ prompt, durationMs, modelId = 'music_v2' })
     body: JSON.stringify({
       prompt,
       music_length_ms: clampedDurationMs,
-      model_id: modelId,
+      model_id: modelId || 'music_v2',
       force_instrumental: true,
     }),
   });
@@ -46,14 +46,13 @@ export async function composeMusic({ prompt, durationMs, modelId = 'music_v2' })
   return { buffer, contentType: 'audio/mpeg', durationMs: clampedDurationMs };
 }
 
-/**
- * Rate-card estimate for a duration-matched instrumental track — ElevenLabs
- * Music pricing is credit-based per generation; approximated here at a flat
- * per-second rate derived from the published Creator-tier pricing. Never a
- * real billed value, just enough for the timeline UI's cost display.
- */
-const MUSIC_COST_PER_SECOND = 0.006; // ≈ $0.36/min approximation, refine as pricing data firms up
+// $0.15/minute (official published API rate — elevenlabs.io/pricing/api,
+// confirmed current as of this writing) — exactly calculable from the
+// generated track's real duration, not an estimate, unlike Higgsfield's
+// segment costs (see lib/video-cost.js).
+const MUSIC_PRICE_PER_MINUTE_USD = 0.15;
 
-export function estimateMusicCost(durationMs) {
-  return Math.round((durationMs / 1000) * MUSIC_COST_PER_SECOND * 100) / 100;
+export function calculateMusicCost(durationMs) {
+  const minutes = durationMs / 60000;
+  return Math.round(minutes * MUSIC_PRICE_PER_MINUTE_USD * 100) / 100;
 }

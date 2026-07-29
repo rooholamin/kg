@@ -355,17 +355,21 @@ export async function reassemblePost(postId) {
 
   try {
     const captionsEnabled = post.captionsEnabled ?? settings.captionsEnabled;
+    const effectiveVolume = post.musicVolume ?? settings.musicVolume;
+    // Skip generating music entirely if it would just be mixed at 0 volume —
+    // no reason to spend a real ElevenLabs credit on an inaudible track.
+    const musicEnabled = settings.musicEnabled && effectiveVolume > 0;
 
-    const { videoUrl, musicUrl, duration, captionsApplied, additionalCost } = await assembleVideo({
+    const { videoUrl, musicUrl, duration, captionsApplied, captionsSkipReason, additionalCost } = await assembleVideo({
       post,
       segments: post.segments,
       orientation: config.orientation,
-      musicConfig: settings.musicEnabled
+      musicConfig: musicEnabled
         ? {
             enabled: true,
-            volume: post.musicVolume ?? settings.musicVolume,
+            volume: effectiveVolume,
             prompt: musicPromptFor(post.article, config),
-            modelId: 'music_v2',
+            modelId: settings.elevenlabsMusicModelId,
           }
         : { enabled: false },
       captionsConfig: captionsEnabled
@@ -395,7 +399,11 @@ export async function reassemblePost(postId) {
       },
     });
 
-    await logDone(logId, `Assembled — ${duration}s${captionsApplied ? ', captions applied' : ''}`, { videoUrl, musicUrl, duration, captionsApplied });
+    await logDone(
+      logId,
+      `Assembled — ${duration}s${captionsApplied ? ', captions applied' : captionsEnabled ? ` (captions skipped: ${captionsSkipReason || 'unknown'})` : ''}`,
+      { videoUrl, musicUrl, duration, captionsApplied, captionsSkipReason },
+    );
 
     if (staleUrls.length) {
       await Promise.allSettled(staleUrls.map(deleteFromS3));
@@ -405,7 +413,7 @@ export async function reassemblePost(postId) {
       await schedulePost(postId);
     }
 
-    return { videoUrl, musicUrl, duration, captionsApplied };
+    return { videoUrl, musicUrl, duration, captionsApplied, captionsSkipReason };
   } catch (err) {
     await logError(logId, err.message);
     await prisma.videoPost.update({ where: { id: postId }, data: { errorMessage: err.message } });
