@@ -1,10 +1,12 @@
-# Example Plans (Narration + Segment Breakdown)
+# Example Plans (Narration + Segment Breakdown + Look)
 
-Reference sequences to adapt, not templates to fill in blindly — always ground the actual beats in the article being covered. Every segment below carries `generate_audio: true` — avatar segments render on-camera dialogue, b-roll segments render off-screen narration continuing the exact same script. No segment is ever silent.
+Reference sequences from a Planner Agent's typical output — useful context for how a plan is shaped, even though the Director Agent doesn't write these itself. Every segment carries `generate_audio: true` — avatar segments render on-camera dialogue, b-roll segments render off-screen narration continuing the exact same script. No segment is ever silent.
 
-**IMPORTANT — `<<<elementId>>>` below is illustrative shorthand only, for these written examples.** It stands for "insert the character's real Reference Element ID value here." When you actually write a `generate_image`/`generate_video` prompt during PHASE: execute, you MUST substitute the real ID value from your brief (e.g. `<<<fa81a933-0850-47ab-bd6b-f994283eb97e>>>`) — never copy the literal text `<<<elementId>>>` into an actual API call. Doing so has caused a real production failure: Higgsfield receives no reference at all and generates a random, wrong-looking person. See SKILL.md Golden Rule 1.
+**IMPORTANT — `<<<elementId>>>` below is illustrative shorthand only, for these written examples.** It stands for "insert the character's real Reference Element ID value here." When you actually write a `generate_image`/`generate_video` prompt, you MUST substitute the real ID value from your brief (e.g. `<<<fa81a933-0850-47ab-bd6b-f994283eb97e>>>`) — never copy the literal text `<<<elementId>>>` into an actual API call. Doing so has caused a real production failure: Higgsfield receives no reference at all and generates a random, wrong-looking person. See SKILL.md Golden Rule 1.
 
 ## Explainer style (~24s, 3 segments — article: "Types of brick for a garden wall")
+
+characterLook: warm cream cable-knit sweater, hair down in loose natural waves, minimal gold jewelry.
 
 Full continuous narration (written first, then split below):
 > "Not all brick is the same — the type you pick changes how your wall ages. Red clay brick is the classic choice: fired hot, it gets harder and more weather-resistant over decades. Concrete brick costs less up front but chips more easily in a hard freeze. If you want texture with a story, reclaimed brick brings both — just budget more time for sourcing it."
@@ -29,6 +31,8 @@ Segment 4 — order 4, hasCharacter: true, ~8s
 
 ## DIY / tutorial style (~30s, 4 segments — article: "Building a backyard fire pit in a weekend")
 
+characterLook: heather-grey quarter-zip pullover, sleeves pushed up, hair pulled back in a low ponytail, no jewelry — practical/hands-on styling.
+
 Full continuous narration:
 > "You can build a real backyard fire pit in a weekend, no mason required. Start with a compacted gravel base — it's what keeps the whole ring from shifting after the first frost. Stack your fire-rated block dry first to check the fit before you ever touch mortar. Once it's mortared and cured, you've got a fire pit that'll outlast the patio furniture around it."
 
@@ -51,6 +55,8 @@ Segment 4 — order 4, hasCharacter: true, ~9s
 ```
 
 ## Listicle style (~28s, 4 segments — article: "3 cooling paint colors for a south-facing room")
+
+characterLook: soft dove-grey linen shirt, hair down straight, light natural makeup.
 
 Full continuous narration:
 > "Three paint colors that actually cool down a south-facing room. First: a chalky pale blue — it reads calm and pulls the eye away from the heat of direct sun. Second: soft sage green, close enough to blue-green to feel cooler than it measures on a swatch. Third, and the boldest of the three: a true dove grey with a blue undertone, especially at midday. Any of these will make a hot room feel a few degrees calmer."
@@ -78,6 +84,8 @@ Segment 5 — order 5, hasCharacter: true, ~5s
 ```
 
 ## Testimonial style (~20s, 2 segments — avatar-forward, minimal b-roll)
+
+characterLook: tailored charcoal blazer over a cream blouse, hair in a polished half-up style — slightly more formal, testimonial-appropriate.
 
 Full continuous narration:
 > "I get asked constantly whether it's worth resealing a deck every year — honestly, it depends more on sun exposure than most people think. A deck that gets full afternoon sun needs it annually; one that's mostly shaded can often go two years without visible damage."

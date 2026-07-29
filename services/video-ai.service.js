@@ -147,13 +147,15 @@ Based on your editorial memory of what has already received a video, select whic
   return approvedArticleIds;
 }
 
-function buildBriefHeader({ article, section, environment, config, directorNote, promptLearnings }) {
+// ---------------------------------------------------------------------------
+// Brief builders — split in two because the Planner Agent and Director Agent
+// are now two separate agent definitions with two separate sessions. The
+// Planner never touches Higgsfield, so it never needs the Reference Element
+// ID or content-filter learnings; the Director never needs the article body,
+// since the Planner already turned it into narration.
+// ---------------------------------------------------------------------------
+function buildPlanBrief({ article, section, environment, config }) {
   const bodyText = extractPlainText(article.content);
-  const learningsBlock = promptLearnings?.length
-    ? `\nRECENT CONTENT-FILTER LEARNINGS (avoid these patterns):\n${promptLearnings
-        .map((l) => `- [${l.failureType}] "${l.triggerPhrase}"${l.safeRewrite ? ` → use: "${l.safeRewrite}"` : ''}`)
-        .join('\n')}`
-    : '';
 
   return `ARTICLE TITLE: ${article.title}
 ARTICLE SUMMARY: ${article.summary || ''}
@@ -164,9 +166,6 @@ CHARACTER:
 - Name: ${section.characterName || ''}
 - Biography/Persona: ${section.characterPersona || section.characterBiography || ''}
 - Tone: ${section.characterTone || ''}
-- Outfit: ${section.videoOutfitDescription || ''}
-- Reference Element ID (a real trained person): ${section.videoCharacterId}
-  Wherever this character should appear or be referenced, write this EXACT ID VALUE wrapped in triple angle brackets directly inside the generate_image/generate_video prompt text — i.e. literally type <<<${section.videoCharacterId}>>> (substituting the real ID above). Do NOT write the literal text "<<<elementId>>>" — "elementId" is just this field's label in these instructions, not something to copy verbatim. Writing the label instead of the real ID means Higgsfield receives no reference at all and generates a random person.
 
 ENVIRONMENT: ${environment?.name || 'KG Media Loft'}
 ${environment?.textDescriptor || ''}
@@ -175,53 +174,76 @@ CONFIG:
 - platform: ${config.platform}
 - style: ${config.style}
 - targetShotCount: ${config.shotCount ?? 'auto'}
-- orientation: ${config.orientation} (pass this EXACT value as aspect_ratio on every generate_image/generate_video call)
-${directorNote ? `\nDIRECTOR NOTE: ${directorNote}` : ''}${learningsBlock}`;
+- orientation: ${config.orientation}`;
+}
+
+function buildExecuteBrief({ section, environment, config, promptLearnings }) {
+  const learningsBlock = promptLearnings?.length
+    ? `\nRECENT CONTENT-FILTER LEARNINGS (avoid these patterns):\n${promptLearnings
+        .map((l) => `- [${l.failureType}] "${l.triggerPhrase}"${l.safeRewrite ? ` → use: "${l.safeRewrite}"` : ''}`)
+        .join('\n')}`
+    : '';
+
+  return `CHARACTER:
+- Name: ${section.characterName || ''}
+- Biography/Persona: ${section.characterPersona || section.characterBiography || ''}
+- Tone: ${section.characterTone || ''}
+- Reference Element ID (a real trained person): ${section.videoCharacterId}
+  Wherever this character should appear or be referenced, write this EXACT ID VALUE wrapped in triple angle brackets directly inside the generate_image/generate_video prompt text — i.e. literally type <<<${section.videoCharacterId}>>> (substituting the real ID above). Do NOT write the literal text "<<<elementId>>>" — "elementId" is just this field's label in these instructions, not something to copy verbatim. Writing the label instead of the real ID means Higgsfield receives no reference at all and generates a random person.
+
+ENVIRONMENT: ${environment?.name || 'KG Media Loft'}
+${environment?.textDescriptor || ''}
+
+CONFIG:
+- orientation: ${config.orientation} (pass this EXACT value as aspect_ratio on every generate_image/generate_video call)${learningsBlock}`;
 }
 
 // ---------------------------------------------------------------------------
-// planVideoPost — Phase 1: text-only draft, no Higgsfield spend. Opens (or
-// reuses) the director agent session for this post and asks it to write the
-// full continuous narration + segment breakdown.
+// planVideoPost — Phase 1: text-only draft, no Higgsfield spend at all (the
+// Planner Agent has zero generation tools). Opens (or reuses) the planner
+// session for this post. Two modes:
+//   - MODE: initial  — no existingPlan given yet, write a complete fresh plan.
+//   - MODE: revision — existingPlan given; a TARGETED EDIT of only what the
+//     directorNote asks for, not a fresh rewrite, unless the note says so.
 // ---------------------------------------------------------------------------
-export async function planVideoPost({ campaignId, postId, article, section, environment, config, directorNote, settings, promptLearnings }) {
-  if (!settings?.directorAgentId || !settings?.directorEnvironmentId) {
+export async function planVideoPost({ campaignId, postId, article, section, environment, config, existingPlan, directorNote, settings }) {
+  if (!settings?.plannerAgentId || !settings?.plannerEnvironmentId) {
     throw new Error(
-      'Video Director Agent IDs not configured. Set directorAgentId and directorEnvironmentId in Video Settings.',
+      'Video Planner Agent IDs not configured. Set plannerAgentId and plannerEnvironmentId in Video Settings.',
     );
-  }
-  if (!settings?.higgsfieldVaultId) {
-    throw new Error('Higgsfield Vault ID not configured in Video Settings — required to authenticate the director agent\'s MCP calls.');
   }
   if (!section?.videoCharacterId) {
     throw new Error(`Section "${section?.name}" has no Higgsfield Reference Element yet — create one from Video → Characters first.`);
   }
 
-  const freshPost = await prisma.videoPost.findUnique({ where: { id: postId }, select: { directorSessionId: true } });
-  let sessionId = freshPost?.directorSessionId;
-  const isFirstCall = !sessionId;
+  const freshPost = await prisma.videoPost.findUnique({ where: { id: postId }, select: { planSessionId: true } });
+  let sessionId = freshPost?.planSessionId;
+  const needsBrief = !sessionId;
 
-  if (isFirstCall) {
-    const sessionLogId = await logStart(campaignId, 'director_session', `Creating director agent session for "${article.title}"`, null, postId);
+  if (needsBrief) {
+    const sessionLogId = await logStart(campaignId, 'planner_session', `Creating planner agent session for "${article.title}"`, null, postId);
     const session = await client.beta.sessions.create({
-      agent: settings.directorAgentId,
-      environment_id: settings.directorEnvironmentId,
-      vault_ids: [settings.higgsfieldVaultId],
+      agent: settings.plannerAgentId,
+      environment_id: settings.plannerEnvironmentId,
+      // No vault_ids and no MCP server on this agent at all — the Planner
+      // can never spend a real generation credit, by construction, not just instruction.
     });
     sessionId = session.id;
     await logDone(sessionLogId, `Session created: ${sessionId}`, { sessionId });
-    await prisma.videoPost.update({ where: { id: postId }, data: { directorSessionId: sessionId } });
+    await prisma.videoPost.update({ where: { id: postId }, data: { planSessionId: sessionId } });
   } else {
-    await logStart(campaignId, 'director_session', `Reusing director session for "${article.title}" (re-plan)`, { sessionId }, postId);
+    await logStart(campaignId, 'planner_session', `Reusing planner session for "${article.title}" (re-plan)`, { sessionId }, postId);
   }
 
-  const message = isFirstCall
-    ? `PHASE: plan\n\n${buildBriefHeader({ article, section, environment, config, directorNote, promptLearnings })}
+  const mode = existingPlan ? 'revision' : 'initial';
+  const briefBlock = needsBrief ? `${buildPlanBrief({ article, section, environment, config })}\n\n` : '';
+  const modeBlock = mode === 'revision'
+    ? `EXISTING PLAN:\n${JSON.stringify(existingPlan, null, 2)}\n\nDIRECTOR NOTE: ${directorNote || '(no specific note given — just double-check everything still reads well)'}\n\nThis is a targeted edit: change ONLY what the note asks for and leave everything else exactly as it was, unless the note explicitly asks you to start over or rewrite everything.`
+    : `${directorNote ? `DIRECTOR NOTE: ${directorNote}\n\n` : ''}Write the full plan now.`;
 
-Write the full continuous narration script and the segment breakdown now. Do not call any generation tool yet. Respond with ONLY the PLAN OUTPUT FORMAT JSON described in your instructions.`
-    : `PHASE: plan\n\n${directorNote ? `DIRECTOR NOTE: ${directorNote}\n\n` : ''}Please write a fresh narration script and segment breakdown (re-plan). Do not call any generation tool yet. Respond with ONLY the PLAN OUTPUT FORMAT JSON.`;
+  const message = `PHASE: plan\n\nMODE: ${mode}\n\n${briefBlock}${modeBlock}\n\nRespond with ONLY the OUTPUT FORMAT JSON described in your instructions.`;
 
-  const aiLogId = await logStart(campaignId, 'director_plan_send', `${isFirstCall ? 'Drafting' : 'Redrafting'} plan for "${article.title}"`, { message, sessionId, isFirstCall }, postId);
+  const aiLogId = await logStart(campaignId, 'planner_send', `${mode === 'initial' ? 'Drafting' : 'Revising'} plan for "${article.title}"`, { message, sessionId, mode }, postId);
 
   let responseText;
   try {
@@ -240,21 +262,47 @@ Write the full continuous narration script and the segment breakdown now. Do not
     return { plan, sessionId };
   } catch {
     await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
-    throw new Error(`Director agent returned invalid plan JSON: ${responseText.slice(0, 200)}`);
+    throw new Error(`Planner agent returned invalid plan JSON: ${responseText.slice(0, 200)}`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// executeVideoPost — Phase 3: the plan was approved (optionally edited).
-// Sends the approved plan back to the SAME session and tells the agent to
-// direct the real shoot. Creates one VideoSegment row per planned segment
-// up front (status "generating"), then updates each row with the agent's
-// final per-segment result (or failure) once the response comes back.
+// executeVideoPost — Phase 3: the plan was approved. Always opens a FRESH
+// Director Agent session (a different agent than the Planner, so it can't
+// share the Planner's session) and resends the brief + approved plan as the
+// first message. Creates one VideoSegment row per planned segment up front
+// (status "generating"), then updates each row with the agent's final
+// per-segment result (or failure) once the response comes back.
+//
+// Always starting a brand-new session here (rather than reusing an old
+// directorSessionId from a previous execute) is deliberate: it guarantees a
+// clean anchor still matching the CURRENT approved plan/characterLook, which
+// matters if a post is re-approved after being revised post-execution.
+// regenerateVideoSegment is the one that reuses a session, since it's
+// specifically about staying consistent with an already-executed video.
 // ---------------------------------------------------------------------------
-export async function executeVideoPost({ campaignId, postId, article, plan, directorNote, settings }) {
-  const post = await prisma.videoPost.findUnique({ where: { id: postId }, select: { directorSessionId: true } });
-  const sessionId = post?.directorSessionId;
-  if (!sessionId) throw new Error('Cannot execute a plan with no director session — run planVideoPost first.');
+export async function executeVideoPost({ campaignId, postId, article, section, environment, config, plan, directorNote, settings, promptLearnings }) {
+  if (!settings?.directorAgentId || !settings?.directorEnvironmentId) {
+    throw new Error(
+      'Video Director Agent IDs not configured. Set directorAgentId and directorEnvironmentId in Video Settings.',
+    );
+  }
+  if (!settings?.higgsfieldVaultId) {
+    throw new Error('Higgsfield Vault ID not configured in Video Settings — required to authenticate the director agent\'s MCP calls.');
+  }
+  if (!section?.videoCharacterId) {
+    throw new Error(`Section "${section?.name}" has no Higgsfield Reference Element yet — create one from Video → Characters first.`);
+  }
+
+  const sessionLogId = await logStart(campaignId, 'director_session', `Creating director agent session for "${article.title}"`, null, postId);
+  const session = await client.beta.sessions.create({
+    agent: settings.directorAgentId,
+    environment_id: settings.directorEnvironmentId,
+    vault_ids: [settings.higgsfieldVaultId],
+  });
+  const sessionId = session.id;
+  await logDone(sessionLogId, `Session created: ${sessionId}`, { sessionId });
+  await prisma.videoPost.update({ where: { id: postId }, data: { directorSessionId: sessionId } });
 
   const plannedSegments = plan.segments || [];
   const startedAt = new Date();
@@ -275,6 +323,7 @@ export async function executeVideoPost({ campaignId, postId, article, plan, dire
   const planText = JSON.stringify(
     {
       narration: plan.narration,
+      characterLook: plan.characterLook,
       segments: plannedSegments.map((s) => ({
         order: s.order,
         hasCharacter: s.hasCharacter,
@@ -287,11 +336,9 @@ export async function executeVideoPost({ campaignId, postId, article, plan, dire
     2,
   );
 
-  const message = `PHASE: execute\n\nThe plan below was approved${directorNote ? ' with this note: ' + directorNote : ''}. Treat any edits here as authoritative over what you originally drafted.
+  const briefText = buildExecuteBrief({ section, environment, config, promptLearnings });
 
-APPROVED PLAN:
-${planText}
-
+  const message = `PHASE: execute\n\n${briefText}\n\nAPPROVED PLAN:\n${planText}\n${directorNote ? `\nDIRECTOR NOTE: ${directorNote}\n` : ''}
 Direct the full shoot now — generate_image + generate_video per segment, in order, with native audio and the exact configured orientation on every call. Respond with ONLY the EXECUTE OUTPUT FORMAT JSON described in your instructions.`;
 
   const aiLogId = await logStart(campaignId, 'director_execute_send', `Executing approved plan for "${article.title}" (${plannedSegments.length} segments)`, { message, sessionId }, postId);
@@ -345,13 +392,15 @@ Direct the full shoot now — generate_image + generate_video per segment, in or
 
 // ---------------------------------------------------------------------------
 // regenerateVideoSegment — redoes exactly one segment, reusing the post's
-// existing director session so the agent retains full context of the rest
-// of the video, without touching any other VideoSegment row.
+// existing DIRECTOR session (from executeVideoPost) so the agent retains
+// full context — including the character anchor still's job id — of the
+// rest of the already-executed video, without touching any other
+// VideoSegment row.
 // ---------------------------------------------------------------------------
 export async function regenerateVideoSegment({ postId, segment, note, settings }) {
   const post = await prisma.videoPost.findUnique({ where: { id: postId }, select: { directorSessionId: true, campaignId: true } });
   const sessionId = post?.directorSessionId;
-  if (!sessionId) throw new Error('Cannot regenerate a segment with no director session.');
+  if (!sessionId) throw new Error('Cannot regenerate a segment with no director session — run/approve execution first.');
 
   const startedAt = new Date();
   await prisma.videoSegment.update({

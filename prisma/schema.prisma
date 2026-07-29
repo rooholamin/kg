@@ -1070,9 +1070,15 @@ model VideoPost {
   campaignId String
   articleId  String
   status     VideoPostStatus @default(pending)
-  // Video Director Agent session — one per post, reused across Phase 1 (plan),
-  // Phase 3 (execute), and any later single-segment regeneration, so the agent
-  // always retains full context of the rest of the video.
+  // Video Planner Agent session — Phase 1 only (drafts/redrafts the plan; a
+  // tool-less agent, can never spend real generation credits). Separate from
+  // directorSessionId below since these are two different agent definitions
+  // and a session is pinned to one specific agent for its whole lifetime.
+  planSessionId String?
+  // Video Director Agent session — created once Phase 3 (execute) starts,
+  // reused for any later single-segment regeneration in PHASE:
+  // regenerate_segment, so the agent always retains full context (including
+  // the character anchor still's job id) of the rest of the video.
   directorSessionId String?
   // Optional one-off human creative direction (mirrors the `instruction` param
   // on regeneratePostContent), applied on the next regenerate/re-plan
@@ -1193,10 +1199,20 @@ model VideoSettings {
   // Video Approval Agent — selects which articles get a video this cycle
   approvalAgentId       String?
   approvalEnvironmentId String?
-  // Video Director Agent — one session per post, writes the script + directs the shoot
-  // via Higgsfield's hosted MCP server (mcp.higgsfield.ai) rather than custom tools —
-  // this is what actually unlocks Seedance 2.0 / Kling 3.0 / native audio, which the
-  // Developer/Partner REST API (services/higgsfield.service.js) does not expose.
+  // Video Planner Agent — Phase 1 only. Text-only, no Higgsfield tools
+  // enabled at all, so planning can never spend a real generation credit —
+  // a structural guarantee, not just a prompt instruction. Drafts/redrafts
+  // the narration + segment breakdown + wardrobe/look decision.
+  plannerAgentId       String?
+  plannerEnvironmentId String?
+  // Video Director Agent — Phase 3 (execute) + single-segment regeneration.
+  // Directs the actual shoot via Higgsfield's hosted MCP server
+  // (mcp.higgsfield.ai) rather than custom tools — this is what actually
+  // unlocks Seedance 2.0 / native audio, which the Developer/Partner REST
+  // API (services/higgsfield.service.js) does not expose. Separate from the
+  // Planner Agent above — a session is pinned to one agent for its whole
+  // lifetime, so these can't share a session even though they cooperate on
+  // the same video.
   directorAgentId       String?
   directorEnvironmentId String?
   // Character Admin Agent — one-off sessions only, creates/updates the Higgsfield

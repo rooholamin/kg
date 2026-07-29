@@ -192,18 +192,28 @@ function VideoConfigCard({ post, invalidate }) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 1 -> 2: Plan review/approval screen — shown whenever the post has a
-// draft plan and hasn't been approved yet (or the plan failed and needs
-// another draft). Narration + segment breakdown are editable before approval.
+// Phase 1 -> 2: Plan review/approval screen. Never hidden once a plan
+// exists (even after execution) — shows EVERYTHING the Planner Agent
+// decided: narration, character look, segment breakdown, genre, caption,
+// and hashtags. Re-plan is a targeted edit by default (only what the note
+// asks for changes) unless the note explicitly asks for a full rewrite.
 // ---------------------------------------------------------------------------
-function PlanReviewCard({ post, invalidate }) {
+function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   const [narration, setNarration] = useState(post.plan?.narration || post.narration || '');
+  const [characterLook, setCharacterLook] = useState(post.plan?.characterLook || '');
   const [segments, setSegments] = useState(post.plan?.segments || []);
+  const [genre, setGenre] = useState(post.plan?.genre || '');
+  const [captionText, setCaptionText] = useState(post.plan?.text || '');
+  const [hashtagsText, setHashtagsText] = useState((post.plan?.hashtags || []).join(' '));
   const [note, setNote] = useState(post.directorNote || '');
 
   useEffect(() => {
     setNarration(post.plan?.narration || post.narration || '');
+    setCharacterLook(post.plan?.characterLook || '');
     setSegments(post.plan?.segments || []);
+    setGenre(post.plan?.genre || '');
+    setCaptionText(post.plan?.text || '');
+    setHashtagsText((post.plan?.hashtags || []).join(' '));
   }, [post.plan]);
 
   const rePlanMutation = useMutation({
@@ -219,17 +229,18 @@ function PlanReviewCard({ post, invalidate }) {
       }
       return res.json();
     },
-    onSuccess: () => { toast.success('Plan re-drafted'); invalidate(); },
+    onSuccess: () => { toast.success('Plan revised — targeted edit applied (full rewrite only if your note asked for one)'); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
 
   const approveMutation = useMutation({
     mutationFn: async () => {
+      const hashtags = hashtagsText.split(/\s+/).map((t) => t.trim()).filter(Boolean);
       const res = await apiFetch(`/api/video/posts/${post.id}/approve-plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          plan: { ...post.plan, narration, segments },
+          plan: { ...post.plan, narration, characterLook, segments, genre, text: captionText, hashtags },
           directorNote: note || undefined,
         }),
       });
@@ -242,6 +253,16 @@ function PlanReviewCard({ post, invalidate }) {
     onSuccess: () => { toast.success('Plan approved — generating segments now'); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
+
+  function handleApproveClick() {
+    if (alreadyExecuted) {
+      const ok = window.confirm(
+        'This post already has generated segments. Approving this plan will start a brand-new shoot — every existing segment will be regenerated from scratch (real Higgsfield spend). Continue?',
+      );
+      if (!ok) return;
+    }
+    approveMutation.mutate();
+  }
 
   function updateSegment(index, field, value) {
     setSegments((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
@@ -259,7 +280,7 @@ function PlanReviewCard({ post, invalidate }) {
             Plan Review
           </CardTitle>
           <CardDescription className="text-xs">
-            Review and edit narration and segments before any Higgsfield generation happens.
+            Everything the Planner Agent decided — review and edit before (or after) generation.
           </CardDescription>
         </CardHeading>
         <CardToolbar>
@@ -275,9 +296,29 @@ function PlanReviewCard({ post, invalidate }) {
           <p className="text-sm text-muted-foreground text-center py-6">No plan yet.</p>
         ) : (
           <>
+            {alreadyExecuted && (
+              <Alert variant="warning" appearance="light">
+                <AlertIcon><AlertCircle className="size-4" /></AlertIcon>
+                <AlertTitle className="text-xs">
+                  Segments already exist for this post. Editing and re-approving the plan below will regenerate them from scratch.
+                </AlertTitle>
+              </Alert>
+            )}
+
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Full continuous narration</Label>
               <Textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={4} className="text-sm" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Character look (wardrobe/hair/styling for this shoot)</Label>
+              <Textarea
+                value={characterLook}
+                onChange={(e) => setCharacterLook(e.target.value)}
+                placeholder="e.g. cream cashmere sweater, hair down in soft waves, minimal jewelry…"
+                rows={2}
+                className="text-sm"
+              />
             </div>
 
             <div className="space-y-2">
@@ -317,10 +358,26 @@ function PlanReviewCard({ post, invalidate }) {
               </div>
             </div>
 
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Genre</Label>
+                <Input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="epic" className="text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Hashtags (space-separated)</Label>
+                <Input value={hashtagsText} onChange={(e) => setHashtagsText(e.target.value)} placeholder="#tag1 #tag2" className="text-sm" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Caption</Label>
+              <Textarea value={captionText} onChange={(e) => setCaptionText(e.target.value)} rows={2} className="text-sm" />
+            </div>
+
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Director note for the next re-plan or approval (optional)…"
+              placeholder="Note for the next re-plan (targeted edit — e.g. &quot;make her clothes more casual&quot;) or approval…"
               rows={2}
               className="text-xs"
             />
@@ -330,9 +387,9 @@ function PlanReviewCard({ post, invalidate }) {
                 {rePlanMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                 Re-plan
               </Button>
-              <Button size="sm" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending || isApproving} className="flex-1">
+              <Button size="sm" onClick={handleApproveClick} disabled={approveMutation.isPending || isApproving} className="flex-1">
                 {approveMutation.isPending || isApproving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-                {isApproving ? 'Generating…' : 'Approve & Generate'}
+                {isApproving ? 'Generating…' : alreadyExecuted ? 'Re-approve & Regenerate' : 'Approve & Generate'}
               </Button>
             </div>
           </>
@@ -713,8 +770,12 @@ export default function VideoPostDetailPage() {
     return <Container><p className="text-sm text-muted-foreground py-12 text-center">Post not found.</p></Container>;
   }
 
-  const showPlanReview = ['pending', 'planning', 'plan_ready', 'approved'].includes(post.status) && (post.plan || post.status === 'planning');
+  // Plan review is never hidden once a plan exists — even after execution,
+  // you might not like the result and want to look back at (or redraft) the
+  // plan that produced it, without losing the already-generated segments.
+  const showPlanReview = Boolean(post.plan) || post.status === 'planning';
   const showTimeline = (post.segments || []).length > 0;
+  const alreadyExecuted = showTimeline;
   const badgeCfg = STATUS_BADGE[post.status] ?? { variant: 'secondary', appearance: 'light' };
 
   return (
@@ -750,7 +811,7 @@ export default function VideoPostDetailPage() {
         {showPlanReview && (
           <>
             <VideoConfigCard post={post} invalidate={invalidate} />
-            <PlanReviewCard post={post} invalidate={invalidate} />
+            <PlanReviewCard post={post} invalidate={invalidate} alreadyExecuted={alreadyExecuted} />
           </>
         )}
 
@@ -817,7 +878,7 @@ export default function VideoPostDetailPage() {
               <CollapsibleTrigger asChild>
                 <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <ChevronDown className={`size-3.5 transition-transform ${showLog ? 'rotate-180' : ''}`} />
-                  Session: {post.directorSessionId ? post.directorSessionId.slice(0, 12) + '…' : 'not started'}
+                  Planner: {post.planSessionId ? post.planSessionId.slice(0, 12) + '…' : 'not started'} · Director: {post.directorSessionId ? post.directorSessionId.slice(0, 12) + '…' : 'not started'}
                 </button>
               </CollapsibleTrigger>
             </Collapsible>

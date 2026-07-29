@@ -35,6 +35,11 @@ const APPROVAL_AGENT_FIELDS = [
   { key: 'approvalEnvironmentId', label: 'Environment ID' },
 ];
 
+const PLANNER_AGENT_FIELDS = [
+  { key: 'plannerAgentId', label: 'Planner Agent ID' },
+  { key: 'plannerEnvironmentId', label: 'Environment ID' },
+];
+
 const DIRECTOR_AGENT_FIELDS = [
   { key: 'directorAgentId', label: 'Director Agent ID' },
   { key: 'directorEnvironmentId', label: 'Environment ID' },
@@ -437,14 +442,17 @@ export default function VideoSettingsPage() {
               Anthropic Managed Agents
             </CardTitle>
             <CardDescription className="text-xs">
-              Create all three agents in the Anthropic Console (see <code>video-approval-agent.yaml</code>,{' '}
-              <code>video-director-agent.yaml</code>, and <code>video-character-admin-agent.yaml</code> at the
-              project root) and paste their IDs here. The <strong>Approval Agent</strong> runs once per
-              campaign; the <strong>Director Agent</strong> opens one session per video and directs the
-              Higgsfield shoot itself via Higgsfield&apos;s hosted MCP server; the{' '}
-              <strong>Character Admin Agent</strong> is an admin-only, one-off session that creates a
-              Higgsfield Reference Element per section (Video → Characters). The Director and Character Admin
-              agents both need the <strong>Higgsfield Vault ID</strong> below to authenticate MCP calls.
+              Create all four agents in the Anthropic Console (see <code>video-approval-agent.yaml</code>,{' '}
+              <code>video-director-plan-agent.yaml</code>, <code>video-director-agent.yaml</code>, and{' '}
+              <code>video-character-admin-agent.yaml</code> at the project root) and paste their IDs here. The{' '}
+              <strong>Approval Agent</strong> runs once per campaign; the <strong>Planner Agent</strong> drafts
+              and revises the narration/segments/wardrobe in text only — it has no Higgsfield tools at all, so
+              planning can never spend a real generation credit; the <strong>Director Agent</strong> opens a
+              fresh session per approved plan and directs the Higgsfield shoot itself via Higgsfield&apos;s
+              hosted MCP server; the <strong>Character Admin Agent</strong> is an admin-only, one-off session
+              that creates a Higgsfield Reference Element per section (Video → Characters). The Director and
+              Character Admin agents both need the <strong>Higgsfield Vault ID</strong> below to authenticate
+              MCP calls — the Planner Agent does not.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -457,6 +465,16 @@ export default function VideoSettingsPage() {
 
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Approval Agent</p>
             {APPROVAL_AGENT_FIELDS.map(({ key, label }) => (
+              <div key={key} className="grid grid-cols-2 gap-3 items-center">
+                <Label>{label}</Label>
+                <Input type={showPasswords ? 'text' : 'password'} value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} placeholder="ant_xxxxxxxx" />
+              </div>
+            ))}
+
+            <Separator />
+
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Planner Agent</p>
+            {PLANNER_AGENT_FIELDS.map(({ key, label }) => (
               <div key={key} className="grid grid-cols-2 gap-3 items-center">
                 <Label>{label}</Label>
                 <Input type={showPasswords ? 'text' : 'password'} value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} placeholder="ant_xxxxxxxx" />

@@ -148,7 +148,6 @@ export async function runVideoPlanning(campaignId) {
   const settings = await getVideoSettings();
   const campaign = await prisma.videoCampaign.findUnique({ where: { id: campaignId } });
   const environment = await getVideoEnvironment();
-  const promptLearnings = await getRecentPromptLearnings();
 
   let succeeded = 0;
   for (const post of posts) {
@@ -169,9 +168,9 @@ export async function runVideoPlanning(campaignId) {
         section,
         environment,
         config,
+        existingPlan: post.plan,
         directorNote: post.directorNote,
         settings,
-        promptLearnings,
       });
 
       await prisma.videoPost.update({
@@ -212,7 +211,6 @@ export async function rePlanPost(postId, directorNote) {
   const settings = await getVideoSettings();
   const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
   const environment = await getVideoEnvironment();
-  const promptLearnings = await getRecentPromptLearnings();
   const section = post.article.category?.section;
   if (!section?.videoCharacterId) throw new Error('Article\'s section has no trained video character');
 
@@ -227,9 +225,9 @@ export async function rePlanPost(postId, directorNote) {
       section,
       environment,
       config,
+      existingPlan: post.plan,
       directorNote: directorNote || post.directorNote || undefined,
       settings,
-      promptLearnings,
     });
 
     await prisma.videoPost.update({
@@ -258,10 +256,19 @@ export async function rePlanPost(postId, directorNote) {
 export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
-    include: { article: true },
+    include: { article: { include: { category: { include: { section: true } } } } },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
   if (!post.plan) throw new Error('Post has no draft plan to approve — run planning first.');
+
+  const section = post.article.category?.section;
+  if (!section?.videoCharacterId) throw new Error('Article\'s section has no trained video character');
+
+  const settings = await getVideoSettings();
+  const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
+  const environment = await getVideoEnvironment();
+  const promptLearnings = await getRecentPromptLearnings();
+  const config = resolveVideoConfig({ post, campaign, settings });
 
   const plan = editedPlan || post.plan;
 
@@ -282,8 +289,13 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
       campaignId: post.campaignId,
       postId,
       article: post.article,
+      section,
+      environment,
+      config,
       plan,
       directorNote: directorNote ?? post.directorNote,
+      settings,
+      promptLearnings,
     });
 
     const segments = await prisma.videoSegment.findMany({ where: { postId } });

@@ -33,6 +33,8 @@ export async function PATCH(req) {
     const settingsAllowed = [
       'approvalAgentId',
       'approvalEnvironmentId',
+      'plannerAgentId',
+      'plannerEnvironmentId',
       'directorAgentId',
       'directorEnvironmentId',
       'characterAdminAgentId',
