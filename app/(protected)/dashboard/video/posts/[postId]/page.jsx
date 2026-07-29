@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Slider, SliderThumb } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Collapsible,
   CollapsibleContent,
@@ -39,7 +40,13 @@ import {
   DollarSign,
   Sparkles,
   Film,
+  Settings2,
+  Save,
 } from 'lucide-react';
+
+const TARGET_PLATFORMS = ['auto', 'instagram_reels', 'tiktok', 'youtube_shorts', 'linkedin'];
+const VIDEO_STYLES = ['auto', 'explainer', 'diy', 'listicle', 'testimonial'];
+const ORIENTATIONS = ['9:16', '16:9', '1:1', '4:5', '3:4', '21:9'];
 
 const STATUS_BADGE = {
   pending: 'secondary',
@@ -72,6 +79,105 @@ function formatMs(ms) {
 function formatCost(cost) {
   if (cost === null || cost === undefined) return '—';
   return `$${cost.toFixed(2)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Video Configuration — per-post overrides of platform/style/shot count/
+// orientation (inherits the campaign's default, which itself inherits the
+// global Video Settings default, if left unset here). Only meaningful before
+// a plan is drafted/approved — these feed directly into the director agent's
+// Phase 1 brief.
+// ---------------------------------------------------------------------------
+function VideoConfigCard({ post, invalidate }) {
+  const effective = post.effectiveConfig || {};
+  const [targetPlatform, setTargetPlatform] = useState(post.targetPlatform ?? '');
+  const [videoStyle, setVideoStyle] = useState(post.videoStyle ?? '');
+  const [targetShotCount, setTargetShotCount] = useState(post.targetShotCount ?? '');
+  const [orientation, setOrientation] = useState(post.orientation ?? '');
+
+  useEffect(() => {
+    setTargetPlatform(post.targetPlatform ?? '');
+    setVideoStyle(post.videoStyle ?? '');
+    setTargetShotCount(post.targetShotCount ?? '');
+    setOrientation(post.orientation ?? '');
+  }, [post.targetPlatform, post.videoStyle, post.targetShotCount, post.orientation]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${post.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetPlatform: targetPlatform || null,
+          videoStyle: videoStyle || null,
+          targetShotCount: targetShotCount === '' ? null : Number(targetShotCount),
+          orientation: orientation || null,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save config override');
+    },
+    onSuccess: () => { toast.success('Config saved — re-plan to apply it'); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Settings2 className="size-4 text-muted-foreground" />
+          Video Configuration
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Overrides for this post only — leave a field on &quot;inherit&quot; to use the campaign/global default.
+          Changing these only affects the NEXT plan draft (re-plan), not an already-approved plan.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs text-muted-foreground">Target platform <span className="opacity-60">(effective: {effective.platform})</span></Label>
+          <Select value={targetPlatform || '__inherit'} onValueChange={(v) => setTargetPlatform(v === '__inherit' ? '' : v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__inherit">Inherit</SelectItem>
+              {TARGET_PLATFORMS.map((p) => <SelectItem key={p} value={p}>{p.replace(/_/g, ' ')}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Video style <span className="opacity-60">(effective: {effective.style})</span></Label>
+          <Select value={videoStyle || '__inherit'} onValueChange={(v) => setVideoStyle(v === '__inherit' ? '' : v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__inherit">Inherit</SelectItem>
+              {VIDEO_STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Shot count <span className="opacity-60">(effective: {effective.shotCount ?? 'auto'})</span></Label>
+          <Input
+            type="number" min={1} max={12} placeholder="inherit / auto"
+            value={targetShotCount}
+            onChange={(e) => setTargetShotCount(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Orientation <span className="opacity-60">(effective: {effective.orientation})</span></Label>
+          <Select value={orientation || '__inherit'} onValueChange={(v) => setOrientation(v === '__inherit' ? '' : v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__inherit">Inherit</SelectItem>
+              {ORIENTATIONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button size="sm" className="col-span-2" variant="outline" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Save className="size-3.5 mr-1" />}
+          Save config
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -514,6 +620,7 @@ export default function VideoPostDetailPage() {
       )}
 
       <div className="grid lg:grid-cols-2 gap-4">
+        {showPlanReview && <VideoConfigCard post={post} invalidate={invalidate} />}
         {showPlanReview && <PlanReviewCard post={post} invalidate={invalidate} />}
         {showTimeline && <SegmentTimeline post={post} invalidate={invalidate} />}
 

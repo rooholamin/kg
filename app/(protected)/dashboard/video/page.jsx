@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, startOfWeek, endOfWeek, addWeeks, subDays } from 'date-fns';
@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiFetch } from '@/lib/api';
 import {
   Plus,
@@ -53,6 +54,10 @@ const STATUS_CONFIG = {
   cancelled: { label: 'Cancelled', className: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400', dot: 'bg-zinc-400' },
 };
 
+const TARGET_PLATFORMS = ['auto', 'instagram_reels', 'tiktok', 'youtube_shorts', 'linkedin'];
+const VIDEO_STYLES = ['auto', 'explainer', 'diy', 'listicle', 'testimonial'];
+const ORIENTATIONS = ['9:16', '16:9', '1:1', '4:5', '3:4', '21:9'];
+
 function StatusPill({ status }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
   return (
@@ -80,6 +85,18 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
   const [maxVideos, setMaxVideos] = useState(defaultSettings?.defaultMaxVideosPerCampaign ?? 5);
   const [editorsChoiceOnly, setEditorsChoiceOnly] = useState(false);
   const [campaignBrief, setCampaignBrief] = useState('');
+  const [targetPlatform, setTargetPlatform] = useState(defaultSettings?.defaultTargetPlatform ?? 'auto');
+  const [videoStyle, setVideoStyle] = useState(defaultSettings?.defaultVideoStyle ?? 'auto');
+  const [targetShotCount, setTargetShotCount] = useState(defaultSettings?.defaultTargetShotCount ?? '');
+  const [orientation, setOrientation] = useState(defaultSettings?.defaultOrientation ?? '9:16');
+
+  useEffect(() => {
+    if (!defaultSettings) return;
+    setTargetPlatform(defaultSettings.defaultTargetPlatform ?? 'auto');
+    setVideoStyle(defaultSettings.defaultVideoStyle ?? 'auto');
+    setTargetShotCount(defaultSettings.defaultTargetShotCount ?? '');
+    setOrientation(defaultSettings.defaultOrientation ?? '9:16');
+  }, [defaultSettings]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -94,6 +111,10 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
           maxVideos,
           editorsChoiceOnly,
           campaignBrief: campaignBrief || null,
+          targetPlatform,
+          videoStyle,
+          targetShotCount: targetShotCount === '' ? null : Number(targetShotCount),
+          orientation,
         }),
       });
       if (!res.ok) {
@@ -115,6 +136,10 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
     setStep(1);
     setCampaignBrief('');
     setEditorsChoiceOnly(false);
+    setTargetPlatform(defaultSettings?.defaultTargetPlatform ?? 'auto');
+    setVideoStyle(defaultSettings?.defaultVideoStyle ?? 'auto');
+    setTargetShotCount(defaultSettings?.defaultTargetShotCount ?? '');
+    setOrientation(defaultSettings?.defaultOrientation ?? '9:16');
   }
 
   const canContinue = Boolean(scheduleStart && scheduleEnd && new Date(scheduleEnd) >= new Date(scheduleStart));
@@ -192,6 +217,50 @@ function CreateCampaignDialog({ open, onOpenChange, defaultSettings }) {
                     <p className="text-xs text-muted-foreground">Only consider editor&apos;s choice articles</p>
                   </div>
                   <Switch checked={editorsChoiceOnly} onCheckedChange={setEditorsChoiceOnly} />
+                </div>
+              </div>
+
+              <div className="space-y-2.5 pt-4 border-t">
+                <Label className="text-sm font-semibold">Plan defaults for this cycle</Label>
+                <p className="text-xs text-muted-foreground">
+                  Fed to the director agent&apos;s Phase 1 plan for every post — each is still overridable per post.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Target platform</Label>
+                    <Select value={targetPlatform} onValueChange={setTargetPlatform}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {TARGET_PLATFORMS.map((p) => <SelectItem key={p} value={p}>{p.replace(/_/g, ' ')}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Video style</Label>
+                    <Select value={videoStyle} onValueChange={setVideoStyle}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {VIDEO_STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Shot count</Label>
+                    <Input
+                      type="number" min={1} max={12} placeholder="auto"
+                      value={targetShotCount}
+                      onChange={(e) => setTargetShotCount(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Orientation</Label>
+                    <Select value={orientation} onValueChange={setOrientation}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ORIENTATIONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </div>

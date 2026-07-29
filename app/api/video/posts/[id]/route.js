@@ -4,6 +4,7 @@ import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
+import { resolveVideoConfig } from '@/services/video-ai.service';
 
 export async function GET(_req, { params }) {
   try {
@@ -21,7 +22,17 @@ export async function GET(_req, { params }) {
     });
     if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });
 
-    return NextResponse.json({ data: post });
+    const [campaign, settings] = await Promise.all([
+      prisma.videoCampaign.findUnique({
+        where: { id: post.campaignId },
+        select: { targetPlatform: true, videoStyle: true, targetShotCount: true, orientation: true },
+      }),
+      prisma.videoSettings.upsert({ where: { id: 'singleton' }, update: {}, create: { id: 'singleton' } }),
+    ]);
+
+    const effectiveConfig = resolveVideoConfig({ post, campaign, settings });
+
+    return NextResponse.json({ data: { ...post, effectiveConfig } });
   } catch (e) {
     return routeError(e, 'Failed to load video post');
   }
