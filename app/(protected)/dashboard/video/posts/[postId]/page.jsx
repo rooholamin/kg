@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Container } from '@/components/common/container';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardHeading, CardTitle, CardDescription, CardToolbar } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertIcon, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,6 +43,8 @@ import {
   Film,
   Settings2,
   Save,
+  AlertCircle,
+  Hash,
 } from 'lucide-react';
 
 const TARGET_PLATFORMS = ['auto', 'instagram_reels', 'tiktok', 'youtube_shorts', 'linkedin'];
@@ -49,24 +52,24 @@ const VIDEO_STYLES = ['auto', 'explainer', 'diy', 'listicle', 'testimonial'];
 const ORIENTATIONS = ['9:16', '16:9', '1:1', '4:5', '3:4', '21:9'];
 
 const STATUS_BADGE = {
-  pending: 'secondary',
-  planning: 'default',
-  plan_ready: 'default',
-  approved: 'default',
-  directing: 'default',
-  content_ready: 'default',
-  exporting: 'default',
-  uploaded: 'default',
-  scheduling: 'default',
-  scheduled: 'default',
-  failed: 'destructive',
+  pending: { variant: 'secondary', appearance: 'light' },
+  planning: { variant: 'info', appearance: 'light' },
+  plan_ready: { variant: 'info', appearance: 'light' },
+  approved: { variant: 'info', appearance: 'light' },
+  directing: { variant: 'info', appearance: 'light' },
+  content_ready: { variant: 'success', appearance: 'light' },
+  exporting: { variant: 'info', appearance: 'light' },
+  uploaded: { variant: 'success', appearance: 'light' },
+  scheduling: { variant: 'warning', appearance: 'light' },
+  scheduled: { variant: 'success', appearance: 'light' },
+  failed: { variant: 'destructive', appearance: 'light' },
 };
 
 const SEGMENT_STATUS_BADGE = {
-  pending: 'secondary',
-  generating: 'default',
-  completed: 'default',
-  failed: 'destructive',
+  pending: { variant: 'secondary', appearance: 'light' },
+  generating: { variant: 'info', appearance: 'light' },
+  completed: { variant: 'success', appearance: 'light' },
+  failed: { variant: 'destructive', appearance: 'light' },
 };
 
 function formatMs(ms) {
@@ -123,56 +126,62 @@ function VideoConfigCard({ post, invalidate }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Settings2 className="size-4 text-muted-foreground" />
-          Video Configuration
-        </CardTitle>
-        <CardDescription className="text-xs">
-          Overrides for this post only — leave a field on &quot;inherit&quot; to use the campaign/global default.
-          Changing these only affects the NEXT plan draft (re-plan), not an already-approved plan.
-        </CardDescription>
+        <CardHeading>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Settings2 className="size-4 text-muted-foreground" />
+            Video Configuration
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Overrides for this post only — leave a field on &quot;inherit&quot; to use the campaign/global default.
+          </CardDescription>
+        </CardHeading>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-3">
-        <div>
-          <Label className="text-xs text-muted-foreground">Target platform <span className="opacity-60">(effective: {effective.platform})</span></Label>
-          <Select value={targetPlatform || '__inherit'} onValueChange={(v) => setTargetPlatform(v === '__inherit' ? '' : v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__inherit">Inherit</SelectItem>
-              {TARGET_PLATFORMS.map((p) => <SelectItem key={p} value={p}>{p.replace(/_/g, ' ')}</SelectItem>)}
-            </SelectContent>
-          </Select>
+      <CardContent className="space-y-4">
+        <p className="text-xs text-muted-foreground -mt-1">
+          Changing these only affects the <span className="font-medium text-foreground">next</span> plan draft (re-plan), not an already-approved plan.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Target platform <span className="opacity-60">(effective: {effective.platform})</span></Label>
+            <Select value={targetPlatform || '__inherit'} onValueChange={(v) => setTargetPlatform(v === '__inherit' ? '' : v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__inherit">Inherit</SelectItem>
+                {TARGET_PLATFORMS.map((p) => <SelectItem key={p} value={p}>{p.replace(/_/g, ' ')}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Video style <span className="opacity-60">(effective: {effective.style})</span></Label>
+            <Select value={videoStyle || '__inherit'} onValueChange={(v) => setVideoStyle(v === '__inherit' ? '' : v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__inherit">Inherit</SelectItem>
+                {VIDEO_STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Shot count <span className="opacity-60">(effective: {effective.shotCount ?? 'auto'})</span></Label>
+            <Input
+              type="number" min={1} max={12} placeholder="inherit / auto"
+              value={targetShotCount}
+              onChange={(e) => setTargetShotCount(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Orientation <span className="opacity-60">(effective: {effective.orientation})</span></Label>
+            <Select value={orientation || '__inherit'} onValueChange={(v) => setOrientation(v === '__inherit' ? '' : v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__inherit">Inherit</SelectItem>
+                {ORIENTATIONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">Video style <span className="opacity-60">(effective: {effective.style})</span></Label>
-          <Select value={videoStyle || '__inherit'} onValueChange={(v) => setVideoStyle(v === '__inherit' ? '' : v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__inherit">Inherit</SelectItem>
-              {VIDEO_STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">Shot count <span className="opacity-60">(effective: {effective.shotCount ?? 'auto'})</span></Label>
-          <Input
-            type="number" min={1} max={12} placeholder="inherit / auto"
-            value={targetShotCount}
-            onChange={(e) => setTargetShotCount(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">Orientation <span className="opacity-60">(effective: {effective.orientation})</span></Label>
-          <Select value={orientation || '__inherit'} onValueChange={(v) => setOrientation(v === '__inherit' ? '' : v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__inherit">Inherit</SelectItem>
-              {ORIENTATIONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <Button size="sm" className="col-span-2" variant="outline" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Save className="size-3.5 mr-1" />}
+        <Button size="sm" className="w-full" variant="outline" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
           Save config
         </Button>
       </CardContent>
@@ -242,14 +251,18 @@ function PlanReviewCard({ post, invalidate }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-muted-foreground" />
-          <CardTitle className="text-sm">Plan Review (Phase 1 → 2)</CardTitle>
-          <Badge variant="secondary" className="ml-auto">no generation spend yet</Badge>
-        </div>
-        <CardDescription className="text-xs">
-          Review and edit the narration and segment breakdown before any Higgsfield generation happens.
-        </CardDescription>
+        <CardHeading>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Sparkles className="size-4 text-muted-foreground" />
+            Plan Review
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Review and edit narration and segments before any Higgsfield generation happens.
+          </CardDescription>
+        </CardHeading>
+        <CardToolbar>
+          <Badge variant="secondary" appearance="light" size="sm">no spend yet</Badge>
+        </CardToolbar>
       </CardHeader>
       <CardContent className="space-y-4">
         {isPlanning ? (
@@ -268,13 +281,18 @@ function PlanReviewCard({ post, invalidate }) {
             <div className="space-y-2">
               <Label className="text-xs font-medium">Segments ({segments.length})</Label>
               {segments.map((seg, i) => (
-                <div key={i} className="border rounded-lg p-3 space-y-2">
+                <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/20">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono text-muted-foreground">Segment {seg.order ?? i + 1}</span>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <span className="size-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold text-foreground">
+                        {seg.order ?? i + 1}
+                      </span>
+                      Segment
+                    </span>
                     <div className="flex items-center gap-2">
                       <Label className="text-xs">On camera</Label>
                       <Switch checked={!!seg.hasCharacter} onCheckedChange={(v) => updateSegment(i, 'hasCharacter', v)} />
-                      {seg.estimatedDuration && <Badge variant="secondary" className="text-xs">~{seg.estimatedDuration}s</Badge>}
+                      {seg.estimatedDuration && <Badge variant="secondary" appearance="light" size="sm">~{seg.estimatedDuration}s</Badge>}
                     </div>
                   </div>
                   <Textarea
@@ -305,11 +323,11 @@ function PlanReviewCard({ post, invalidate }) {
 
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => rePlanMutation.mutate()} disabled={rePlanMutation.isPending || isApproving}>
-                {rePlanMutation.isPending ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <RefreshCw className="size-3.5 mr-1" />}
+                {rePlanMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                 Re-plan
               </Button>
-              <Button size="sm" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending || isApproving}>
-                {approveMutation.isPending || isApproving ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <CheckCircle2 className="size-3.5 mr-1" />}
+              <Button size="sm" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending || isApproving} className="flex-1">
+                {approveMutation.isPending || isApproving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
                 {isApproving ? 'Generating…' : 'Approve & Generate'}
               </Button>
             </div>
@@ -326,6 +344,7 @@ function PlanReviewCard({ post, invalidate }) {
 function SegmentBlock({ segment, postId, invalidate }) {
   const [note, setNote] = useState('');
   const [showNote, setShowNote] = useState(false);
+  const badgeCfg = SEGMENT_STATUS_BADGE[segment.status] ?? { variant: 'secondary', appearance: 'light' };
 
   const regenerateMutation = useMutation({
     mutationFn: async () => {
@@ -349,7 +368,7 @@ function SegmentBlock({ segment, postId, invalidate }) {
     : null;
 
   return (
-    <div className="border rounded-lg overflow-hidden shrink-0 w-56 flex flex-col">
+    <div className="border rounded-lg overflow-hidden shrink-0 w-56 flex flex-col bg-card">
       <div className="bg-black aspect-[9/16] flex items-center justify-center relative">
         {segment.videoUrl ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
@@ -359,17 +378,26 @@ function SegmentBlock({ segment, postId, invalidate }) {
         ) : (
           <ClapperboardIcon className="size-6 text-white/30" />
         )}
-        <Badge variant={SEGMENT_STATUS_BADGE[segment.status] ?? 'secondary'} className="absolute top-1.5 left-1.5 text-[10px]">
+        <span className="absolute top-1.5 left-1.5 size-5 rounded-full bg-black/60 backdrop-blur-sm text-white text-[10px] font-semibold flex items-center justify-center">
+          {segment.order}
+        </span>
+        <Badge variant={badgeCfg.variant} appearance={badgeCfg.appearance} size="sm" className="absolute top-1.5 left-8 shadow-sm">
           {segment.status}
         </Badge>
         {segment.hasCharacter && (
-          <Badge variant="secondary" className="absolute top-1.5 right-1.5 text-[10px]">on camera</Badge>
+          <Badge variant="secondary" appearance="outline" size="sm" className="absolute top-1.5 right-1.5 bg-black/40! text-white! border-white/20!">
+            on camera
+          </Badge>
+        )}
+        {segment.duration && (
+          <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm text-white text-[10px] font-mono">
+            {segment.duration.toFixed?.(1) ?? segment.duration}s
+          </span>
         )}
       </div>
       <div className="p-2 space-y-1.5 flex-1 flex flex-col">
-        <p className="text-[11px] font-mono text-muted-foreground">#{segment.order} · {segment.duration ? `${segment.duration.toFixed?.(1) ?? segment.duration}s` : '—'}</p>
         <p className="text-xs italic line-clamp-3 flex-1">&ldquo;{segment.spokenPortion || '—'}&rdquo;</p>
-        {segment.errorMessage && <p className="text-[10px] text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-1 line-clamp-2">{segment.errorMessage}</p>}
+        {segment.errorMessage && <p className="text-[10px] text-destructive bg-destructive/5 border border-destructive/10 rounded p-1 line-clamp-2">{segment.errorMessage}</p>}
         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
           <span className="flex items-center gap-0.5" title="Rate-card estimate — Higgsfield exposes no real cost API">
             <Clock className="size-2.5" />{formatMs(generationMs)}
@@ -388,7 +416,7 @@ function SegmentBlock({ segment, postId, invalidate }) {
           onClick={() => (showNote ? regenerateMutation.mutate() : setShowNote(true))}
           disabled={regenerateMutation.isPending || segment.status === 'generating'}
         >
-          {regenerateMutation.isPending ? <Loader2 className="size-3 mr-1 animate-spin" /> : <RefreshCw className="size-3 mr-1" />}
+          {regenerateMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
           {showNote ? 'Confirm regenerate' : 'Regenerate'}
         </Button>
       </div>
@@ -482,23 +510,25 @@ function SegmentTimeline({ post, invalidate }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <CardHeading>
+          <CardTitle className="text-sm flex items-center gap-2">
             <Film className="size-4 text-muted-foreground" />
-            <CardTitle className="text-sm">Segment Timeline</CardTitle>
-          </div>
+            Segment Timeline
+          </CardTitle>
+          <CardDescription className="text-xs">
+            {completedCount}/{segments.length} segments generated — regenerate any segment, then re-assemble when ready.
+          </CardDescription>
+        </CardHeading>
+        <CardToolbar>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Clock className="size-3" />{formatMs(post.totalGenerationTimeMs)}</span>
             <span className="flex items-center gap-1" title="Includes rate-card Higgsfield estimates — exact for music/captions">
               <DollarSign className="size-3" />~{formatCost(post.totalEstimatedCost)}
             </span>
           </div>
-        </div>
-        <CardDescription className="text-xs">
-          {completedCount}/{segments.length} segments generated. Regenerate any segment individually, then re-assemble when ready — assembly never runs automatically.
-        </CardDescription>
+        </CardToolbar>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5">
         <div className="flex gap-3 overflow-x-auto pb-2">
           {segments.map((segment) => (
             <SegmentBlock key={segment.id} segment={segment} postId={post.id} invalidate={invalidate} />
@@ -507,14 +537,17 @@ function SegmentTimeline({ post, invalidate }) {
 
         <Separator />
 
-        <div className="space-y-2">
+        <div className="rounded-lg bg-muted/40 border border-border/60 p-3.5 space-y-3">
           <div className="flex items-center gap-2 text-xs font-medium">
-            <Music className="size-3.5" /> Music lane
+            <div className="size-6 rounded-md bg-purple-500/10 flex items-center justify-center">
+              <Music className="size-3.5 text-purple-600" />
+            </div>
+            Music lane
           </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground shrink-0"
+              className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
               onClick={() => {
                 if (musicVolume[0] > 0) {
                   setPreMuteVolume(musicVolume[0]);
@@ -539,7 +572,7 @@ function SegmentTimeline({ post, invalidate }) {
             >
               <SliderThumb />
             </Slider>
-            <span className="text-xs text-muted-foreground w-10 text-right">{Math.round(musicVolume[0] * 100)}%</span>
+            <span className="text-xs text-muted-foreground w-10 text-right font-mono">{Math.round(musicVolume[0] * 100)}%</span>
           </div>
           {post.musicUrl && (
             // eslint-disable-next-line jsx-a11y/media-has-caption
@@ -565,13 +598,15 @@ function SegmentTimeline({ post, invalidate }) {
                 disabled={regenerateMusicMutation.isPending || musicVolume[0] === 0}
                 title={musicVolume[0] === 0 ? 'Unmute the music lane first' : undefined}
               >
-                {regenerateMusicMutation.isPending ? <Loader2 className="size-3 mr-1 animate-spin" /> : <RefreshCw className="size-3 mr-1" />}
+                {regenerateMusicMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
                 {showMusicNote ? 'Confirm regenerate music' : 'Regenerate music'}
               </Button>
             </>
           )}
 
-          <div className="flex items-center justify-between pt-1">
+          <Separator />
+
+          <div className="flex items-center justify-between">
             <Label className="text-xs flex items-center gap-1.5"><Captions className="size-3.5" /> Captions (9:16 only)</Label>
             <Switch
               checked={captionsEnabled}
@@ -581,15 +616,15 @@ function SegmentTimeline({ post, invalidate }) {
         </div>
 
         <Button className="w-full" onClick={() => reassembleMutation.mutate()} disabled={!canAssemble || reassembleMutation.isPending}>
-          {reassembleMutation.isPending ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Sparkles className="size-4 mr-1.5" />}
+          {reassembleMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
           Re-assemble
         </Button>
 
         {post.videoUrl && (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label className="text-xs font-medium">Assembled video</Label>
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video src={post.videoUrl} controls className="w-full max-w-xs mx-auto rounded-lg bg-black" />
+            <video src={post.videoUrl} controls className="w-full max-w-xs mx-auto rounded-lg bg-black border shadow-sm" />
           </div>
         )}
       </CardContent>
@@ -676,61 +711,87 @@ export default function VideoPostDetailPage() {
 
   const showPlanReview = ['pending', 'planning', 'plan_ready', 'approved'].includes(post.status) && (post.plan || post.status === 'planning');
   const showTimeline = (post.segments || []).length > 0;
+  const badgeCfg = STATUS_BADGE[post.status] ?? { variant: 'secondary', appearance: 'light' };
 
   return (
     <Container>
-      <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/video/${post.campaignId}`)}>
+      <div className="flex items-start gap-3 mb-5">
+        <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/video/${post.campaignId}`)} className="mt-0.5">
           <ArrowLeft className="size-4" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold truncate">{post.article?.title || 'Untitled article'}</h1>
-          <p className="text-sm text-muted-foreground">
-            {post.duration ? `${post.duration}s` : '—'} · {post.aspectRatio || post.orientation || '—'} · {post.genre || '—'}
-          </p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">Video Post</p>
+          <div className="flex items-start gap-2.5 flex-wrap">
+            <h1 className="text-xl font-semibold truncate max-w-full">{post.article?.title || 'Untitled article'}</h1>
+            <Badge variant={badgeCfg.variant} appearance={badgeCfg.appearance} size="sm" className="mt-1">
+              {post.status.replace(/_/g, ' ')}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            {post.duration && <Badge variant="secondary" appearance="light" size="sm">{post.duration}s</Badge>}
+            {(post.aspectRatio || post.orientation) && <Badge variant="secondary" appearance="light" size="sm">{post.aspectRatio || post.orientation}</Badge>}
+            {post.genre && <Badge variant="secondary" appearance="light" size="sm">{post.genre}</Badge>}
+          </div>
         </div>
-        <Badge variant={STATUS_BADGE[post.status] ?? 'secondary'}>{post.status.replace(/_/g, ' ')}</Badge>
       </div>
 
       {post.errorMessage && (
-        <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-3 mb-4">{post.errorMessage}</p>
+        <Alert variant="destructive" appearance="light" className="mb-5">
+          <AlertIcon><AlertCircle className="size-4" /></AlertIcon>
+          <AlertTitle>{post.errorMessage}</AlertTitle>
+        </Alert>
       )}
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        {showPlanReview && <VideoConfigCard post={post} invalidate={invalidate} />}
-        {showPlanReview && <PlanReviewCard post={post} invalidate={invalidate} />}
+      <div className="space-y-4">
+        {showPlanReview && (
+          <div className="grid lg:grid-cols-2 gap-4">
+            <VideoConfigCard post={post} invalidate={invalidate} />
+            <PlanReviewCard post={post} invalidate={invalidate} />
+          </div>
+        )}
+
         {showTimeline && <SegmentTimeline post={post} invalidate={invalidate} />}
 
-        <Card className={showPlanReview || showTimeline ? '' : 'lg:col-span-2'}>
+        <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Caption & Publishing</CardTitle>
+            <CardHeading>
+              <CardTitle className="text-sm">Caption & Publishing</CardTitle>
+            </CardHeading>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3.5">
             <Textarea value={post.generatedText || ''} readOnly rows={3} className="text-xs" placeholder="Caption will appear here once planned" />
-            {post.hashtags?.length > 0 && <p className="text-xs text-muted-foreground">{post.hashtags.join(' ')}</p>}
+            {post.hashtags?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {post.hashtags.map((tag) => (
+                  <Badge key={tag} variant="info" appearance="light" size="sm">
+                    <Hash className="size-2.5" />{tag.replace(/^#/, '')}
+                  </Badge>
+                ))}
+              </div>
+            )}
 
             <div className="flex flex-wrap gap-1.5">
               {post.videoUrl && post.status !== 'uploaded' && post.status !== 'scheduled' && (
                 <Button size="sm" variant="outline" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
-                  {exportMutation.isPending ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Upload className="size-3.5 mr-1" />}
+                  {exportMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
                   Export
                 </Button>
               )}
               {post.status === 'uploaded' && (
                 <Button size="sm" onClick={() => scheduleMutation.mutate()} disabled={scheduleMutation.isPending}>
-                  {scheduleMutation.isPending ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <CalendarClock className="size-3.5 mr-1" />}
+                  {scheduleMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <CalendarClock className="size-3.5" />}
                   Send to Buffer
                 </Button>
               )}
               {post.bufferPostIds && Object.keys(post.bufferPostIds).length > 0 && (
                 <Button size="sm" variant="outline" onClick={() => unscheduleMutation.mutate()} disabled={unscheduleMutation.isPending}>
-                  <XCircle className="size-3.5 mr-1" />
+                  <XCircle className="size-3.5" />
                   Unschedule
                 </Button>
               )}
               {post.status === 'scheduled' && (
                 <Button size="sm" variant="outline" onClick={() => analyticsMutation.mutate()} disabled={analyticsMutation.isPending}>
-                  <TrendingUp className="size-3.5 mr-1" />
+                  <TrendingUp className="size-3.5" />
                   Analytics
                 </Button>
               )}
@@ -739,9 +800,10 @@ export default function VideoPostDetailPage() {
             {post.analyticsData && (
               <div className="grid grid-cols-3 gap-2 text-xs">
                 {Object.entries(post.analyticsData).filter(([k]) => k !== 'pulledAt').map(([platform, m]) => (
-                  <div key={platform} className="border rounded-lg p-2">
-                    <p className="font-medium">{platform.replace(/_/g, ' ')}</p>
-                    <p className="text-muted-foreground">{m.impressions ?? 0} impressions · {m.likes ?? 0} likes</p>
+                  <div key={platform} className="border rounded-lg p-2.5 bg-muted/20">
+                    <p className="font-medium capitalize">{platform.replace(/_/g, ' ')}</p>
+                    <p className="text-muted-foreground mt-0.5">{m.impressions ?? 0} impressions</p>
+                    <p className="text-muted-foreground">{m.likes ?? 0} likes</p>
                   </div>
                 ))}
               </div>
@@ -749,7 +811,7 @@ export default function VideoPostDetailPage() {
 
             <Collapsible open={showLog} onOpenChange={setShowLog}>
               <CollapsibleTrigger asChild>
-                <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <ChevronDown className={`size-3.5 transition-transform ${showLog ? 'rotate-180' : ''}`} />
                   Session: {post.directorSessionId ? post.directorSessionId.slice(0, 12) + '…' : 'not started'}
                 </button>
