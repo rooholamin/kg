@@ -36,12 +36,33 @@ function withSessionLock(sessionId, fn) {
   return run;
 }
 
-async function sendAndAwaitResponse(sessionId, message) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Confirmed in production: when Anthropic's own model-overload retries give
+// up, the session doesn't error out — it goes `session.status_idle` with
+// `stop_reason: { type: "retries_exhausted" }` and just sits there, having
+// silently dropped the turn. The message was never actually answered, so
+// the only way to get a real response is to resend it — polling the same
+// (now-idle) session's stream again just hangs forever waiting for events
+// that will never come, since nothing is running anymore.
+async function sendAndAwaitResponse(sessionId, message, maxAttempts = 4) {
   return withSessionLock(sessionId, async () => {
-    await client.beta.sessions.events.send(sessionId, {
-      events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
-    });
-    return streamAgentResponse(sessionId);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await client.beta.sessions.events.send(sessionId, {
+        events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
+      });
+      try {
+        return await streamAgentResponse(sessionId);
+      } catch (err) {
+        if (err.retriesExhausted && attempt < maxAttempts) {
+          await sleep(15000 * attempt);
+          continue;
+        }
+        throw err;
+      }
+    }
   });
 }
 
@@ -578,6 +599,11 @@ async function streamAgentResponse(sessionId) {
         if (event.stop_reason?.type === 'requires_action') {
           throw new Error(`Session ${sessionId} unexpectedly requires manual action: ${JSON.stringify(event.stop_reason)}`);
         }
+        if (event.stop_reason?.type === 'retries_exhausted') {
+          const err = new Error(`Session ${sessionId} gave up retrying its model call (stop_reason: retries_exhausted) — the turn was dropped and needs to be resent.`);
+          err.retriesExhausted = true;
+          throw err;
+        }
       } else if (
         evType === 'session.status_terminated' ||
         evType === 'session.deleted'
@@ -585,6 +611,22 @@ async function streamAgentResponse(sessionId) {
         done = true;
         break;
       } else if (evType === 'session.error') {
+        // Anthropic's own model_overloaded_error (and similar) reports
+        // retry_status: "retrying" — the platform is already retrying
+        // server-side, so this isn't fatal; just keep tailing the stream
+        // (the outer while-loop re-opens it) instead of failing the whole
+        // request over a transient blip.
+        if (event.error?.retry_status?.type === 'retrying') continue;
+        // retry_status: "exhausted" means the platform gave up — this is
+        // immediately followed by a session.status_idle with stop_reason
+        // "retries_exhausted" (same dropped-turn condition handled below),
+        // so treat it identically: the caller needs to resend, not just
+        // keep listening.
+        if (event.error?.retry_status?.type === 'exhausted') {
+          const err = new Error(`Session ${sessionId} exhausted retries on a model_overloaded_error — the turn was dropped and needs to be resent.`);
+          err.retriesExhausted = true;
+          throw err;
+        }
         throw new Error(`Agent session error: ${JSON.stringify(event)}`);
       }
     }
