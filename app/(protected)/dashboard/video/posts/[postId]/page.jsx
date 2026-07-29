@@ -136,13 +136,13 @@ function VideoConfigCard({ post, invalidate }) {
           </CardDescription>
         </CardHeading>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground -mt-1">
           Changing these only affects the <span className="font-medium text-foreground">next</span> plan draft (re-plan), not an already-approved plan.
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Target platform <span className="opacity-60">(effective: {effective.platform})</span></Label>
+            <Label className="text-xs text-muted-foreground">Target platform <span className="opacity-60">(eff: {effective.platform})</span></Label>
             <Select value={targetPlatform || '__inherit'} onValueChange={(v) => setTargetPlatform(v === '__inherit' ? '' : v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -152,7 +152,7 @@ function VideoConfigCard({ post, invalidate }) {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Video style <span className="opacity-60">(effective: {effective.style})</span></Label>
+            <Label className="text-xs text-muted-foreground">Video style <span className="opacity-60">(eff: {effective.style})</span></Label>
             <Select value={videoStyle || '__inherit'} onValueChange={(v) => setVideoStyle(v === '__inherit' ? '' : v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -162,7 +162,7 @@ function VideoConfigCard({ post, invalidate }) {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Shot count <span className="opacity-60">(effective: {effective.shotCount ?? 'auto'})</span></Label>
+            <Label className="text-xs text-muted-foreground">Shot count <span className="opacity-60">(eff: {effective.shotCount ?? 'auto'})</span></Label>
             <Input
               type="number" min={1} max={12} placeholder="inherit / auto"
               value={targetShotCount}
@@ -170,7 +170,7 @@ function VideoConfigCard({ post, invalidate }) {
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Orientation <span className="opacity-60">(effective: {effective.orientation})</span></Label>
+            <Label className="text-xs text-muted-foreground">Orientation <span className="opacity-60">(eff: {effective.orientation})</span></Label>
             <Select value={orientation || '__inherit'} onValueChange={(v) => setOrientation(v === '__inherit' ? '' : v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -180,10 +180,12 @@ function VideoConfigCard({ post, invalidate }) {
             </Select>
           </div>
         </div>
-        <Button size="sm" className="w-full" variant="outline" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-          Save config
-        </Button>
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+            Save config
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -280,7 +282,8 @@ function PlanReviewCard({ post, invalidate }) {
 
             <div className="space-y-2">
               <Label className="text-xs font-medium">Segments ({segments.length})</Label>
-              {segments.map((seg, i) => (
+              <div className="grid sm:grid-cols-2 gap-3">
+                {segments.map((seg, i) => (
                 <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/20">
                   <div className="flex items-center justify-between">
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -310,7 +313,8 @@ function PlanReviewCard({ post, invalidate }) {
                     className="text-xs"
                   />
                 </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             <Textarea
@@ -744,10 +748,10 @@ export default function VideoPostDetailPage() {
 
       <div className="space-y-4">
         {showPlanReview && (
-          <div className="grid lg:grid-cols-2 gap-4">
+          <>
             <VideoConfigCard post={post} invalidate={invalidate} />
             <PlanReviewCard post={post} invalidate={invalidate} />
-          </div>
+          </>
         )}
 
         {showTimeline && <SegmentTimeline post={post} invalidate={invalidate} />}
