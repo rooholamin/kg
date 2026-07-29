@@ -10,7 +10,7 @@ Distilled from an internal production playbook (`Universal AI Cinematic Automati
 ## Golden rules
 
 1. **Character consistency is non-negotiable — one anchor still, reused for every avatar segment.** Generate exactly ONE character still per video (Step 0 of PHASE: execute), then reuse that same still's job id as `start_image` for every avatar (`hasCharacter: true`) segment, including any later `PHASE: regenerate_segment` calls in the same session. Never generate a second, independent character still mid-video — that's precisely what causes a different-looking person to show up partway through a video. This is the #1 real quality failure this pipeline has produced in testing; treat it with the same seriousness as "no silent segment."
-2. **The Reference Element + repeated text description are BOTH required, every time — neither alone is enough.** Embed `<<<elementId>>>` in every prompt that includes the character (on camera or referenced for voice continuity in b-roll), AND restate the same, unchanged outfit/physical-description text from the brief in that same prompt. The Reference Element conditions the model toward the right person but isn't a hard guarantee across independent generations by itself — the redundant text description is what actually locks it in. Never vary the outfit/hairstyle/appearance description between segments unless a DIRECTOR NOTE explicitly asks for a costume or scene change.
+2. **The Reference Element carries their actual appearance — you never need to describe them in words.** It was trained specifically so hair/build/outfit/appearance never has to be written out in a prompt. `<<<elementId>>>` in the prompt is the only identity anchor needed on the text side; the real guarantee of "same person every segment" is the shared anchor still (rule 1), not a repeated description. Only generate a new anchor still mid-video if a DIRECTOR NOTE explicitly asks for a costume/scene change.
 3. **Write the full narration script first, as one continuous piece.** The whole video is a single flowing story — write it start to finish, sized via the pacing rule below to the intended total runtime, *then* decide how to distribute it across segments. Never invent a disconnected one-off line per segment; that reads as fragmented, not directed.
 4. **Every segment carries real spoken content — no silent segment, ever.** Segments where the character isn't visible still get their own slice of the continuous script, delivered as off-screen narration. A video with any silent stretch is a failed video.
 5. **Environment is TEXT, not an image ref.** Passing a location photo as an image ref causes "ref bleeding" — the model copies the reference photo's exact composition into your output instead of just matching its mood. Write the KG Media Loft descriptor straight into the `Scene:` portion of your prompt instead.
@@ -37,14 +37,14 @@ Distilled from an internal production playbook (`Universal AI Cinematic Automati
 
 ## Production chain
 
-**Step 0, once per video (PHASE: execute only):** `generate_image` — ONE character anchor still: `<<<elementId>>>`, a clean neutral front-facing composition in the Loft, full outfit/physical description restated. This job id is reused as `start_image` for every avatar segment below — never regenerated mid-video (see Golden Rule 1).
+**Step 0, once per video (PHASE: execute only):** `generate_image` — ONE character anchor still: `<<<elementId>>>`, a clean neutral front-facing composition in the Loft. No need to describe their appearance — the Reference Element carries that. This job id is reused as `start_image` for every avatar segment below — never regenerated mid-video (see Golden Rule 1).
 
 **Per segment (PHASE: execute / regenerate_segment), chained via same-session job IDs (never raw URLs):**
 
 1. Start-frame still:
    - **Avatar segments** (`hasCharacter: true`): REUSE the Step 0 anchor still job id. Do not call `generate_image` again.
    - **B-roll segments** (`hasCharacter: false`): fresh `generate_image` call (model `soul_2` or similar) for this segment's actual subject, matching its `visualDescription`. Always pass the exact configured `aspect_ratio`.
-2. **`generate_video`** (model `seedance_2_0`, `generate_audio: true`) — the still's job ID as `start_image` (the shared anchor for avatar segments, the fresh b-roll still otherwise), duration close to the segment's intended length, exact configured `aspect_ratio`, and the segment's `spokenPortion` written either as on-camera dialogue (`hasCharacter: true`, outfit/appearance restated per Golden Rule 2) or an off-screen narrator's line (`hasCharacter: false`, natural-continuity `<<<elementId>>>` phrasing per Golden Rule 8). This call's output IS the segment's final `videoUrl` — there is no separate lip-sync pass anymore.
+2. **`generate_video`** (model `seedance_2_0`, `generate_audio: true`) — the still's job ID as `start_image` (the shared anchor for avatar segments, the fresh b-roll still otherwise), duration close to the segment's intended length, exact configured `aspect_ratio`, and the segment's `spokenPortion` written either as on-camera dialogue (`hasCharacter: true`) or an off-screen narrator's line (`hasCharacter: false`, natural-continuity `<<<elementId>>>` phrasing per Golden Rule 8). This call's output IS the segment's final `videoUrl` — there is no separate lip-sync pass anymore.
 
 `PHASE: regenerate_segment` follows the exact same steps for the single segment being redone, reusing the SAME Step 0 anchor still from earlier in the session if it's an avatar segment.
 
@@ -53,7 +53,7 @@ Distilled from an internal production playbook (`Universal AI Cinematic Automati
 ```
 [VIDEO TYPE: Cinematic <genre>. ~<duration>-second segment.]
 
-[SUBJECT: <<<elementId>>> — <FULL character description + outfit, restated verbatim from the CHARACTER brief every time, if hasCharacter — or the b-roll subject itself>]
+[SUBJECT: <<<elementId>>> — no need to describe their appearance, the Reference Element carries it — or the b-roll subject itself if not hasCharacter]
 [VISUAL ACTION: <what's happening on screen this segment, matching visualDescription>]
 [ENVIRONMENT: <KG Media Loft text descriptor, or the b-roll setting>]
 [DIALOGUE / NARRATION: <the segment's spokenPortion — literal on-camera dialogue if hasCharacter, or an off-screen narrator's line otherwise, phrased per Golden Rule 8 if the character's voice should carry through>]
