@@ -2,6 +2,8 @@
 
 Reference sequences to adapt, not templates to fill in blindly — always ground the actual beats in the article being covered. Every segment below carries `generate_audio: true` — avatar segments render on-camera dialogue, b-roll segments render off-screen narration continuing the exact same script. No segment is ever silent.
 
+**IMPORTANT — `<<<elementId>>>` below is illustrative shorthand only, for these written examples.** It stands for "insert the character's real Reference Element ID value here." When you actually write a `generate_image`/`generate_video` prompt during PHASE: execute, you MUST substitute the real ID value from your brief (e.g. `<<<fa81a933-0850-47ab-bd6b-f994283eb97e>>>`) — never copy the literal text `<<<elementId>>>` into an actual API call. Doing so has caused a real production failure: Higgsfield receives no reference at all and generates a random, wrong-looking person. See SKILL.md Golden Rule 1.
+
 ## Explainer style (~24s, 3 segments — article: "Types of brick for a garden wall")
 
 Full continuous narration (written first, then split below):

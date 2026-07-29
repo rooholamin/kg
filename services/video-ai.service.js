@@ -165,7 +165,8 @@ CHARACTER:
 - Biography/Persona: ${section.characterPersona || section.characterBiography || ''}
 - Tone: ${section.characterTone || ''}
 - Outfit: ${section.videoOutfitDescription || ''}
-- elementId (embed as <<<elementId>>> in every generate_image/generate_video prompt): ${section.videoCharacterId}
+- Reference Element ID (a real trained person): ${section.videoCharacterId}
+  Wherever this character should appear or be referenced, write this EXACT ID VALUE wrapped in triple angle brackets directly inside the generate_image/generate_video prompt text — i.e. literally type <<<${section.videoCharacterId}>>> (substituting the real ID above). Do NOT write the literal text "<<<elementId>>>" — "elementId" is just this field's label in these instructions, not something to copy verbatim. Writing the label instead of the real ID means Higgsfield receives no reference at all and generates a random person.
 
 ENVIRONMENT: ${environment?.name || 'KG Media Loft'}
 ${environment?.textDescriptor || ''}
