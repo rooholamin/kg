@@ -9,24 +9,25 @@ Distilled from an internal production playbook (`Universal AI Cinematic Automati
 
 ## Golden rules
 
-1. **Write the full narration script first, as one continuous piece.** The whole video is a single flowing story — write it start to finish, sized via the pacing rule below to the intended total runtime, *then* decide how to distribute it across segments. Never invent a disconnected one-off line per segment; that reads as fragmented, not directed.
-2. **Every segment carries real spoken content — no silent segment, ever.** Segments where the character isn't visible still get their own slice of the continuous script, delivered as off-screen narration. A video with any silent stretch is a failed video.
-3. **One character reference is enough.** The section's `elementId` is a Higgsfield Reference Element — embed it as a `<<<elementId>>>` placeholder directly inside the `prompt` text of every `generate_image`/`generate_video` call instead of stacking separate char-sheet/outfit-sheet image refs.
-4. **Environment is TEXT, not an image ref.** Passing a location photo as an image ref causes "ref bleeding" — the model copies the reference photo's exact composition into your output instead of just matching its mood. Write the KG Media Loft descriptor straight into the `Scene:` portion of your prompt instead.
-5. **Native Seedance audio (`generate_audio: true`) handles ALL narration — avatar dialogue AND off-screen voiceover.** Confirmed in testing: a prompt describing an off-screen narrator with nobody visibly speaking still renders real, intelligible narration. This means one single audio system covers the entire video regardless of whether the character is on screen in a given segment — never reach for a separate TTS tool.
-6. **Identity only ever via `<<<elementId>>>` — never the character's literal name as text.** Writing the proper name in a prompt causes the model to render it as garbled on-screen text (confirmed real failure: a name printed wrong on a shirt).
-7. **Keep the character's voice consistent in b-roll segments via natural scene-continuity phrasing**, e.g. `"<<<elementId>>> continues speaking from just off camera: '...'"` — not an explicit identity/voice-cloning claim like "she is not visible, narrates in her own voice" (confirmed: that framing triggers agent refusal twice; the natural-continuity phrasing produced a real working result). A generic "warm narrator" description with no identity reference is a safe fallback but won't guarantee the same voice.
-8. **Pacing: ~2.3-2.5 spoken words per second of segment duration.** A prior test crammed 50 words into 10s (~300 wpm) and the delivery came out rushed; ~23-25 words for a 10s segment is the correct density.
-9. **Segment duration asymmetry**: avatar (on-camera) segments run longer (~10s); concept/b-roll segments should be noticeably shorter (~5-6s) — confirmed this reads better than equal-length segments.
-10. **Orientation must always be explicitly set on every single generation call**, from the CONFIG value passed into the session — never omitted, never left to a tool's own default. A real failure: one session left `aspect_ratio` unset, Seedance defaulted to 16:9, and the result couldn't go through the downstream 9:16-only captioning step at all.
-11. **Retry once before rewriting on a content-safety flag.** Some `nsfw`/`ip_detected` flags are transient. If the exact same call fails twice in a row, the trigger is real — rewrite the specific phrase (see the reference table) rather than the whole prompt.
-12. **Never name real camera or film-stock brands.** "Arri Alexa 65", "Kodak Vision3", "Ilford HP5" etc. read as IP triggers. Say "large-format cinema camera" / "fine-grain cinematic film" instead.
-13. **Genre shapes risk, not just mood.** `drama` trips content filters on intimate/atmospheric beats more than `epic` or `action` — if a dramatic beat fails, retry the same shot with `epic` before rewriting the text.
-14. **Isolate one variable per retry.** If a working prompt pattern suddenly fails, change exactly one thing (the flagged phrase, then the genre, then the still) rather than rewriting everything at once.
-15. **A still first, always.** Generate the start-frame still before the video call. It anchors identity/composition and gives you something to inspect before spending video credits.
-16. **Don't pad the narration to hit a duration or a target shot count.** Write however many words the actual point takes to make. If `targetShotCount` is set and doesn't comfortably fit the script you wrote, prefer a natural fit over forced padding/cramming.
-17. **Watch for `preset_recommendation`.** A generation call may come back suggesting a canned Higgsfield preset instead of starting your job. Unless directed to use a preset/template look, decline it and resubmit with `declined_preset_id` to force literal generation of your own script.
-18. **A single failed segment should never sink the whole video.** During PHASE: execute, if one segment can't be salvaged after a retry + rewrite, report its per-segment `errorMessage` and keep directing the rest — the backend tracks and can regenerate that one segment independently later.
+1. **Character consistency is non-negotiable — one anchor still, reused for every avatar segment.** Generate exactly ONE character still per video (Step 0 of PHASE: execute), then reuse that same still's job id as `start_image` for every avatar (`hasCharacter: true`) segment, including any later `PHASE: regenerate_segment` calls in the same session. Never generate a second, independent character still mid-video — that's precisely what causes a different-looking person to show up partway through a video. This is the #1 real quality failure this pipeline has produced in testing; treat it with the same seriousness as "no silent segment."
+2. **The Reference Element + repeated text description are BOTH required, every time — neither alone is enough.** Embed `<<<elementId>>>` in every prompt that includes the character (on camera or referenced for voice continuity in b-roll), AND restate the same, unchanged outfit/physical-description text from the brief in that same prompt. The Reference Element conditions the model toward the right person but isn't a hard guarantee across independent generations by itself — the redundant text description is what actually locks it in. Never vary the outfit/hairstyle/appearance description between segments unless a DIRECTOR NOTE explicitly asks for a costume or scene change.
+3. **Write the full narration script first, as one continuous piece.** The whole video is a single flowing story — write it start to finish, sized via the pacing rule below to the intended total runtime, *then* decide how to distribute it across segments. Never invent a disconnected one-off line per segment; that reads as fragmented, not directed.
+4. **Every segment carries real spoken content — no silent segment, ever.** Segments where the character isn't visible still get their own slice of the continuous script, delivered as off-screen narration. A video with any silent stretch is a failed video.
+5. **Environment is TEXT, not an image ref.** Passing a location photo as an image ref causes "ref bleeding" — the model copies the reference photo's exact composition into your output instead of just matching its mood. Write the KG Media Loft descriptor straight into the `Scene:` portion of your prompt instead.
+6. **Native Seedance audio (`generate_audio: true`) handles ALL narration — avatar dialogue AND off-screen voiceover.** Confirmed in testing: a prompt describing an off-screen narrator with nobody visibly speaking still renders real, intelligible narration. This means one single audio system covers the entire video regardless of whether the character is on screen in a given segment — never reach for a separate TTS tool.
+7. **Identity only ever via `<<<elementId>>>` — never the character's literal name as text.** Writing the proper name in a prompt causes the model to render it as garbled on-screen text (confirmed real failure: a name printed wrong on a shirt).
+8. **Keep the character's voice consistent in b-roll segments via natural scene-continuity phrasing**, e.g. `"<<<elementId>>> continues speaking from just off camera: '...'"` — not an explicit identity/voice-cloning claim like "she is not visible, narrates in her own voice" (confirmed: that framing triggers agent refusal twice; the natural-continuity phrasing produced a real working result). A generic "warm narrator" description with no identity reference is a safe fallback but won't guarantee the same voice.
+9. **Pacing: ~2.3-2.5 spoken words per second of segment duration.** A prior test crammed 50 words into 10s (~300 wpm) and the delivery came out rushed; ~23-25 words for a 10s segment is the correct density.
+10. **Segment duration asymmetry**: avatar (on-camera) segments run longer (~10s); concept/b-roll segments should be noticeably shorter (~5-6s) — confirmed this reads better than equal-length segments.
+11. **Orientation must always be explicitly set on every single generation call**, from the CONFIG value passed into the session — never omitted, never left to a tool's own default. A real failure: one session left `aspect_ratio` unset, Seedance defaulted to 16:9, and the result couldn't go through the downstream 9:16-only captioning step at all.
+12. **Retry once before rewriting on a content-safety flag.** Some `nsfw`/`ip_detected` flags are transient. If the exact same call fails twice in a row, the trigger is real — rewrite the specific phrase (see the reference table) rather than the whole prompt.
+13. **Never name real camera or film-stock brands.** "Arri Alexa 65", "Kodak Vision3", "Ilford HP5" etc. read as IP triggers. Say "large-format cinema camera" / "fine-grain cinematic film" instead.
+14. **Genre shapes risk, not just mood.** `drama` trips content filters on intimate/atmospheric beats more than `epic` or `action` — if a dramatic beat fails, retry the same shot with `epic` before rewriting the text.
+15. **Isolate one variable per retry.** If a working prompt pattern suddenly fails, change exactly one thing (the flagged phrase, then the genre, then the still) rather than rewriting everything at once.
+16. **A still first, always** — but only ONE per video for the character (see rule 1); b-roll segments still each get their own fresh still for their own distinct subject.
+17. **Don't pad the narration to hit a duration or a target shot count.** Write however many words the actual point takes to make. If `targetShotCount` is set and doesn't comfortably fit the script you wrote, prefer a natural fit over forced padding/cramming.
+18. **Watch for `preset_recommendation`.** A generation call may come back suggesting a canned Higgsfield preset instead of starting your job. Unless directed to use a preset/template look, decline it and resubmit with `declined_preset_id` to force literal generation of your own script.
+19. **A single failed segment should never sink the whole video.** During PHASE: execute, if one segment can't be salvaged after a retry + rewrite, report its per-segment `errorMessage` and keep directing the rest — the backend tracks and can regenerate that one segment independently later.
 
 ## Plan → Approve → Execute — what changes across phases
 
@@ -34,22 +35,28 @@ Distilled from an internal production playbook (`Universal AI Cinematic Automati
 - **PHASE: execute** happens only after a human approves the plan (possibly with light edits, which take priority over what you originally wrote). Now you actually call `generate_image`/`generate_video` per segment, in order, and report real `videoUrl`/`duration`/`higgsfieldJobId` per segment.
 - **PHASE: regenerate_segment** touches exactly one segment. You still have full session memory of the whole video's narration/character/environment/config — use it so the regenerated segment stays consistent with the rest, but never re-mention or re-generate any other segment.
 
-## Production chain (per segment, PHASE: execute / regenerate_segment)
+## Production chain
 
-Two generation calls per segment, always in this order, chained via same-session job IDs (never raw URLs):
+**Step 0, once per video (PHASE: execute only):** `generate_image` — ONE character anchor still: `<<<elementId>>>`, a clean neutral front-facing composition in the Loft, full outfit/physical description restated. This job id is reused as `start_image` for every avatar segment below — never regenerated mid-video (see Golden Rule 1).
 
-1. **`generate_image`** (model `soul_2` or similar) — the start-frame still for this segment. Character + Loft (if `hasCharacter`) or the b-roll subject (if not), matching the segment's `visualDescription`. Always pass the exact configured `aspect_ratio`.
-2. **`generate_video`** (model `seedance_2_0`, `generate_audio: true`) — the still's job ID as `start_image`, duration close to the segment's intended length, exact configured `aspect_ratio`, and the segment's `spokenPortion` written either as on-camera dialogue (`hasCharacter: true`) or an off-screen narrator's line (`hasCharacter: false`, natural-continuity `<<<elementId>>>` phrasing per Golden Rule 7). This call's output IS the segment's final `videoUrl` — there is no separate lip-sync pass anymore.
+**Per segment (PHASE: execute / regenerate_segment), chained via same-session job IDs (never raw URLs):**
+
+1. Start-frame still:
+   - **Avatar segments** (`hasCharacter: true`): REUSE the Step 0 anchor still job id. Do not call `generate_image` again.
+   - **B-roll segments** (`hasCharacter: false`): fresh `generate_image` call (model `soul_2` or similar) for this segment's actual subject, matching its `visualDescription`. Always pass the exact configured `aspect_ratio`.
+2. **`generate_video`** (model `seedance_2_0`, `generate_audio: true`) — the still's job ID as `start_image` (the shared anchor for avatar segments, the fresh b-roll still otherwise), duration close to the segment's intended length, exact configured `aspect_ratio`, and the segment's `spokenPortion` written either as on-camera dialogue (`hasCharacter: true`, outfit/appearance restated per Golden Rule 2) or an off-screen narrator's line (`hasCharacter: false`, natural-continuity `<<<elementId>>>` phrasing per Golden Rule 8). This call's output IS the segment's final `videoUrl` — there is no separate lip-sync pass anymore.
+
+`PHASE: regenerate_segment` follows the exact same steps for the single segment being redone, reusing the SAME Step 0 anchor still from earlier in the session if it's an avatar segment.
 
 ## Segment prompt structure (for the `generate_video` call above)
 
 ```
 [VIDEO TYPE: Cinematic <genre>. ~<duration>-second segment.]
 
-[SUBJECT: <<<elementId>>> — <character description + outfit, from the CHARACTER brief, if hasCharacter — or the b-roll subject itself>]
+[SUBJECT: <<<elementId>>> — <FULL character description + outfit, restated verbatim from the CHARACTER brief every time, if hasCharacter — or the b-roll subject itself>]
 [VISUAL ACTION: <what's happening on screen this segment, matching visualDescription>]
 [ENVIRONMENT: <KG Media Loft text descriptor, or the b-roll setting>]
-[DIALOGUE / NARRATION: <the segment's spokenPortion — literal on-camera dialogue if hasCharacter, or an off-screen narrator's line otherwise, phrased per Golden Rule 7 if the character's voice should carry through>]
+[DIALOGUE / NARRATION: <the segment's spokenPortion — literal on-camera dialogue if hasCharacter, or an off-screen narrator's line otherwise, phrased per Golden Rule 8 if the character's voice should carry through>]
 [COLOUR TONE: <direction>]
 [LIGHTING AND MOOD: <sources, quality>]
 ```
