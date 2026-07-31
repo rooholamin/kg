@@ -144,10 +144,12 @@ export function SchedulerContent() {
   const { data: topicsData } = useQuery({ queryKey: ['topics'], queryFn: fetchTopics });
   const topics = topicsData?.data ?? [];
 
-  // Filtered categories based on selected sections
-  const filteredCategories = selectedSectionIds.length > 0
+  // Filtered categories based on selected sections, newest-added first so
+  // recently added categories are easy to find in the checklist.
+  const filteredCategories = (selectedSectionIds.length > 0
     ? categories.filter((c) => selectedSectionIds.includes(c.sectionId))
-    : categories;
+    : categories
+  ).slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   const filteredTopics = selectedCategoryIds.length > 0
     ? topics.filter((t) => selectedCategoryIds.includes(t.categoryId))
