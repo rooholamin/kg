@@ -1034,6 +1034,70 @@ export async function redoSlot(slotId, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Reset Batch
+// ---------------------------------------------------------------------------
+
+/**
+ * Resets a batch back to a fresh, never-started state so it can be run
+ * again from scratch: every slot returns to `planned` with its planning
+ * data, error, and n8n tracking fields cleared, and any linked article is
+ * unlinked (not deleted — the draft is preserved in case it's still useful).
+ * The batch itself returns to `draft` with counters and timestamps cleared.
+ * @param {string} batchId
+ * @param {{ createdBy?: string | null }} [opts]
+ */
+export async function resetScheduleBatch(batchId, opts = {}) {
+  const batch = await prisma.scheduleBatch.findUnique({ where: { id: batchId } });
+  if (!batch) {
+    const err = new Error('Batch not found');
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const { count: slotsReset } = await tx.scheduledArticleSlot.updateMany({
+      where: { batchId },
+      data: {
+        status: 'planned',
+        articleId: null,
+        planningData: null,
+        errorMessage: null,
+        triggeredAt: null,
+        completedAt: null,
+        n8nExecutionId: null,
+      },
+    });
+
+    const updatedBatch = await tx.scheduleBatch.update({
+      where: { id: batchId },
+      data: {
+        status: 'draft',
+        pauseReason: null,
+        startedAt: null,
+        completedAt: null,
+        completedSlots: 0,
+        failedSlots: 0,
+      },
+    });
+
+    await contentLog(
+      {
+        type: 'scheduler',
+        action: 'reset',
+        message: `Batch "${batch.name}" reset — ${slotsReset} slot${slotsReset !== 1 ? 's' : ''} returned to planned`,
+        entityType: 'schedule_batch',
+        entityId: batchId,
+        metadata: { slotsReset },
+        createdBy: opts.createdBy ?? null,
+      },
+      tx,
+    );
+
+    return { batch: updatedBatch, slotsReset };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Delete Batch(es)
 // ---------------------------------------------------------------------------
 

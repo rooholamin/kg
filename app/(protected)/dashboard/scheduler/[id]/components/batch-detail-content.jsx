@@ -31,6 +31,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { N8nStatusBadge } from '../../components/n8n-status-badge';
@@ -359,6 +369,7 @@ export function BatchDetailContent({ batchId }) {
   const qc = useQueryClient();
   const [n8nAvailable, setN8nAvailable] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   // Auto-scroll to the active slot whenever it changes
   const activeSlotRef = useRef(null);
@@ -443,6 +454,20 @@ export function BatchDetailContent({ batchId }) {
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || 'Failed'); }
     }),
     onSuccess: invalidate,
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiFetch(`/api/scheduler/batches/${batchId}/reset`, { method: 'POST' });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || 'Failed to reset batch'); }
+      return r.json();
+    },
+    onSuccess: (res) => {
+      toast.success(`Batch reset — ${res.data?.slotsReset ?? 0} slots back to planned`);
+      setResetConfirmOpen(false);
+      invalidate();
+    },
+    onError: (e) => toast.error(e.message),
   });
 
   const retryMutation = useMutation({
@@ -605,6 +630,16 @@ export function BatchDetailContent({ batchId }) {
                   <Button size="sm" onClick={() => promoteAllMutation.mutate()} disabled={promoteAllMutation.isPending}>
                     {promoteAllMutation.isPending ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <PlusCircle className="size-3.5 mr-1.5" />}
                     Add All to Articles
+                  </Button>
+                )}
+                {!isRunning && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setResetConfirmOpen(true)}
+                  >
+                    <RotateCcw className="size-3.5 mr-1.5" />Reset
                   </Button>
                 )}
               </div>
@@ -772,6 +807,31 @@ export function BatchDetailContent({ batchId }) {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset this batch?</AlertDialogTitle>
+            <AlertDialogDescription>
+              All {batch.totalSlots} slots will return to <strong>planned</strong> — any
+              generated plans, errors, and progress will be cleared so you can start
+              the batch again from scratch. Articles already created from this batch
+              are unlinked but not deleted. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              disabled={resetMutation.isPending}
+              onClick={(e) => { e.preventDefault(); resetMutation.mutate(); }}
+            >
+              {resetMutation.isPending && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+              Reset batch
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Container>
   );
 }
