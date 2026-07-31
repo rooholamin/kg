@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { RiCheckboxCircleFill, RiErrorWarningFill } from '@remixicon/react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HashIcon, LoaderCircleIcon, PlusIcon, UploadIcon, UserCircle2Icon, XIcon } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -87,41 +87,64 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
 
   const watchedImage = form.watch('characterImage');
 
+  // Always re-fetch the full, authoritative record before editing — callers
+  // (sections table, section detail page) may only pass a partial object
+  // (e.g. missing wpSiteUrl/wpUsername/wpAppPassword/wpAuthorId/colors/
+  // hashtags). Populating the form from a partial object would silently
+  // blank those fields out on save, since this form always submits every
+  // field. See: WordPress credentials wiped 2026-07-28 by exactly this bug.
+  const {
+    data: fullSectionData,
+    isFetching: isLoadingFullSection,
+  } = useQuery({
+    queryKey: ['section-detail-for-edit', section?.id],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/sections/${section.id}`);
+      if (!res.ok) throw new Error('Failed to load section details');
+      const json = await res.json();
+      return json.data;
+    },
+    enabled: open && isEdit,
+    staleTime: 0,
+  });
+
   useEffect(() => {
     if (!open) return;
     if (isEdit) {
+      if (!fullSectionData) return; // wait for authoritative data before populating
+      const s = fullSectionData;
       form.reset({
-        name: section.name ?? '',
-        slug: section.slug ?? '',
-        description: section.description ?? '',
-        summary: section.summary ?? '',
-        icon: section.icon ?? '',
-        status: section.status === 'archived' ? 'archived' : 'active',
-        characterName: section.characterName ?? '',
-        characterBackground: section.characterBackground ?? '',
-        characterRole: section.characterRole ?? '',
-        characterAge: section.characterAge ?? '',
-        characterBiography: section.characterBiography ?? '',
-        characterTone: section.characterTone ?? '',
-        characterWritingStyle: section.characterWritingStyle ?? '',
-        characterSampleVoice: section.characterSampleVoice ?? '',
-        characterPersona: section.characterPersona ?? '',
-        characterImage: section.characterImage ?? '',
-        wpSiteUrl: section.wpSiteUrl ?? '',
-        wpUsername: section.wpUsername ?? '',
-        wpAppPassword: section.wpAppPassword ?? '',
-        wpAuthorId: section.wpAuthorId ?? '',
-        colorAccent: section.colorAccent ?? '#CCB260',
-        colorLight: section.colorLight ?? '#E0CC7A',
-        colorDark: section.colorDark ?? '#7A5500',
-        socialHashtags: section.socialHashtags ?? [],
+        name: s.name ?? '',
+        slug: s.slug ?? '',
+        description: s.description ?? '',
+        summary: s.summary ?? '',
+        icon: s.icon ?? '',
+        status: s.status === 'archived' ? 'archived' : 'active',
+        characterName: s.characterName ?? '',
+        characterBackground: s.characterBackground ?? '',
+        characterRole: s.characterRole ?? '',
+        characterAge: s.characterAge ?? '',
+        characterBiography: s.characterBiography ?? '',
+        characterTone: s.characterTone ?? '',
+        characterWritingStyle: s.characterWritingStyle ?? '',
+        characterSampleVoice: s.characterSampleVoice ?? '',
+        characterPersona: s.characterPersona ?? '',
+        characterImage: s.characterImage ?? '',
+        wpSiteUrl: s.wpSiteUrl ?? '',
+        wpUsername: s.wpUsername ?? '',
+        wpAppPassword: s.wpAppPassword ?? '',
+        wpAuthorId: s.wpAuthorId ?? '',
+        colorAccent: s.colorAccent ?? '#CCB260',
+        colorLight: s.colorLight ?? '#E0CC7A',
+        colorDark: s.colorDark ?? '#7A5500',
+        socialHashtags: s.socialHashtags ?? [],
       });
-      setAvatarPreview(section.characterImage || null);
+      setAvatarPreview(s.characterImage || null);
     } else {
       form.reset(EMPTY_DEFAULTS);
       setAvatarPreview(null);
     }
-  }, [open, isEdit, section, form]);
+  }, [open, isEdit, fullSectionData, form]);
 
   async function handleAvatarFileChange(e) {
     const file = e.target.files?.[0];
@@ -841,12 +864,16 @@ export function SectionFormDialog({ open, onOpenChange, section }) {
               </Button>
               <Button
                 type="submit"
-                disabled={!form.formState.isDirty || isProcessing}
+                disabled={
+                  !form.formState.isDirty ||
+                  isProcessing ||
+                  (isEdit && isLoadingFullSection)
+                }
               >
-                {isProcessing && (
+                {(isProcessing || (isEdit && isLoadingFullSection)) && (
                   <LoaderCircleIcon className="me-1 size-4 animate-spin" />
                 )}
-                {isEdit ? 'Save' : 'Create'}
+                {isEdit && isLoadingFullSection ? 'Loading…' : isEdit ? 'Save' : 'Create'}
               </Button>
             </DialogFooter>
           </form>
