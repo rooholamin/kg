@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/prisma';
 import { logStart, logDone, logError } from '@/lib/video-logger';
 import { estimateSegmentCost } from '@/lib/video-cost';
+import { recordSegmentVersion } from '@/lib/video-segment-versions';
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -425,8 +426,12 @@ Direct the full shoot now — generate_image + generate_video per segment, in or
   const resultSegments = result.segments || [];
   for (const seg of resultSegments) {
     const hasVideo = !!seg.videoUrl;
-    await prisma.videoSegment.updateMany({
-      where: { postId, order: seg.order },
+    const estimatedCost = estimateSegmentCost({ hasCharacter: seg.hasCharacter, duration: seg.duration });
+    const row = await prisma.videoSegment.findFirst({ where: { postId, order: seg.order }, select: { id: true } });
+    if (!row) continue;
+
+    await prisma.videoSegment.update({
+      where: { id: row.id },
       data: {
         spokenPortion: seg.spokenPortion || undefined,
         visualDescription: seg.visualDescription || undefined,
@@ -436,8 +441,16 @@ Direct the full shoot now — generate_image + generate_video per segment, in or
         status: hasVideo ? 'completed' : 'failed',
         errorMessage: hasVideo ? null : (seg.errorMessage || 'Segment generation failed'),
         generationCompletedAt: completedAt,
-        estimatedCost: estimateSegmentCost({ hasCharacter: seg.hasCharacter, duration: seg.duration }),
+        estimatedCost,
       },
+    });
+
+    await recordSegmentVersion(row.id, {
+      videoUrl: seg.videoUrl,
+      duration: seg.duration,
+      higgsfieldJobId: seg.higgsfieldJobId,
+      estimatedCost,
+      note: directorNote || null,
     });
   }
 
@@ -499,24 +512,35 @@ Respond with ONLY the REGENERATE OUTPUT FORMAT JSON described in your instructio
   }
 
   const hasVideo = !!result.videoUrl;
+  const estimatedCost = estimateSegmentCost({ hasCharacter: result.hasCharacter ?? segment.hasCharacter, duration: result.duration });
+  // A failed regeneration must not wipe the take that's already there — the
+  // previous clip stays live until something better actually arrives.
   const updated = await prisma.videoSegment.update({
     where: { id: segment.id },
     data: {
       spokenPortion: result.spokenPortion || segment.spokenPortion,
       visualDescription: result.visualDescription || segment.visualDescription,
-      videoUrl: result.videoUrl || null,
-      duration: result.duration || null,
-      higgsfieldJobId: result.higgsfieldJobId || null,
-      status: hasVideo ? 'completed' : 'failed',
+      videoUrl: hasVideo ? result.videoUrl : segment.videoUrl,
+      duration: hasVideo ? result.duration || null : segment.duration,
+      higgsfieldJobId: hasVideo ? result.higgsfieldJobId || null : segment.higgsfieldJobId,
+      status: hasVideo || segment.videoUrl ? 'completed' : 'failed',
       errorMessage: hasVideo ? null : (result.errorMessage || 'Segment generation failed'),
       generationCompletedAt: new Date(),
-      estimatedCost: estimateSegmentCost({ hasCharacter: result.hasCharacter ?? segment.hasCharacter, duration: result.duration }),
+      estimatedCost: hasVideo ? estimatedCost : segment.estimatedCost,
     },
+  });
+
+  await recordSegmentVersion(segment.id, {
+    videoUrl: result.videoUrl,
+    duration: result.duration,
+    higgsfieldJobId: result.higgsfieldJobId,
+    estimatedCost,
+    note,
   });
 
   await logDone(aiLogId, hasVideo ? `Segment ${segment.order} regenerated` : `Segment ${segment.order} failed: ${result.errorMessage || 'unknown'}`, { response: responseText, parsed: result });
 
-  return updated;
+  return hasVideo ? prisma.videoSegment.findUnique({ where: { id: segment.id } }) : updated;
 }
 
 // ---------------------------------------------------------------------------

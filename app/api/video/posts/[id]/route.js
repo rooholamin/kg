@@ -17,7 +17,10 @@ export async function GET(_req, { params }) {
       where: { id },
       include: {
         article: { select: { id: true, title: true, publishDate: true } },
-        segments: { orderBy: { order: 'asc' } },
+        segments: {
+          orderBy: { order: 'asc' },
+          include: { versions: { orderBy: { version: 'desc' } } },
+        },
       },
     });
     if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });

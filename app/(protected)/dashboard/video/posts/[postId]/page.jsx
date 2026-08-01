@@ -50,6 +50,9 @@ import {
   Hash,
   Plus,
   Trash2,
+  Link as LinkIcon,
+  History,
+  RotateCcw,
 } from 'lucide-react';
 
 function toLocalDatetimeInputValue(iso) {
@@ -465,7 +468,44 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
 function SegmentBlock({ segment, postId, invalidate }) {
   const [note, setNote] = useState('');
   const [showNote, setShowNote] = useState(false);
+  const [showUrlForm, setShowUrlForm] = useState(false);
+  const [urlValue, setUrlValue] = useState(segment.videoUrl || '');
+  const [durationValue, setDurationValue] = useState(segment.duration ?? '');
+  const [showVersions, setShowVersions] = useState(false);
   const badgeCfg = SEGMENT_STATUS_BADGE[segment.status] ?? { variant: 'secondary', appearance: 'light' };
+  const versions = segment.versions ?? [];
+
+  const setUrlMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${postId}/segments/${segment.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl: urlValue, duration: durationValue === '' ? null : durationValue }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to save URL');
+      }
+      return res.json();
+    },
+    onSuccess: () => { toast.success(`Segment ${segment.order} clip updated`); setShowUrlForm(false); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (versionId) => {
+      const res = await apiFetch(`/api/video/posts/${postId}/segments/${segment.id}/versions/${versionId}/restore`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to restore version');
+      }
+      return res.json();
+    },
+    onSuccess: () => { toast.success(`Segment ${segment.order} restored — re-assemble to apply`); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
 
   const regenerateMutation = useMutation({
     mutationFn: async () => {
@@ -540,6 +580,94 @@ function SegmentBlock({ segment, postId, invalidate }) {
           {regenerateMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
           {showNote ? 'Confirm regenerate' : 'Regenerate'}
         </Button>
+
+        <div className="flex gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="flex-1 h-7 text-[11px] px-1"
+            onClick={() => { setShowUrlForm((v) => !v); setUrlValue(segment.videoUrl || ''); setDurationValue(segment.duration ?? ''); }}
+          >
+            <LinkIcon className="size-3" />
+            {segment.videoUrl ? 'Edit URL' : 'Set URL'}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="flex-1 h-7 text-[11px] px-1"
+            onClick={() => setShowVersions((v) => !v)}
+            disabled={!versions.length}
+          >
+            <History className="size-3" />
+            {versions.length ? `Versions (${versions.length})` : 'No versions'}
+          </Button>
+        </div>
+
+        {showUrlForm && (
+          <div className="space-y-1.5 border rounded p-1.5 bg-muted/30">
+            <Input
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              placeholder="https://…/clip.mp4"
+              className="h-7 text-[11px]"
+            />
+            <Input
+              value={durationValue}
+              onChange={(e) => setDurationValue(e.target.value)}
+              placeholder="Duration in seconds (optional)"
+              type="number"
+              step="0.1"
+              className="h-7 text-[11px]"
+            />
+            <Button
+              size="sm"
+              className="w-full h-7 text-[11px]"
+              onClick={() => setUrlMutation.mutate()}
+              disabled={setUrlMutation.isPending || !urlValue.trim()}
+            >
+              {setUrlMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
+              Save clip
+            </Button>
+          </div>
+        )}
+
+        {showVersions && (
+          <div className="space-y-1 border rounded p-1.5 bg-muted/30 max-h-56 overflow-y-auto">
+            {versions.map((v) => {
+              const isActive = v.id === segment.activeVersionId;
+              return (
+                <div key={v.id} className={`rounded border p-1 space-y-1 ${isActive ? 'border-primary bg-primary/5' : 'bg-card'}`}>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] font-semibold">
+                      v{v.version}
+                      {v.source === 'manual' && <span className="ml-1 font-normal text-muted-foreground">manual</span>}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground">{format(new Date(v.createdAt), 'MMM d, HH:mm')}</span>
+                  </div>
+                  {v.videoUrl && (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <video src={v.videoUrl} controls className="w-full rounded bg-black" />
+                  )}
+                  {v.note && <p className="text-[9px] text-muted-foreground line-clamp-2 italic">{v.note}</p>}
+                  {isActive ? (
+                    <p className="text-[9px] text-primary font-medium text-center">Currently used</p>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-6 text-[10px]"
+                      onClick={() => restoreMutation.mutate(v.id)}
+                      disabled={restoreMutation.isPending}
+                    >
+                      {restoreMutation.isPending ? <Loader2 className="size-2.5 animate-spin" /> : <RotateCcw className="size-2.5" />}
+                      Use this take
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

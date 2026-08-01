@@ -509,14 +509,9 @@ export async function regenerateSegment(segmentId, note) {
   const segment = await prisma.videoSegment.findUnique({ where: { id: segmentId } });
   if (!segment) throw new Error(`Segment not found: ${segmentId}`);
 
-  const staleUrl = segment.videoUrl;
-  const updated = await regenerateVideoSegment({ postId: segment.postId, segment, note });
-
-  if (staleUrl && staleUrl !== updated.videoUrl) {
-    await deleteFromS3(staleUrl).catch(() => {});
-  }
-
-  return updated;
+  // The replaced clip is deliberately NOT deleted — it stays in the segment's
+  // version history so a regeneration that comes back worse can be restored.
+  return regenerateVideoSegment({ postId: segment.postId, segment, note });
 }
 
 // ---------------------------------------------------------------------------

@@ -204,34 +204,34 @@ enum ApprovalStatus {
 }
 
 model Section {
-  id                    String        @id @default(uuid())
-  name                  String
-  slug                  String        @unique
-  description           String?
-  summary               String?
-  icon                  String?
-  status                SectionStatus @default(active)
-  characterName         String?
-  characterBackground   String?
-  characterRole         String?
-  characterAge          String?
-  characterBiography    String?       @db.Text
-  characterTone         String?
-  characterWritingStyle String?       @db.Text
-  characterSampleVoice  String?       @db.Text
-  characterPersona      String?       @db.Text
-  characterImage        String?
+  id                     String        @id @default(uuid())
+  name                   String
+  slug                   String        @unique
+  description            String?
+  summary                String?
+  icon                   String?
+  status                 SectionStatus @default(active)
+  characterName          String?
+  characterBackground    String?
+  characterRole          String?
+  characterAge           String?
+  characterBiography     String?       @db.Text
+  characterTone          String?
+  characterWritingStyle  String?       @db.Text
+  characterSampleVoice   String?       @db.Text
+  characterPersona       String?       @db.Text
+  characterImage         String?
   // WordPress integration — credentials for the author persona of this section
-  wpSiteUrl             String?
-  wpUsername            String?
-  wpAppPassword         String?
-  wpAuthorId            Int?
+  wpSiteUrl              String?
+  wpUsername             String?
+  wpAppPassword          String?
+  wpAuthorId             Int?
   // Social media template colors — fed into {{COLOR_ACCENT/LIGHT/DARK}} placeholders
-  colorAccent           String?
-  colorLight            String?
-  colorDark             String?
+  colorAccent            String?
+  colorLight             String?
+  colorDark              String?
   // Baseline hashtags prepended to AI-generated hashtags for social posts
-  socialHashtags        String[]      @default([])
+  socialHashtags         String[]      @default([])
   // Video pipeline — Higgsfield Reference Element ID created from characterImage
   // (+ any extra ref shots) via the Character Admin Agent, reused as this
   // section's on-screen avatar in generate_image/generate_video prompts
@@ -239,13 +239,13 @@ model Section {
   // those are a separate, incompatible system only usable with Soul V2/Cinema
   // still-image models, not with Seedance 2.0/Kling 3.0 video generation.
   videoCharacterId       String?
-  videoRefImageUrls      String[]     @default([])
-  videoOutfitDescription String?      @db.Text
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-  categories            Category[]
+  videoRefImageUrls      String[]      @default([])
+  videoOutfitDescription String?       @db.Text
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  categories             Category[]
   // Custom videos that borrow this section's trained character
-  customVideoPosts      VideoPost[]
+  customVideoPosts       VideoPost[]
 
   @@index([status])
   @@index([slug])
@@ -286,54 +286,54 @@ model Topic {
 }
 
 model Article {
-  id                 String           @id @default(uuid())
-  title              String
+  id                     String                 @id @default(uuid())
+  title                  String
   /// TipTap / ProseMirror doc: { type: "doc", content: [...] }
-  summary            String?
-  content            Json?
-  featuredImage      String?
-  galleryImages      String[]         @default([])
-  videoUrl           String?
-  isEditorsChoice    Boolean          @default(false)
-  views              Int              @default(0)
-  likes              Int              @default(0)
-  commentsCount      Int              @default(0)
-  topicId            String
-  categoryId         String
-  status             ArticleStatus    @default(planning)
-  publishDate        DateTime?
-  readinessDeadline  DateTime?
-  seoScore           Int?
-  wordpressPostId    Int?
-  approvedById       String?
-  approvedAt         DateTime?
-  rejectedById       String?
-  rejectedAt         DateTime?
-  scheduleBatchId      String?
-  scheduledSlotId      String?
-  generationSource     String?
+  summary                String?
+  content                Json?
+  featuredImage          String?
+  galleryImages          String[]               @default([])
+  videoUrl               String?
+  isEditorsChoice        Boolean                @default(false)
+  views                  Int                    @default(0)
+  likes                  Int                    @default(0)
+  commentsCount          Int                    @default(0)
+  topicId                String
+  categoryId             String
+  status                 ArticleStatus          @default(planning)
+  publishDate            DateTime?
+  readinessDeadline      DateTime?
+  seoScore               Int?
+  wordpressPostId        Int?
+  approvedById           String?
+  approvedAt             DateTime?
+  rejectedById           String?
+  rejectedAt             DateTime?
+  scheduleBatchId        String?
+  scheduledSlotId        String?
+  generationSource       String?
   // AI planning fields (populated when slot is promoted to article)
-  articleAngle         String?       @db.Text
-  seoKeywords          String[]      @default([])
-  outline              Json?
-  featuredImagePrompt  String?       @db.Text
-  inlineImagePrompts   Json?
-  videoIdea            String?       @db.Text
-  metaDescription      String?       @db.Text
+  articleAngle           String?                @db.Text
+  seoKeywords            String[]               @default([])
+  outline                Json?
+  featuredImagePrompt    String?                @db.Text
+  inlineImagePrompts     Json?
+  videoIdea              String?                @db.Text
+  metaDescription        String?                @db.Text
   // Shared Managed Agent session for social content generation across all platforms
   socialContentSessionId String?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
-  topic                Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  category             Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  versions             ArticleVersion[]
-  scheduledSlots       ScheduledArticleSlot[]
-  research             ArticleResearch?
-  assetRequests        ArticleAssetRequest[]
-  automationRuns       ArticleAutomationRun[]
-  pipelineEngineLogs   PipelineEngineLog[]
-  socialPosts          SocialPost[]
-  videoPosts           VideoPost[]
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  topic                  Topic                  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  category               Category               @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  versions               ArticleVersion[]
+  scheduledSlots         ScheduledArticleSlot[]
+  research               ArticleResearch?
+  assetRequests          ArticleAssetRequest[]
+  automationRuns         ArticleAutomationRun[]
+  pipelineEngineLogs     PipelineEngineLog[]
+  socialPosts            SocialPost[]
+  videoPosts             VideoPost[]
 
   @@index([topicId])
   @@index([categoryId])
@@ -589,25 +589,25 @@ enum ScheduledSlotStatus {
 }
 
 model ScheduleBatch {
-  id              String               @id @default(uuid())
+  id              String                 @id @default(uuid())
   name            String
   startDate       DateTime
   endDate         DateTime
   postsPerDay     Int
-  status          ScheduleBatchStatus  @default(draft)
-  totalSlots      Int                  @default(0)
-  completedSlots  Int                  @default(0)
-  failedSlots     Int                  @default(0)
-  sectionIds      String[]             @default([])
-  categoryIds     String[]             @default([])
-  excludeTopicIds String[]             @default([])
+  status          ScheduleBatchStatus    @default(draft)
+  totalSlots      Int                    @default(0)
+  completedSlots  Int                    @default(0)
+  failedSlots     Int                    @default(0)
+  sectionIds      String[]               @default([])
+  categoryIds     String[]               @default([])
+  excludeTopicIds String[]               @default([])
   /// "n8n_unavailable" | "manual" | null
   pauseReason     String?
   startedAt       DateTime?
   completedAt     DateTime?
   createdBy       String?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
   slots           ScheduledArticleSlot[]
 
   @@index([status])
@@ -651,11 +651,11 @@ enum PipelineEngineStatus {
 
 /// One row per engine type: "research" | "writing" | "images"
 model PipelineEngine {
-  id                 String               @id    // "research" | "writing" | "images"
+  id                 String               @id // "research" | "writing" | "images"
   status             PipelineEngineStatus @default(idle)
   pauseReason        String?
   currentArticleId   String?
-  currentStep        String?              // "research" | "writing" | "assets"
+  currentStep        String? // "research" | "writing" | "assets"
   delayMinutes       Int                  @default(0) // wait N minutes between jobs
   lastJobCompletedAt DateTime?
   totalProcessed     Int                  @default(0)
@@ -666,10 +666,10 @@ model PipelineEngine {
 /// Immutable log entry for each article step processed by the pipeline engine
 model PipelineEngineLog {
   id          String    @id @default(uuid())
-  engineId    String?   // "research" | "writing" | "images" (null = legacy)
+  engineId    String? // "research" | "writing" | "images" (null = legacy)
   articleId   String
   steps       String[]
-  status      String    // "completed" | "failed"
+  status      String // "completed" | "failed"
   error       String?
   startedAt   DateTime
   completedAt DateTime?
@@ -716,18 +716,18 @@ enum AssetRequestStatus {
 
 /// One row per image/asset that needs to be generated for an article
 model ArticleAssetRequest {
-  id           String             @id @default(uuid())
+  id           String                @id @default(uuid())
   articleId    String
   type         AssetRequestType
-  prompt       String             @db.Text
+  prompt       String                @db.Text
   placementKey String
-  status       AssetRequestStatus @default(pending)
+  status       AssetRequestStatus    @default(pending)
   imageUrl     String?
   errorMessage String?
-  version      Int                @default(1)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  article      Article            @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  version      Int                   @default(1)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  article      Article               @relation(fields: [articleId], references: [id], onDelete: Cascade)
   history      ArticleAssetHistory[]
 
   @@index([articleId])
@@ -812,25 +812,25 @@ enum SocialPostStatus {
 }
 
 model SocialCampaign {
-  id          String               @id @default(uuid())
-  weekStart   DateTime
-  weekEnd     DateTime
-  status      SocialCampaignStatus @default(pending)
+  id                  String               @id @default(uuid())
+  weekStart           DateTime
+  weekEnd             DateTime
+  status              SocialCampaignStatus @default(pending)
   // Article publishDate filter, independent of the weekStart/weekEnd posting
   // window above. Null means "use weekStart/weekEnd" (legacy behavior).
-  articleDateStart DateTime?
-  articleDateEnd   DateTime?
+  articleDateStart    DateTime?
+  articleDateEnd      DateTime?
   // Settings captured at creation time (copied from SocialSettings defaults)
   maxPostsPerPlatform Json
-  campaignBrief       String?  @db.Text
-  editorsChoiceOnly   Boolean  @default(false)
-  includeSections     String[] @default([])
+  campaignBrief       String?              @db.Text
+  editorsChoiceOnly   Boolean              @default(false)
+  includeSections     String[]             @default([])
   // Managed Agent session ID used for this campaign's approval (audit trail)
   approvalSessionId   String?
-  posts     SocialPost[]
-  logs      SocialCampaignLog[]
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
+  posts               SocialPost[]
+  logs                SocialCampaignLog[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([status])
   @@index([weekStart])
@@ -873,22 +873,22 @@ model SocialPost {
 
 /// Detailed trace of every pipeline step — used for the live run log UI
 model SocialCampaignLog {
-  id         String   @id @default(uuid())
+  id         String         @id @default(uuid())
   campaignId String
   postId     String?
   // e.g. 'approval_fetch', 'approval_ai_send', 'approval_ai_receive', 'content_session',
   //      'content_ai_send', 'content_ai_receive', 'export_slide', 'export_upload', 'schedule_buffer'
   step       String
   // 'running' | 'done' | 'error'
-  status     String   @default("running")
+  status     String         @default("running")
   // Human-readable summary shown in the UI
-  message    String?  @db.Text
+  message    String?        @db.Text
   // Raw input data (message sent to AI, export params, Buffer payload…)
   input      Json?
   // Raw output data (AI response, S3 URL, Buffer post ID…)
   output     Json?
   campaign   SocialCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
+  createdAt  DateTime       @default(now())
 
   @@index([campaignId])
   @@index([postId])
@@ -897,47 +897,47 @@ model SocialCampaignLog {
 
 /// Global defaults + Buffer profile IDs + Anthropic Managed Agent references
 model SocialSettings {
-  id                          String   @id @default("singleton")
+  id                           String   @id @default("singleton")
   // Anthropic Managed Agent IDs (created manually in Anthropic Console)
-  approvalAgentId             String?
-  approvalEnvironmentId       String?
+  approvalAgentId              String?
+  approvalEnvironmentId        String?
   // Content generation agent — separate agent, one session per post
-  contentAgentId              String?
-  contentEnvironmentId        String?
+  contentAgentId               String?
+  contentEnvironmentId         String?
   // Buffer channel IDs (new GraphQL API — one channel per platform)
-  instagramChannelId          String?
-  linkedinChannelId           String?
-  twitterChannelId            String?
+  instagramChannelId           String?
+  linkedinChannelId            String?
+  twitterChannelId             String?
   // Legacy Buffer profile IDs (kept for rollback safety — no longer used)
-  instagramCarouselProfileId  String?
-  instagramStoryProfileId     String?
-  linkedinProfileId           String?
-  twitterProfileId            String?
+  instagramCarouselProfileId   String?
+  instagramStoryProfileId      String?
+  linkedinProfileId            String?
+  twitterProfileId             String?
   // Default max posts per platform per week (overridable per campaign)
-  defaultMaxInstagramCarousel Int      @default(3)
-  defaultMaxInstagramStory    Int      @default(5)
-  defaultMaxLinkedin          Int      @default(3)
-  defaultMaxTwitter           Int      @default(7)
+  defaultMaxInstagramCarousel  Int      @default(3)
+  defaultMaxInstagramStory     Int      @default(5)
+  defaultMaxLinkedin           Int      @default(3)
+  defaultMaxTwitter            Int      @default(7)
   // Per-platform posting windows; day bitmask (bit 0=Sun … bit 6=Sat)
-  instagramCarouselDays         Int      @default(28)
-  instagramCarouselWindowStart  String   @default("10:00")
-  instagramCarouselWindowEnd    String   @default("10:00")
-  instagramStoryDays            Int      @default(62)
-  instagramStoryWindowStart     String   @default("08:00")
-  instagramStoryWindowEnd       String   @default("20:00")
-  linkedinDays                  Int      @default(20)
-  linkedinWindowStart           String   @default("09:00")
-  linkedinWindowEnd             String   @default("09:00")
-  twitterDays                   Int      @default(42)
-  twitterWindowStart            String   @default("10:00")
-  twitterWindowEnd              String   @default("10:00")
-  lookbackDays                Int      @default(30)
+  instagramCarouselDays        Int      @default(28)
+  instagramCarouselWindowStart String   @default("10:00")
+  instagramCarouselWindowEnd   String   @default("10:00")
+  instagramStoryDays           Int      @default(62)
+  instagramStoryWindowStart    String   @default("08:00")
+  instagramStoryWindowEnd      String   @default("20:00")
+  linkedinDays                 Int      @default(20)
+  linkedinWindowStart          String   @default("09:00")
+  linkedinWindowEnd            String   @default("09:00")
+  twitterDays                  Int      @default(42)
+  twitterWindowStart           String   @default("10:00")
+  twitterWindowEnd             String   @default("10:00")
+  lookbackDays                 Int      @default(30)
   // UTC offset for posting windows (e.g. -4 for US Eastern Daylight Time)
-  timezoneOffset              Int      @default(0)
+  timezoneOffset               Int      @default(0)
   // When false: pipeline auto-schedules immediately after upload (no review pause)
-  requireReview               Boolean  @default(true)
-  disabledTemplates           String[] @default([])
-  updatedAt                   DateTime @updatedAt
+  requireReview                Boolean  @default(true)
+  disabledTemplates            String[] @default([])
+  updatedAt                    DateTime @updatedAt
 }
 
 /// Runtime state for the ongoing Anthropic Managed Agent approval session
@@ -1003,6 +1003,14 @@ enum VideoSegmentStatus {
   failed
 }
 
+enum VideoSegmentVersionSource {
+  // Produced by the director agent (initial shoot or a regeneration)
+  generated
+  // A URL pasted in by a human — e.g. recovering a Higgsfield clip whose job
+  // id was lost when a director session died mid-shoot
+  manual
+}
+
 /// Platform presets feed sensible defaults (aspect ratio, duration range, tone) into
 /// the Plan phase brief — all four still overridable per campaign/post.
 enum VideoTargetPlatform {
@@ -1040,40 +1048,40 @@ enum VideoCampaignSelectionMode {
 }
 
 model VideoCampaign {
-  id          String              @id @default(uuid())
-  weekStart   DateTime
-  weekEnd     DateTime
-  status      VideoCampaignStatus @default(pending)
+  id                String                     @id @default(uuid())
+  weekStart         DateTime
+  weekEnd           DateTime
+  status            VideoCampaignStatus        @default(pending)
   // agent = the Video Approval Agent picks articles (existing flow); manual =
   // articles were hand-picked day-by-day at creation time and posts were
   // created directly, skipping runVideoApproval entirely.
-  selectionMode VideoCampaignSelectionMode @default(agent)
+  selectionMode     VideoCampaignSelectionMode @default(agent)
   // Article publishDate filter, independent of weekStart/weekEnd (same pattern as SocialCampaign).
   // Unused when selectionMode is "manual" or for video in general now that
   // candidate eligibility no longer depends on publish date (see
   // videoArticleEligibilityWhere in services/video-pipeline.service.js).
-  articleDateStart DateTime?
-  articleDateEnd   DateTime?
+  articleDateStart  DateTime?
+  articleDateEnd    DateTime?
   // Selection guidance for the Video Approval Agent — NOT a shared script;
   // each approved article gets its own independently-written shotList.
-  campaignBrief     String?  @db.Text
-  editorsChoiceOnly Boolean  @default(false)
-  includeSections   String[] @default([])
+  campaignBrief     String?                    @db.Text
+  editorsChoiceOnly Boolean                    @default(false)
+  includeSections   String[]                   @default([])
   maxVideos         Int?
   // Plan → Approve → Execute configuration — cycle-level defaults, each
   // individually overridable per-post (VideoPost has the same four fields).
-  targetPlatform    VideoTargetPlatform? @default(auto)
-  videoStyle        VideoStyle?          @default(auto)
+  targetPlatform    VideoTargetPlatform?       @default(auto)
+  videoStyle        VideoStyle?                @default(auto)
   // Optional exact/target segment count — null means the director agent
   // decides freely (confirmed working well in testing).
   targetShotCount   Int?
-  orientation       String?              @default("9:16")
+  orientation       String?                    @default("9:16")
   // Managed Agent session ID used for this campaign's approval (audit trail)
   approvalSessionId String?
-  posts     VideoPost[]
-  logs      VideoCampaignLog[]
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  posts             VideoPost[]
+  logs              VideoCampaignLog[]
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
 
   @@index([status])
   @@index([weekStart])
@@ -1084,108 +1092,108 @@ model VideoCampaign {
 /// videos (VideoPost.customCharacterId), which aren't derived from an
 /// article/section at all and need to pick a trained character directly.
 model VideoCharacter {
-  id                 String   @id @default(uuid())
+  id                 String      @id @default(uuid())
   name               String
-  persona            String?  @db.Text
+  persona            String?     @db.Text
   tone               String?
   // Higgsfield Reference Element ID — null until trained via the Character
   // Admin Agent (same training flow used for section characters).
   videoCharacterId   String?
-  referenceImageUrls String[] @default([])
+  referenceImageUrls String[]    @default([])
   videoPosts         VideoPost[]
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 }
 
 model VideoPost {
-  id         String          @id @default(uuid())
+  id                           String               @id @default(uuid())
   // Optional — a custom video (see customTitle/customContent below) can
   // stand entirely on its own, with no parent campaign.
-  campaignId String?
+  campaignId                   String?
   // Optional — null for a custom video (content provided directly rather
   // than derived from an article).
-  articleId  String?
-  status     VideoPostStatus @default(pending)
+  articleId                    String?
+  status                       VideoPostStatus      @default(pending)
   // Video Planner Agent session — Phase 1 only (drafts/redrafts the plan; a
   // tool-less agent, can never spend real generation credits). Separate from
   // directorSessionId below since these are two different agent definitions
   // and a session is pinned to one specific agent for its whole lifetime.
-  planSessionId String?
+  planSessionId                String?
   // Video Director Agent session — created once Phase 3 (execute) starts,
   // reused for any later single-segment regeneration in PHASE:
   // regenerate_segment, so the agent always retains full context (including
   // the character anchor still's job id) of the rest of the video.
-  directorSessionId String?
+  directorSessionId            String?
   // Optional one-off human creative direction (mirrors the `instruction` param
   // on regeneratePostContent), applied on the next regenerate/re-plan
-  directorNote String? @db.Text
+  directorNote                 String?              @db.Text
   // Per-post overrides of the campaign's Plan → Approve → Execute config
   // (null = inherit the campaign's value)
-  targetPlatform  VideoTargetPlatform?
-  videoStyle      VideoStyle?
-  targetShotCount Int?
-  orientation     String?
+  targetPlatform               VideoTargetPlatform?
+  videoStyle                   VideoStyle?
+  targetShotCount              Int?
+  orientation                  String?
   // Phase 1 output — the agent's DRAFT narration + segment breakdown, before
   // approval and before anything is generated. Distinct from the VideoSegment
   // rows below: `plan` is the pre-approval proposal (editable, no video URLs),
   // VideoSegment rows are what Phase 3 execution actually materializes as it
   // generates each segment (or regenerates one later).
-  plan Json?
+  plan                         Json?
   // The full continuous narration script (spoken across all segments, on-camera
   // and voiceover-b-roll alike) — set once the plan is approved/executed.
-  narration String? @db.Text
+  narration                    String?              @db.Text
   // Custom video fields — set instead of articleId when this post's content
   // is provided directly rather than derived from an article. Exactly one of
   // articleId or (a character + customContent) should be set; enforced
   // at the application layer, not a DB constraint.
-  customTitle       String?
-  customContent     String? @db.Text
+  customTitle                  String?
+  customContent                String?              @db.Text
   // A custom video's on-screen character is either a roster VideoCharacter or
   // an existing section's already-trained character — exactly one of these two
   // is set (application-enforced).
-  customCharacterId String?
-  customCharacter   VideoCharacter? @relation(fields: [customCharacterId], references: [id], onDelete: SetNull)
-  customSectionId   String?
-  customSection     Section?        @relation(fields: [customSectionId], references: [id], onDelete: SetNull)
+  customCharacterId            String?
+  customCharacter              VideoCharacter?      @relation(fields: [customCharacterId], references: [id], onDelete: SetNull)
+  customSectionId              String?
+  customSection                Section?             @relation(fields: [customSectionId], references: [id], onDelete: SetNull)
   // Per-post override of the global VideoEnvironment singleton ("KG Media
   // Loft"). Both null (the default) means use the singleton exactly as before.
   customEnvironmentName        String?
-  customEnvironmentDescription String? @db.Text
-  segments  VideoSegment[]
+  customEnvironmentDescription String?              @db.Text
+  segments                     VideoSegment[]
   // Caption editable by user before scheduling; AI-generated initially
-  generatedText String? @db.Text
-  hashtags      String[] @default([])
+  generatedText                String?              @db.Text
+  hashtags                     String[]             @default([])
   // Assembled (concat + music + optional captions) final clip, uploaded to
   // DigitalOcean Spaces. Only ever produced by the manual "re-assemble" step.
-  videoUrl      String?
-  duration      Int?
-  aspectRatio   String?
-  genre         String?
+  videoUrl                     String?
+  duration                     Int?
+  aspectRatio                  String?
+  genre                        String?
   // Pre-music, pre-captions concatenated base render — kept so a music-only
   // regeneration never has to re-download/re-normalize/re-concatenate segments
-  narrationVideoUrl String?
+  narrationVideoUrl            String?
   // Background music — generated once per assembly pass, re-usable across
   // re-assembles unless segments/duration changed enough to warrant a fresh track
-  musicUrl      String?
+  musicUrl                     String?
   // Per-post override of VideoSettings.musicVolume (null = inherit default)
-  musicVolume   Float?
+  musicVolume                  Float?
   // Per-post override of VideoSettings.captionsEnabled (null = inherit default)
-  captionsEnabled Boolean?
+  captionsEnabled              Boolean?
   // Aggregate cost/time across all segments + assembly, refreshed on every
   // re-assemble (see VideoSegment for the per-segment breakdown)
-  totalGenerationTimeMs Int?
-  totalEstimatedCost    Float?
+  totalGenerationTimeMs        Int?
+  totalEstimatedCost           Float?
   // Which Buffer channels this same video fans out to (e.g. ["instagram_carousel","linkedin","twitter"])
-  platforms     String[] @default([])
+  platforms                    String[]             @default([])
   // Buffer post ID per platform: { "instagram_carousel": "...", "linkedin": "..." }
-  bufferPostIds Json?
-  scheduledAt   DateTime?
-  analyticsData Json?
-  errorMessage  String? @db.Text
-  campaign   VideoCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  article    Article?       @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  bufferPostIds                Json?
+  scheduledAt                  DateTime?
+  analyticsData                Json?
+  errorMessage                 String?              @db.Text
+  campaign                     VideoCampaign?       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  article                      Article?             @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  createdAt                    DateTime             @default(now())
+  updatedAt                    DateTime             @updatedAt
 
   @@index([campaignId])
   @@index([articleId])
@@ -1199,48 +1207,74 @@ model VideoPost {
 /// (expensive) video. See VIDEO_CAMPAIGN_OPS.md / the plan doc for the full
 /// cost-control rationale.
 model VideoSegment {
-  id                    String             @id @default(uuid())
+  id                    String                @id @default(uuid())
   postId                String
   order                 Int
-  hasCharacter          Boolean            @default(false)
+  hasCharacter          Boolean               @default(false)
   // This segment's slice of the post's full continuous narration
-  spokenPortion         String?            @db.Text
-  visualDescription     String?            @db.Text
+  spokenPortion         String?               @db.Text
+  visualDescription     String?               @db.Text
   // Raw Higgsfield clip (native audio already baked in — dialogue if
   // hasCharacter, off-screen voiceover narration otherwise)
   videoUrl              String?
   duration              Float?
-  status                VideoSegmentStatus @default(pending)
+  status                VideoSegmentStatus    @default(pending)
   higgsfieldJobId       String?
-  errorMessage          String?            @db.Text
+  errorMessage          String?               @db.Text
   generationStartedAt   DateTime?
   generationCompletedAt DateTime?
   // Always a rate-card ESTIMATE — Higgsfield exposes no cost/credits API at all
   // (confirmed: dashboard-only, cloud.higgsfield.ai). Never a real billed value.
   estimatedCost         Float?
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  post                  VideoPost          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  // Which VideoSegmentVersion the fields above currently mirror. Null for rows
+  // that predate versioning.
+  activeVersionId       String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  post                  VideoPost             @relation(fields: [postId], references: [id], onDelete: Cascade)
+  versions              VideoSegmentVersion[]
 
   @@index([postId])
   @@index([status])
   @@index([postId, order])
 }
 
+// Every clip a segment has ever had. Regeneration is expensive and its result
+// is not reliably better than what it replaced, so nothing is ever discarded —
+// old clips stay listed and restorable instead of being deleted.
+model VideoSegmentVersion {
+  id              String                    @id @default(uuid())
+  segmentId       String
+  // 1-based, per segment
+  version         Int
+  videoUrl        String?
+  duration        Float?
+  higgsfieldJobId String?
+  estimatedCost   Float?
+  source          VideoSegmentVersionSource @default(generated)
+  // Director note that produced this take, or the human's reason for a manual URL
+  note            String?                   @db.Text
+  createdAt       DateTime                  @default(now())
+  segment         VideoSegment              @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@unique([segmentId, version])
+  @@index([segmentId])
+}
+
 /// Detailed trace of every pipeline step — used for the live run log UI (mirrors SocialCampaignLog)
 model VideoCampaignLog {
-  id         String   @id @default(uuid())
+  id         String         @id @default(uuid())
   // Optional — a custom, campaign-less video still logs activity, keyed by
   // postId alone.
   campaignId String?
   postId     String?
   step       String
-  status     String   @default("running")
-  message    String?  @db.Text
+  status     String         @default("running")
+  message    String?        @db.Text
   input      Json?
   output     Json?
   campaign   VideoCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
+  createdAt  DateTime       @default(now())
 
   @@index([campaignId])
   @@index([postId])
@@ -1251,16 +1285,16 @@ model VideoCampaignLog {
 /// Buffer channel IDs are intentionally NOT duplicated here — reuses SocialSettings'
 /// instagramChannelId/linkedinChannelId/twitterChannelId.
 model VideoSettings {
-  id                    String   @id @default("singleton")
+  id                          String              @id @default("singleton")
   // Video Approval Agent — selects which articles get a video this cycle
-  approvalAgentId       String?
-  approvalEnvironmentId String?
+  approvalAgentId             String?
+  approvalEnvironmentId       String?
   // Video Planner Agent — Phase 1 only. Text-only, no Higgsfield tools
   // enabled at all, so planning can never spend a real generation credit —
   // a structural guarantee, not just a prompt instruction. Drafts/redrafts
   // the narration + segment breakdown + wardrobe/look decision.
-  plannerAgentId       String?
-  plannerEnvironmentId String?
+  plannerAgentId              String?
+  plannerEnvironmentId        String?
   // Video Director Agent — Phase 3 (execute) + single-segment regeneration.
   // Directs the actual shoot via Higgsfield's hosted MCP server
   // (mcp.higgsfield.ai) rather than custom tools — this is what actually
@@ -1269,8 +1303,8 @@ model VideoSettings {
   // Planner Agent above — a session is pinned to one agent for its whole
   // lifetime, so these can't share a session even though they cooperate on
   // the same video.
-  directorAgentId       String?
-  directorEnvironmentId String?
+  directorAgentId             String?
+  directorEnvironmentId       String?
   // Character Admin Agent — one-off sessions only, creates/updates the Higgsfield
   // Reference Element each section's characterId points to (see app/api/video/characters).
   // Never used by the per-post director.
@@ -1279,36 +1313,36 @@ model VideoSettings {
   // Vault holding the Higgsfield MCP OAuth credential (see docs/managed-agents/vaults) —
   // referenced as vault_ids on every session that talks to the Higgsfield MCP server.
   higgsfieldVaultId           String?
-  defaultMaxVideosPerCampaign Int    @default(5)
-  defaultDuration             Int    @default(15)
-  defaultAspectRatio          String @default("9:16")
-  defaultGenre                String @default("auto")
-  defaultPlatforms            String[] @default(["instagram_carousel", "linkedin", "twitter"])
-  maxGenerationsPerPost       Int    @default(4)
+  defaultMaxVideosPerCampaign Int                 @default(5)
+  defaultDuration             Int                 @default(15)
+  defaultAspectRatio          String              @default("9:16")
+  defaultGenre                String              @default("auto")
+  defaultPlatforms            String[]            @default(["instagram_carousel", "linkedin", "twitter"])
+  maxGenerationsPerPost       Int                 @default(4)
   // When false: pipeline auto-schedules immediately after upload (no review pause)
-  requireReview               Boolean @default(true)
+  requireReview               Boolean             @default(true)
   // ElevenLabs Music — background bed mixed under the narration at assembly time
-  musicEnabled                Boolean @default(true)
-  musicVolume                 Float   @default(0.3)
-  elevenlabsMusicModelId      String  @default("music_v2")
+  musicEnabled                Boolean             @default(true)
+  musicVolume                 Float               @default(0.3)
+  elevenlabsMusicModelId      String              @default("music_v2")
   // Captions.ai (Mirage API) — animated captions burned in at assembly time.
   // Default is the real "Aries" template ID confirmed in testing — condensed
   // enough to stay within frame margins (unlike "Magazine", which overflowed).
-  captionsEnabled             Boolean @default(true)
-  captionsTemplateId          String? @default("ctpl_pUtOSPltDzsoYJgLBYmo")
-  captionsTemplateName        String? @default("Aries")
+  captionsEnabled             Boolean             @default(true)
+  captionsTemplateId          String?             @default("ctpl_pUtOSPltDzsoYJgLBYmo")
+  captionsTemplateName        String?             @default("Aries")
   // Branded outro clip appended to the end of every assembled video, BEFORE
   // background music is generated/mixed — so the music bed is generated to
   // cover the full segments+outro duration and continues playing under the
   // outro too, rather than cutting off when the outro starts.
-  outroEnabled                Boolean @default(true)
+  outroEnabled                Boolean             @default(true)
   outroVideoUrl               String?
   // Plan → Approve → Execute defaults (each overridable per-campaign/per-post)
   defaultTargetPlatform       VideoTargetPlatform @default(auto)
   defaultVideoStyle           VideoStyle          @default(auto)
   defaultTargetShotCount      Int?
   defaultOrientation          String              @default("9:16")
-  updatedAt                   DateTime @updatedAt
+  updatedAt                   DateTime            @updatedAt
 }
 
 /// Runtime state for the ongoing Video Approval Agent session (mirrors SocialAiMemory)
