@@ -213,19 +213,22 @@ Based on your editorial memory of what has already received a video, select whic
 // Planner never touches Higgsfield, so it never needs the Reference Element
 // ID or content-filter learnings; the Director never needs the article body,
 // since the Planner already turned it into narration.
+//
+// Both take a normalized shape rather than assuming an {article, section} —
+// video-pipeline.service.js's resolvePostContent() resolves this from either
+// an article+section (normal post) or customTitle/customContent/
+// customCharacter (a custom video, no article/section at all), so these
+// stay completely agnostic to the source.
 // ---------------------------------------------------------------------------
-function buildPlanBrief({ article, section, environment, config }) {
-  const bodyText = extractPlainText(article.content);
-
-  return `ARTICLE TITLE: ${article.title}
-ARTICLE SUMMARY: ${article.summary || ''}
-ARTICLE BODY:
-${bodyText}
+function buildPlanBrief({ title, summary, contentText, character, environment, config }) {
+  return `TITLE: ${title}
+${summary ? `SUMMARY: ${summary}\n` : ''}CONTENT:
+${contentText}
 
 CHARACTER:
-- Name: ${section.characterName || ''}
-- Biography/Persona: ${section.characterPersona || section.characterBiography || ''}
-- Tone: ${section.characterTone || ''}
+- Name: ${character.name || ''}
+- Biography/Persona: ${character.persona || ''}
+- Tone: ${character.tone || ''}
 
 ENVIRONMENT: ${environment?.name || 'KG Media Loft'}
 ${environment?.textDescriptor || ''}
@@ -237,7 +240,7 @@ CONFIG:
 - orientation: ${config.orientation}`;
 }
 
-function buildExecuteBrief({ section, environment, config, promptLearnings }) {
+function buildExecuteBrief({ character, environment, config, promptLearnings }) {
   const learningsBlock = promptLearnings?.length
     ? `\nRECENT CONTENT-FILTER LEARNINGS (avoid these patterns):\n${promptLearnings
         .map((l) => `- [${l.failureType}] "${l.triggerPhrase}"${l.safeRewrite ? ` → use: "${l.safeRewrite}"` : ''}`)
@@ -245,11 +248,11 @@ function buildExecuteBrief({ section, environment, config, promptLearnings }) {
     : '';
 
   return `CHARACTER:
-- Name: ${section.characterName || ''}
-- Biography/Persona: ${section.characterPersona || section.characterBiography || ''}
-- Tone: ${section.characterTone || ''}
-- Reference Element ID (a real trained person): ${section.videoCharacterId}
-  Wherever this character should appear or be referenced, write this EXACT ID VALUE wrapped in triple angle brackets directly inside the generate_image/generate_video prompt text — i.e. literally type <<<${section.videoCharacterId}>>> (substituting the real ID above). Do NOT write the literal text "<<<elementId>>>" — "elementId" is just this field's label in these instructions, not something to copy verbatim. Writing the label instead of the real ID means Higgsfield receives no reference at all and generates a random person.
+- Name: ${character.name || ''}
+- Biography/Persona: ${character.persona || ''}
+- Tone: ${character.tone || ''}
+- Reference Element ID (a real trained person): ${character.videoCharacterId}
+  Wherever this character should appear or be referenced, write this EXACT ID VALUE wrapped in triple angle brackets directly inside the generate_image/generate_video prompt text — i.e. literally type <<<${character.videoCharacterId}>>> (substituting the real ID above). Do NOT write the literal text "<<<elementId>>>" — "elementId" is just this field's label in these instructions, not something to copy verbatim. Writing the label instead of the real ID means Higgsfield receives no reference at all and generates a random person.
 
 ENVIRONMENT: ${environment?.name || 'KG Media Loft'}
 ${environment?.textDescriptor || ''}
@@ -266,14 +269,14 @@ CONFIG:
 //   - MODE: revision — existingPlan given; a TARGETED EDIT of only what the
 //     directorNote asks for, not a fresh rewrite, unless the note says so.
 // ---------------------------------------------------------------------------
-export async function planVideoPost({ campaignId, postId, article, section, environment, config, existingPlan, directorNote, settings }) {
+export async function planVideoPost({ campaignId, postId, title, summary, contentText, character, environment, config, existingPlan, directorNote, settings }) {
   if (!settings?.plannerAgentId || !settings?.plannerEnvironmentId) {
     throw new Error(
       'Video Planner Agent IDs not configured. Set plannerAgentId and plannerEnvironmentId in Video Settings.',
     );
   }
-  if (!section?.videoCharacterId) {
-    throw new Error(`Section "${section?.name}" has no Higgsfield Reference Element yet — create one from Video → Characters first.`);
+  if (!character?.videoCharacterId) {
+    throw new Error(`Character "${character?.name}" has no Higgsfield Reference Element yet — train it from Video → Characters first.`);
   }
 
   const freshPost = await prisma.videoPost.findUnique({ where: { id: postId }, select: { planSessionId: true } });
@@ -281,7 +284,7 @@ export async function planVideoPost({ campaignId, postId, article, section, envi
   const needsBrief = !sessionId;
 
   if (needsBrief) {
-    const sessionLogId = await logStart(campaignId, 'planner_session', `Creating planner agent session for "${article.title}"`, null, postId);
+    const sessionLogId = await logStart(campaignId, 'planner_session', `Creating planner agent session for "${title}"`, null, postId);
     const session = await client.beta.sessions.create({
       agent: settings.plannerAgentId,
       environment_id: settings.plannerEnvironmentId,
@@ -292,18 +295,18 @@ export async function planVideoPost({ campaignId, postId, article, section, envi
     await logDone(sessionLogId, `Session created: ${sessionId}`, { sessionId });
     await prisma.videoPost.update({ where: { id: postId }, data: { planSessionId: sessionId } });
   } else {
-    await logStart(campaignId, 'planner_session', `Reusing planner session for "${article.title}" (re-plan)`, { sessionId }, postId);
+    await logStart(campaignId, 'planner_session', `Reusing planner session for "${title}" (re-plan)`, { sessionId }, postId);
   }
 
   const mode = existingPlan ? 'revision' : 'initial';
-  const briefBlock = needsBrief ? `${buildPlanBrief({ article, section, environment, config })}\n\n` : '';
+  const briefBlock = needsBrief ? `${buildPlanBrief({ title, summary, contentText, character, environment, config })}\n\n` : '';
   const modeBlock = mode === 'revision'
     ? `EXISTING PLAN:\n${JSON.stringify(existingPlan, null, 2)}\n\nDIRECTOR NOTE: ${directorNote || '(no specific note given — just double-check everything still reads well)'}\n\nThis is a targeted edit: change ONLY what the note asks for and leave everything else exactly as it was, unless the note explicitly asks you to start over or rewrite everything.`
     : `${directorNote ? `DIRECTOR NOTE: ${directorNote}\n\n` : ''}Write the full plan now.`;
 
   const message = `PHASE: plan\n\nMODE: ${mode}\n\n${briefBlock}${modeBlock}\n\nRespond with ONLY the OUTPUT FORMAT JSON described in your instructions.`;
 
-  const aiLogId = await logStart(campaignId, 'planner_send', `${mode === 'initial' ? 'Drafting' : 'Revising'} plan for "${article.title}"`, { message, sessionId, mode }, postId);
+  const aiLogId = await logStart(campaignId, 'planner_send', `${mode === 'initial' ? 'Drafting' : 'Revising'} plan for "${title}"`, { message, sessionId, mode }, postId);
 
   let responseText;
   try {
@@ -338,7 +341,7 @@ export async function planVideoPost({ campaignId, postId, article, section, envi
 // regenerateVideoSegment is the one that reuses a session, since it's
 // specifically about staying consistent with an already-executed video.
 // ---------------------------------------------------------------------------
-export async function executeVideoPost({ campaignId, postId, article, section, environment, config, plan, directorNote, settings, promptLearnings }) {
+export async function executeVideoPost({ campaignId, postId, title, character, environment, config, plan, directorNote, settings, promptLearnings }) {
   if (!settings?.directorAgentId || !settings?.directorEnvironmentId) {
     throw new Error(
       'Video Director Agent IDs not configured. Set directorAgentId and directorEnvironmentId in Video Settings.',
@@ -347,11 +350,11 @@ export async function executeVideoPost({ campaignId, postId, article, section, e
   if (!settings?.higgsfieldVaultId) {
     throw new Error('Higgsfield Vault ID not configured in Video Settings — required to authenticate the director agent\'s MCP calls.');
   }
-  if (!section?.videoCharacterId) {
-    throw new Error(`Section "${section?.name}" has no Higgsfield Reference Element yet — create one from Video → Characters first.`);
+  if (!character?.videoCharacterId) {
+    throw new Error(`Character "${character?.name}" has no Higgsfield Reference Element yet — train it from Video → Characters first.`);
   }
 
-  const sessionLogId = await logStart(campaignId, 'director_session', `Creating director agent session for "${article.title}"`, null, postId);
+  const sessionLogId = await logStart(campaignId, 'director_session', `Creating director agent session for "${title}"`, null, postId);
   const session = await client.beta.sessions.create({
     agent: settings.directorAgentId,
     environment_id: settings.directorEnvironmentId,
@@ -393,12 +396,12 @@ export async function executeVideoPost({ campaignId, postId, article, section, e
     2,
   );
 
-  const briefText = buildExecuteBrief({ section, environment, config, promptLearnings });
+  const briefText = buildExecuteBrief({ character, environment, config, promptLearnings });
 
   const message = `PHASE: execute\n\n${briefText}\n\nAPPROVED PLAN:\n${planText}\n${directorNote ? `\nDIRECTOR NOTE: ${directorNote}\n` : ''}
 Direct the full shoot now — generate_image + generate_video per segment, in order, with native audio and the exact configured orientation on every call. Respond with ONLY the EXECUTE OUTPUT FORMAT JSON described in your instructions.`;
 
-  const aiLogId = await logStart(campaignId, 'director_execute_send', `Executing approved plan for "${article.title}" (${plannedSegments.length} segments)`, { message, sessionId }, postId);
+  const aiLogId = await logStart(campaignId, 'director_execute_send', `Executing approved plan for "${title}" (${plannedSegments.length} segments)`, { message, sessionId }, postId);
 
   let responseText;
   try {
@@ -656,7 +659,7 @@ function extractJson(text) {
   return match ? match[0] : text;
 }
 
-function extractPlainText(contentJson) {
+export function extractPlainText(contentJson) {
   if (!contentJson) return '';
   if (contentJson.type === 'html' && typeof contentJson.html === 'string') {
     return contentJson.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();

@@ -1032,12 +1032,24 @@ model VideoEnvironment {
   updatedAt       DateTime @updatedAt
 }
 
+enum VideoCampaignSelectionMode {
+  agent
+  manual
+}
+
 model VideoCampaign {
   id          String              @id @default(uuid())
   weekStart   DateTime
   weekEnd     DateTime
   status      VideoCampaignStatus @default(pending)
-  // Article publishDate filter, independent of weekStart/weekEnd (same pattern as SocialCampaign)
+  // agent = the Video Approval Agent picks articles (existing flow); manual =
+  // articles were hand-picked day-by-day at creation time and posts were
+  // created directly, skipping runVideoApproval entirely.
+  selectionMode VideoCampaignSelectionMode @default(agent)
+  // Article publishDate filter, independent of weekStart/weekEnd (same pattern as SocialCampaign).
+  // Unused when selectionMode is "manual" or for video in general now that
+  // candidate eligibility no longer depends on publish date (see
+  // videoArticleEligibilityWhere in services/video-pipeline.service.js).
   articleDateStart DateTime?
   articleDateEnd   DateTime?
   // Selection guidance for the Video Approval Agent — NOT a shared script;
@@ -1065,10 +1077,32 @@ model VideoCampaign {
   @@index([weekStart])
 }
 
+/// Standalone character roster, additive to Section.videoCharacterId — a
+/// section's tied character is unchanged/unaffected by this. Used by custom
+/// videos (VideoPost.customCharacterId), which aren't derived from an
+/// article/section at all and need to pick a trained character directly.
+model VideoCharacter {
+  id                 String   @id @default(uuid())
+  name               String
+  persona            String?  @db.Text
+  tone               String?
+  // Higgsfield Reference Element ID — null until trained via the Character
+  // Admin Agent (same training flow used for section characters).
+  videoCharacterId   String?
+  referenceImageUrls String[] @default([])
+  videoPosts         VideoPost[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
 model VideoPost {
   id         String          @id @default(uuid())
-  campaignId String
-  articleId  String
+  // Optional — a custom video (see customTitle/customContent below) can
+  // stand entirely on its own, with no parent campaign.
+  campaignId String?
+  // Optional — null for a custom video (content provided directly rather
+  // than derived from an article).
+  articleId  String?
   status     VideoPostStatus @default(pending)
   // Video Planner Agent session — Phase 1 only (drafts/redrafts the plan; a
   // tool-less agent, can never spend real generation credits). Separate from
@@ -1098,6 +1132,14 @@ model VideoPost {
   // The full continuous narration script (spoken across all segments, on-camera
   // and voiceover-b-roll alike) — set once the plan is approved/executed.
   narration String? @db.Text
+  // Custom video fields — set instead of articleId when this post's content
+  // is provided directly rather than derived from an article. Exactly one of
+  // articleId or (customCharacterId + customContent) should be set; enforced
+  // at the application layer, not a DB constraint.
+  customTitle       String?
+  customContent     String? @db.Text
+  customCharacterId String?
+  customCharacter   VideoCharacter? @relation(fields: [customCharacterId], references: [id], onDelete: SetNull)
   segments  VideoSegment[]
   // Caption editable by user before scheduling; AI-generated initially
   generatedText String? @db.Text
@@ -1129,8 +1171,8 @@ model VideoPost {
   scheduledAt   DateTime?
   analyticsData Json?
   errorMessage  String? @db.Text
-  campaign   VideoCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  article    Article       @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  campaign   VideoCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  article    Article?       @relation(fields: [articleId], references: [id], onDelete: Cascade)
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
@@ -1176,14 +1218,16 @@ model VideoSegment {
 /// Detailed trace of every pipeline step — used for the live run log UI (mirrors SocialCampaignLog)
 model VideoCampaignLog {
   id         String   @id @default(uuid())
-  campaignId String
+  // Optional — a custom, campaign-less video still logs activity, keyed by
+  // postId alone.
+  campaignId String?
   postId     String?
   step       String
   status     String   @default("running")
   message    String?  @db.Text
   input      Json?
   output     Json?
-  campaign   VideoCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign   VideoCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
 
   @@index([campaignId])

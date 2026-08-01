@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { composeMusic, calculateMusicCost } from './elevenlabs.service';
 import { addCaptions, calculateCaptionsCost } from './captions-ai.service';
 import { uploadBufferToSpaces } from './video-export.service';
+import { logStart, logDone } from '@/lib/video-logger';
 
 const execFileAsync = promisify(execFile);
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
@@ -147,6 +148,7 @@ async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orienta
   let musicUrl = null;
 
   if (musicConfig?.enabled) {
+    const musicLogId = await logStart(post.campaignId, 'assembly_music_generate', 'Generating background music (ElevenLabs)', null, post.id);
     const { buffer: musicBuffer } = await composeMusic({
       prompt: musicConfig.prompt,
       durationMs: totalDurationMs,
@@ -154,11 +156,14 @@ async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orienta
     });
     const musicPath = path.join(workDir, 'music.mp3');
     await fs.writeFile(musicPath, musicBuffer);
+    await logDone(musicLogId, 'Music track generated');
 
+    const mixLogId = await logStart(post.campaignId, 'assembly_music_mix', 'Mixing music under narration', null, post.id);
     const mixedPath = path.join(workDir, 'mixed.mp4');
     await mixMusicUnderNarration(currentPath, musicPath, musicConfig.volume ?? 0.3, mixedPath);
     currentPath = mixedPath;
     additionalCost += calculateMusicCost(totalDurationMs);
+    await logDone(mixLogId, 'Music mixed under narration');
 
     musicUrl = await uploadBufferToSpaces(musicBuffer, `video/music/${post.id}-${Date.now()}.mp3`, 'audio/mpeg');
   }
@@ -176,10 +181,12 @@ async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orienta
   } else if (!captionsConfig.templateId) {
     captionsSkipReason = 'no caption template configured';
   } else {
+    const captionsLogId = await logStart(post.campaignId, 'assembly_captions', 'Generating captions (Captions.ai) — this can take a couple minutes', null, post.id);
     try {
       const currentBuffer = await fs.readFile(currentPath);
       if (currentBuffer.length > 50 * 1024 * 1024) {
         captionsSkipReason = `video is ${(currentBuffer.length / 1024 / 1024).toFixed(1)}MB, over Captions.ai's 50MB limit`;
+        await logDone(captionsLogId, `Captions skipped: ${captionsSkipReason}`);
       } else {
         const { buffer: captionedBuffer } = await addCaptions({
           videoBuffer: currentBuffer,
@@ -190,18 +197,22 @@ async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orienta
         currentPath = captionedPath;
         captionsApplied = true;
         additionalCost += calculateCaptionsCost(totalDurationMs);
+        await logDone(captionsLogId, 'Captions applied');
       }
     } catch (err) {
       captionsSkipReason = `Captions.ai failed: ${err.message}`;
+      await logDone(captionsLogId, `Captions skipped: ${captionsSkipReason}`);
     }
   }
 
+  const uploadLogId = await logStart(post.campaignId, 'assembly_upload_final', 'Uploading final video', null, post.id);
   const finalBuffer = await fs.readFile(currentPath);
   const videoUrl = await uploadBufferToSpaces(
     finalBuffer,
     `video/clips/${post.id}-${Date.now()}.mp4`,
     'video/mp4',
   );
+  await logDone(uploadLogId, 'Final video uploaded');
 
   return {
     videoUrl,
@@ -244,6 +255,7 @@ export async function assembleVideo({ post, segments, orientation, musicConfig, 
   await fs.mkdir(workDir, { recursive: true });
 
   try {
+    const stitchLogId = await logStart(post.campaignId, 'assembly_stitch', `Downloading and stitching ${completedSegments.length} segment${completedSegments.length !== 1 ? 's' : ''}`, null, post.id);
     const normalizedPaths = [];
     for (const [i, segment] of completedSegments.entries()) {
       const rawPath = path.join(workDir, `raw_${i}.mp4`);
@@ -265,6 +277,7 @@ export async function assembleVideo({ post, segments, orientation, musicConfig, 
     await concatClips(normalizedPaths, concatPath, workDir);
     const totalDurationSeconds = await probeDuration(concatPath);
     const totalDurationMs = Math.round(totalDurationSeconds * 1000);
+    await logDone(stitchLogId, `Stitched into a ${Math.round(totalDurationSeconds)}s clip`);
 
     const concatBuffer = await fs.readFile(concatPath);
     const narrationVideoUrl = await uploadBufferToSpaces(
@@ -298,10 +311,12 @@ export async function regenerateMusicOnly({ post, orientation, musicConfig, capt
   await fs.mkdir(workDir, { recursive: true });
 
   try {
+    const fetchLogId = await logStart(post.campaignId, 'assembly_fetch_base', 'Fetching existing base render', null, post.id);
     const basePath = path.join(workDir, 'base.mp4');
     await downloadToFile(post.narrationVideoUrl, basePath);
     const totalDurationSeconds = await probeDuration(basePath);
     const totalDurationMs = Math.round(totalDurationSeconds * 1000);
+    await logDone(fetchLogId, 'Base render ready');
 
     const result = await finalizeVideo({ post, basePath, workDir, totalDurationMs, orientation, musicConfig, captionsConfig });
 

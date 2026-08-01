@@ -4,7 +4,7 @@ import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
-import { runFullPipeline } from '@/services/video-pipeline.service';
+import { runFullPipeline, createManualVideoPosts, runVideoPlanning } from '@/services/video-pipeline.service';
 
 export async function GET() {
   try {
@@ -22,6 +22,7 @@ export async function GET() {
             status: true,
             videoUrl: true,
             scheduledAt: true,
+            platforms: true,
             totalEstimatedCost: true,
             totalGenerationTimeMs: true,
             article: { select: { title: true } },
@@ -47,10 +48,16 @@ export async function POST(req) {
       weekStart, weekEnd, articleDateStart, articleDateEnd,
       campaignBrief, editorsChoiceOnly, includeSections, maxVideos,
       targetPlatform, videoStyle, targetShotCount, orientation,
+      selectionMode, articleIds, maxPerDay,
     } = body;
 
     if (!weekStart || !weekEnd) {
       return NextResponse.json({ message: 'weekStart and weekEnd are required' }, { status: 400 });
+    }
+
+    const isManual = selectionMode === 'manual';
+    if (isManual && !articleIds?.length) {
+      return NextResponse.json({ message: 'articleIds is required for manual selection' }, { status: 400 });
     }
 
     const settings = await prisma.videoSettings.upsert({
@@ -63,13 +70,17 @@ export async function POST(req) {
       data: {
         weekStart: new Date(weekStart),
         weekEnd: new Date(weekEnd),
-        articleDateStart: articleDateStart ? new Date(articleDateStart) : null,
-        articleDateEnd: articleDateEnd ? new Date(articleDateEnd) : null,
+        selectionMode: isManual ? 'manual' : 'agent',
+        // Article-date-range filtering no longer applies to video candidate
+        // eligibility (see videoArticleEligibilityWhere) — always null now,
+        // kept only for schema/back-compat with older campaigns.
+        articleDateStart: isManual ? null : (articleDateStart ? new Date(articleDateStart) : null),
+        articleDateEnd: isManual ? null : (articleDateEnd ? new Date(articleDateEnd) : null),
         status: 'pending',
-        campaignBrief: campaignBrief || null,
+        campaignBrief: isManual ? null : (campaignBrief || null),
         editorsChoiceOnly: editorsChoiceOnly || false,
         includeSections: includeSections || [],
-        maxVideos: maxVideos || settings.defaultMaxVideosPerCampaign,
+        maxVideos: isManual ? articleIds.length : (maxVideos || settings.defaultMaxVideosPerCampaign),
         targetPlatform: targetPlatform || settings.defaultTargetPlatform,
         videoStyle: videoStyle || settings.defaultVideoStyle,
         targetShotCount: targetShotCount ?? settings.defaultTargetShotCount ?? null,
@@ -77,10 +88,25 @@ export async function POST(req) {
       },
     });
 
-    // Fire-and-forget: run the full pipeline in the background
-    runFullPipeline(campaign.id).catch((err) =>
-      console.error('[video-pipeline background]', err),
-    );
+    if (isManual) {
+      try {
+        await createManualVideoPosts(campaign.id, articleIds, maxPerDay);
+      } catch (err) {
+        await prisma.videoCampaign.update({ where: { id: campaign.id }, data: { status: 'failed' } });
+        return routeError(err, 'Failed to create manually-selected video posts');
+      }
+      await prisma.videoCampaign.update({ where: { id: campaign.id }, data: { status: 'planning' } });
+      // Fire-and-forget: draft plans for the manually-created posts (no
+      // approval agent involved for manual campaigns)
+      runVideoPlanning(campaign.id)
+        .then(() => prisma.videoCampaign.update({ where: { id: campaign.id }, data: { status: 'reviewing' } }))
+        .catch((err) => console.error('[video-pipeline background/manual]', err));
+    } else {
+      // Fire-and-forget: run the full pipeline (approval agent + planning) in the background
+      runFullPipeline(campaign.id).catch((err) =>
+        console.error('[video-pipeline background]', err),
+      );
+    }
 
     return NextResponse.json({ data: campaign }, { status: 201 });
   } catch (e) {

@@ -23,10 +23,12 @@ export async function GET(_req, { params }) {
     if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });
 
     const [campaign, settings] = await Promise.all([
-      prisma.videoCampaign.findUnique({
-        where: { id: post.campaignId },
-        select: { targetPlatform: true, videoStyle: true, targetShotCount: true, orientation: true },
-      }),
+      post.campaignId
+        ? prisma.videoCampaign.findUnique({
+            where: { id: post.campaignId },
+            select: { targetPlatform: true, videoStyle: true, targetShotCount: true, orientation: true },
+          })
+        : Promise.resolve(null),
       prisma.videoSettings.upsert({ where: { id: 'singleton' }, update: {}, create: { id: 'singleton' } }),
     ]);
 

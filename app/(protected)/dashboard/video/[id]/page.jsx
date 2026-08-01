@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { apiFetch } from '@/lib/api';
+import { videoPlatformConfig } from '@/lib/video-platforms';
+import { CreateCustomVideoDialog } from '@/components/video/create-custom-video-dialog';
 import {
   ArrowLeft,
   Loader2,
@@ -29,6 +31,7 @@ import {
   ChevronRight,
   Layers,
   CheckCircle2,
+  Plus,
 } from 'lucide-react';
 
 const CAMPAIGN_STATUS_CONFIG = {
@@ -116,7 +119,7 @@ function VideoPostSummaryCard({ post }) {
 
       <CardContent className="p-4 space-y-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold truncate">{post.article?.title || 'Untitled article'}</p>
+          <p className="text-sm font-semibold truncate">{post.article?.title || post.customTitle || 'Untitled video'}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
             {segments.length > 0 ? `${completedCount}/${segments.length} segments generated` : 'No plan yet'}
           </p>
@@ -131,6 +134,24 @@ function VideoPostSummaryCard({ post }) {
         ) : post.narration ? (
           <p className="text-xs italic text-muted-foreground line-clamp-2">&ldquo;{post.narration}&rdquo;</p>
         ) : null}
+
+        {(post.platforms?.length > 0 || post.scheduledAt) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {post.platforms?.map((key) => {
+              const cfg = videoPlatformConfig(key);
+              if (!cfg) return null;
+              const { Icon } = cfg;
+              return (
+                <span key={key} className={`inline-flex items-center justify-center size-5 rounded-full ${cfg.bg}`} title={cfg.label}>
+                  <Icon className={`size-3 ${cfg.color}`} />
+                </span>
+              );
+            })}
+            {post.scheduledAt && (
+              <span className="text-xs text-muted-foreground">{format(new Date(post.scheduledAt), 'MMM d, h:mm a')}</span>
+            )}
+          </div>
+        )}
 
         <Separator />
 
@@ -206,6 +227,7 @@ export default function VideoCampaignDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [showLog, setShowLog] = useState(false);
+  const [createCustomOpen, setCreateCustomOpen] = useState(false);
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ['video-campaign', id],
@@ -334,6 +356,10 @@ export default function VideoCampaignDetailPage() {
         <Button size="sm" onClick={() => bulkMutation.mutate('schedule-all')} disabled={bulkMutation.isPending}>
           <CalendarClock className="size-3.5" /> Schedule All
         </Button>
+        <Separator orientation="vertical" className="h-5 mx-0.5 hidden sm:block" />
+        <Button size="sm" variant="outline" onClick={() => setCreateCustomOpen(true)}>
+          <Plus className="size-3.5" /> Custom Video
+        </Button>
 
         <div className="flex-1" />
 
@@ -379,6 +405,13 @@ export default function VideoCampaignDetailPage() {
           </div>
         )}
       </div>
+
+      <CreateCustomVideoDialog
+        open={createCustomOpen}
+        onOpenChange={setCreateCustomOpen}
+        endpoint={`/api/video/campaigns/${id}/custom-posts`}
+        onCreated={() => invalidate()}
+      />
     </Container>
   );
 }

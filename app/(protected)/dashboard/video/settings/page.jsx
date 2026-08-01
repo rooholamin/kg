@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiFetch } from '@/lib/api';
+import { VIDEO_PLATFORM_OPTIONS } from '@/lib/video-platforms';
 import {
   ArrowLeft,
   Loader2,
@@ -52,11 +53,7 @@ const CHARACTER_ADMIN_AGENT_FIELDS = [
 
 const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5', '3:4', '21:9'];
 const GENRES = ['auto', 'action', 'epic', 'noir', 'drama', 'horror', 'comedy'];
-const PLATFORM_OPTIONS = [
-  { key: 'instagram_carousel', label: 'Instagram' },
-  { key: 'linkedin', label: 'LinkedIn' },
-  { key: 'twitter', label: 'Twitter / X' },
-];
+const PLATFORM_OPTIONS = VIDEO_PLATFORM_OPTIONS;
 
 const TARGET_PLATFORMS = ['auto', 'instagram_reels', 'tiktok', 'youtube_shorts', 'linkedin'];
 const VIDEO_STYLES = ['auto', 'explainer', 'diy', 'listicle', 'testimonial'];

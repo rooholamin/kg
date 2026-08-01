@@ -5,6 +5,7 @@ import {
   executeVideoPost,
   regenerateVideoSegment,
   resolveVideoConfig,
+  extractPlainText,
 } from './video-ai.service';
 import { assembleVideo, regenerateMusicOnly } from './video-assembly.service';
 import { deleteFromS3 } from './social-export.service';
@@ -46,7 +47,34 @@ async function getRecentPromptLearnings(limit = 10) {
   });
 }
 
-function musicPromptFor(article, config, note) {
+// ---------------------------------------------------------------------------
+// videoArticleEligibilityWhere — shared candidate-article filter used by both
+// the agent-driven approval query (runVideoApproval) and the manual
+// day-by-day browser (eligible-articles-by-day route). Articles just need to
+// be past editorial approval (not necessarily live/published yet), with no
+// publish-date bound — and are excluded once claimed by an active SocialPost
+// (so the same story never gets both a carousel and a video) or once they've
+// already produced a real (non-failed) VideoPost in any prior campaign (so
+// the same article is never picked for video twice).
+// ---------------------------------------------------------------------------
+const VIDEO_ELIGIBLE_ARTICLE_STATUSES = ['approval', 'scheduling', 'publishing', 'post_publish'];
+
+export function videoArticleEligibilityWhere({ editorsChoiceOnly, includeSections } = {}) {
+  return {
+    status: { in: VIDEO_ELIGIBLE_ARTICLE_STATUSES },
+    ...(editorsChoiceOnly ? { isEditorsChoice: true } : {}),
+    category: {
+      section: {
+        videoCharacterId: { not: null },
+        ...(includeSections?.length ? { slug: { in: includeSections } } : {}),
+      },
+    },
+    socialPosts: { none: { status: { not: 'failed' } } },
+    videoPosts: { none: { status: { not: 'failed' } } },
+  };
+}
+
+function musicPromptFor(title, config, note) {
   const styleWords = {
     explainer: 'clear, focused, gently building',
     diy: 'warm, relaxed, craftsman workshop feel',
@@ -56,7 +84,56 @@ function musicPromptFor(article, config, note) {
   };
   const mood = styleWords[config.style] || styleWords.auto;
   const noteText = note ? ` Additional direction: ${note}.` : '';
-  return `${mood} instrumental background music for a short-form video about "${article.title}" — no vocals, no drums or only very light percussion, sits gently under spoken narration, subtle enough not to compete with voice.${noteText}`;
+  return `${mood} instrumental background music for a short-form video about "${title}" — no vocals, no drums or only very light percussion, sits gently under spoken narration, subtle enough not to compete with voice.${noteText}`;
+}
+
+// ---------------------------------------------------------------------------
+// resolvePostContent — normalizes a post's title/summary/content/character
+// regardless of whether it's derived from an article+section (normal post)
+// or provided directly as a custom video (customTitle/customContent/
+// customCharacter, no article/section at all). Every planVideoPost/
+// executeVideoPost caller goes through this so those two functions never
+// need to know which kind of post they're working with.
+// ---------------------------------------------------------------------------
+function resolvePostContent(post) {
+  if (post.article) {
+    const section = post.article.category?.section;
+    return {
+      title: post.article.title,
+      summary: post.article.summary,
+      contentText: extractPlainText(post.article.content),
+      character: section
+        ? {
+            name: section.characterName,
+            persona: section.characterPersona || section.characterBiography,
+            tone: section.characterTone,
+            videoCharacterId: section.videoCharacterId,
+          }
+        : null,
+    };
+  }
+
+  return {
+    title: post.customTitle,
+    summary: null,
+    contentText: post.customContent,
+    character: post.customCharacter
+      ? {
+          name: post.customCharacter.name,
+          persona: post.customCharacter.persona,
+          tone: post.customCharacter.tone,
+          videoCharacterId: post.customCharacter.videoCharacterId,
+        }
+      : null,
+  };
+}
+
+// A post's campaign is optional (custom videos can stand entirely on their
+// own) — this avoids every caller repeating the same null guard, since
+// Prisma's findUnique throws if `id` is null rather than just returning null.
+async function findCampaignOrNull(campaignId) {
+  if (!campaignId) return null;
+  return prisma.videoCampaign.findUnique({ where: { id: campaignId } });
 }
 
 // ---------------------------------------------------------------------------
@@ -73,40 +150,26 @@ export async function runVideoApproval(campaignId) {
   const settings = await getVideoSettings();
   const memory = await getVideoAiMemory();
 
-  const articleFrom = campaign.articleDateStart ?? campaign.weekStart;
-  const articleTo = campaign.articleDateEnd ?? campaign.weekEnd;
-
-  const fetchLogId = await logStart(campaignId, 'approval_fetch', 'Fetching published articles for the campaign');
+  const fetchLogId = await logStart(campaignId, 'approval_fetch', 'Fetching eligible articles for the campaign');
   const articles = await prisma.article.findMany({
-    where: {
-      status: 'post_publish',
-      publishDate: { gte: articleFrom, lte: articleTo },
-      ...(campaign.editorsChoiceOnly ? { isEditorsChoice: true } : {}),
-      ...(campaign.includeSections?.length
-        ? { category: { section: { slug: { in: campaign.includeSections } } } }
-        : {}),
-    },
+    where: videoArticleEligibilityWhere({
+      editorsChoiceOnly: campaign.editorsChoiceOnly,
+      includeSections: campaign.includeSections,
+    }),
     include: { category: { include: { section: true } }, topic: true },
   });
 
   if (!articles.length) {
-    await logError(fetchLogId, 'No eligible published articles found in the selected date range');
+    await logError(fetchLogId, 'No eligible articles found — either none are past approval stage, or all are already claimed by a social/video post');
     await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'failed' } });
-    throw new Error('No eligible articles found in the selected date range');
+    throw new Error('No eligible articles found');
   }
 
-  const eligibleArticles = articles.filter((a) => a.category?.section?.videoCharacterId);
-  if (!eligibleArticles.length) {
-    await logError(fetchLogId, 'No eligible articles belong to a section with a trained video character');
-    await prisma.videoCampaign.update({ where: { id: campaignId }, data: { status: 'failed' } });
-    throw new Error('No section with a trained video character has an eligible article in this range');
-  }
-
-  await logDone(fetchLogId, `Found ${eligibleArticles.length} article${eligibleArticles.length !== 1 ? 's' : ''}`, {
-    titles: eligibleArticles.map((a) => a.title),
+  await logDone(fetchLogId, `Found ${articles.length} article${articles.length !== 1 ? 's' : ''}`, {
+    titles: articles.map((a) => a.title),
   });
 
-  const articlesForAI = eligibleArticles.map((a) => ({
+  const articlesForAI = articles.map((a) => ({
     id: a.id,
     title: a.title,
     summary: a.summary,
@@ -116,7 +179,7 @@ export async function runVideoApproval(campaignId) {
 
   const approvedArticleIds = await selectVideoArticles({ articles: articlesForAI, campaign, settings, memory });
 
-  const validIds = new Set(eligibleArticles.map((a) => a.id));
+  const validIds = new Set(articles.map((a) => a.id));
   const postCreateData = approvedArticleIds
     .filter((id) => validIds.has(id))
     .map((articleId) => ({ campaignId, articleId, status: 'pending' }));
@@ -131,6 +194,92 @@ export async function runVideoApproval(campaignId) {
 }
 
 // ---------------------------------------------------------------------------
+// 1b. createManualVideoPosts — the manual-selection counterpart to
+// runVideoApproval: skips the approval agent entirely and creates VideoPost
+// rows directly for whatever articleIds the human picked in the day-by-day
+// wizard. Re-validates eligibility and the per-day cap server-side (defense
+// in depth — the wizard already enforces both client-side).
+// ---------------------------------------------------------------------------
+export async function createManualVideoPosts(campaignId, articleIds, maxPerDay) {
+  if (!articleIds?.length) return 0;
+
+  const articles = await prisma.article.findMany({
+    where: { id: { in: articleIds }, ...videoArticleEligibilityWhere({}) },
+    select: { id: true, publishDate: true },
+  });
+
+  if (maxPerDay) {
+    const countByDay = new Map();
+    for (const a of articles) {
+      const day = a.publishDate ? new Date(a.publishDate).toISOString().slice(0, 10) : 'unknown';
+      countByDay.set(day, (countByDay.get(day) || 0) + 1);
+    }
+    for (const [day, count] of countByDay) {
+      if (count > maxPerDay) {
+        throw new Error(`${count} articles selected for ${day}, exceeding the max of ${maxPerDay} per day`);
+      }
+    }
+  }
+
+  const validIds = new Set(articles.map((a) => a.id));
+  const postCreateData = articleIds
+    .filter((id) => validIds.has(id))
+    .map((articleId) => ({ campaignId, articleId, status: 'pending' }));
+
+  if (postCreateData.length) {
+    await prisma.videoPost.createMany({ data: postCreateData });
+  }
+
+  await logInfo(campaignId, 'manual_posts_created', `Created ${postCreateData.length} video post${postCreateData.length !== 1 ? 's' : ''} from manual selection`);
+
+  return postCreateData.length;
+}
+
+// ---------------------------------------------------------------------------
+// planOnePost — shared Phase 1 body used by both runVideoPlanning (campaign
+// posts) and planStandaloneCustomPost (a campaign-less custom video) so
+// there's exactly one place that resolves content/character and calls
+// planVideoPost.
+// ---------------------------------------------------------------------------
+async function planOnePost(post, { campaignId, campaign, settings, environment }) {
+  const content = resolvePostContent(post);
+  if (!content.character?.videoCharacterId) {
+    throw new Error(`Character "${content.character?.name || 'unknown'}" has no trained video character`);
+  }
+
+  await prisma.videoPost.update({ where: { id: post.id }, data: { status: 'planning' } });
+  const config = resolveVideoConfig({ post, campaign, settings });
+
+  const { plan } = await planVideoPost({
+    campaignId,
+    postId: post.id,
+    title: content.title,
+    summary: content.summary,
+    contentText: content.contentText,
+    character: content.character,
+    environment,
+    config,
+    existingPlan: post.plan,
+    directorNote: post.directorNote,
+    settings,
+  });
+
+  await prisma.videoPost.update({
+    where: { id: post.id },
+    data: {
+      status: 'plan_ready',
+      plan,
+      narration: plan.narration || null,
+      generatedText: plan.text || null,
+      hashtags: plan.hashtags || [],
+      genre: plan.genre || null,
+    },
+  });
+
+  return plan;
+}
+
+// ---------------------------------------------------------------------------
 // 2. runVideoPlanning — Phase 1 for every pending post in a campaign. Drafts
 // a narration + segment breakdown (no Higgsfield spend) and moves each post
 // to "plan_ready" for human review, or "failed" if planning itself errors.
@@ -138,7 +287,10 @@ export async function runVideoApproval(campaignId) {
 export async function runVideoPlanning(campaignId) {
   const posts = await prisma.videoPost.findMany({
     where: { campaignId, status: 'pending' },
-    include: { article: { include: { category: { include: { section: true } } } } },
+    include: {
+      article: { include: { category: { include: { section: true } } } },
+      customCharacter: true,
+    },
   });
 
   if (!posts.length) return 0;
@@ -146,44 +298,16 @@ export async function runVideoPlanning(campaignId) {
   await logInfo(campaignId, 'planning_start', `Starting planning for ${posts.length} post${posts.length !== 1 ? 's' : ''}`);
 
   const settings = await getVideoSettings();
-  const campaign = await prisma.videoCampaign.findUnique({ where: { id: campaignId } });
+  const campaign = await findCampaignOrNull(campaignId);
   const environment = await getVideoEnvironment();
 
   let succeeded = 0;
   for (const post of posts) {
-    const current = await prisma.videoCampaign.findUnique({ where: { id: campaignId }, select: { status: true } });
+    const current = await findCampaignOrNull(campaignId);
     if (current?.status === 'cancelled' || current?.status === 'paused') break;
 
     try {
-      const section = post.article.category?.section;
-      if (!section?.videoCharacterId) throw new Error('Article\'s section has no trained video character');
-
-      await prisma.videoPost.update({ where: { id: post.id }, data: { status: 'planning' } });
-      const config = resolveVideoConfig({ post, campaign, settings });
-
-      const { plan } = await planVideoPost({
-        campaignId,
-        postId: post.id,
-        article: post.article,
-        section,
-        environment,
-        config,
-        existingPlan: post.plan,
-        directorNote: post.directorNote,
-        settings,
-      });
-
-      await prisma.videoPost.update({
-        where: { id: post.id },
-        data: {
-          status: 'plan_ready',
-          plan,
-          narration: plan.narration || null,
-          generatedText: plan.text || null,
-          hashtags: plan.hashtags || [],
-          genre: plan.genre || null,
-        },
-      });
+      await planOnePost(post, { campaignId, campaign, settings, environment });
       succeeded++;
     } catch (error) {
       await prisma.videoPost.update({
@@ -198,21 +322,50 @@ export async function runVideoPlanning(campaignId) {
 }
 
 // ---------------------------------------------------------------------------
+// 2c. planStandaloneCustomPost — Phase 1 for a single campaign-less custom
+// video (see app/api/video/custom-posts). Shares planOnePost with
+// runVideoPlanning; the only difference is there's no campaignId to scope a
+// query by, so it's called directly for the one post just created.
+// ---------------------------------------------------------------------------
+export async function planStandaloneCustomPost(postId) {
+  const post = await prisma.videoPost.findUnique({
+    where: { id: postId },
+    include: { customCharacter: true },
+  });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+
+  const settings = await getVideoSettings();
+  const environment = await getVideoEnvironment();
+
+  try {
+    return await planOnePost(post, { campaignId: null, campaign: null, settings, environment });
+  } catch (error) {
+    await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: error.message } });
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 2b. rePlanPost — re-draft the plan for one post (Phase 1 again), reusing
 // the same director session so revision notes land with full context.
 // ---------------------------------------------------------------------------
 export async function rePlanPost(postId, directorNote) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
-    include: { article: { include: { category: { include: { section: true } } } } },
+    include: {
+      article: { include: { category: { include: { section: true } } } },
+      customCharacter: true,
+    },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
 
   const settings = await getVideoSettings();
-  const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
+  const campaign = await findCampaignOrNull(post.campaignId);
   const environment = await getVideoEnvironment();
-  const section = post.article.category?.section;
-  if (!section?.videoCharacterId) throw new Error('Article\'s section has no trained video character');
+  const content = resolvePostContent(post);
+  if (!content.character?.videoCharacterId) {
+    throw new Error(`Character "${content.character?.name || 'unknown'}" has no trained video character`);
+  }
 
   await prisma.videoPost.update({ where: { id: postId }, data: { status: 'planning', errorMessage: null } });
   const config = resolveVideoConfig({ post, campaign, settings });
@@ -221,8 +374,10 @@ export async function rePlanPost(postId, directorNote) {
     const { plan } = await planVideoPost({
       campaignId: post.campaignId,
       postId,
-      article: post.article,
-      section,
+      title: content.title,
+      summary: content.summary,
+      contentText: content.contentText,
+      character: content.character,
       environment,
       config,
       existingPlan: post.plan,
@@ -256,16 +411,21 @@ export async function rePlanPost(postId, directorNote) {
 export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
-    include: { article: { include: { category: { include: { section: true } } } } },
+    include: {
+      article: { include: { category: { include: { section: true } } } },
+      customCharacter: true,
+    },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
   if (!post.plan) throw new Error('Post has no draft plan to approve — run planning first.');
 
-  const section = post.article.category?.section;
-  if (!section?.videoCharacterId) throw new Error('Article\'s section has no trained video character');
+  const content = resolvePostContent(post);
+  if (!content.character?.videoCharacterId) {
+    throw new Error(`Character "${content.character?.name || 'unknown'}" has no trained video character`);
+  }
 
   const settings = await getVideoSettings();
-  const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
+  const campaign = await findCampaignOrNull(post.campaignId);
   const environment = await getVideoEnvironment();
   const promptLearnings = await getRecentPromptLearnings();
   const config = resolveVideoConfig({ post, campaign, settings });
@@ -288,8 +448,8 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
     const { result } = await executeVideoPost({
       campaignId: post.campaignId,
       postId,
-      article: post.article,
-      section,
+      title: content.title,
+      character: content.character,
       environment,
       config,
       plan,
@@ -349,13 +509,14 @@ export async function regenerateSegment(segmentId, note) {
 export async function reassemblePost(postId) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
-    include: { article: true, segments: { orderBy: { order: 'asc' } } },
+    include: { article: true, customCharacter: true, segments: { orderBy: { order: 'asc' } } },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
 
   const settings = await getVideoSettings();
-  const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
+  const campaign = await findCampaignOrNull(post.campaignId);
   const config = resolveVideoConfig({ post, campaign, settings });
+  const content = resolvePostContent(post);
 
   const completedSegments = post.segments.filter((s) => s.status === 'completed' && s.videoUrl);
   if (!completedSegments.length) {
@@ -381,7 +542,7 @@ export async function reassemblePost(postId) {
         ? {
             enabled: true,
             volume: effectiveVolume,
-            prompt: musicPromptFor(post.article, config),
+            prompt: musicPromptFor(content.title, config),
             modelId: settings.elevenlabsMusicModelId,
           }
         : { enabled: false },
@@ -448,7 +609,7 @@ export async function reassemblePost(postId) {
 export async function regenerateMusic(postId, note) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
-    include: { article: true },
+    include: { article: true, customCharacter: true },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
   if (!post.narrationVideoUrl) {
@@ -456,8 +617,9 @@ export async function regenerateMusic(postId, note) {
   }
 
   const settings = await getVideoSettings();
-  const campaign = await prisma.videoCampaign.findUnique({ where: { id: post.campaignId } });
+  const campaign = await findCampaignOrNull(post.campaignId);
   const config = resolveVideoConfig({ post, campaign, settings });
+  const content = resolvePostContent(post);
 
   const staleUrls = [post.videoUrl, post.musicUrl].filter(Boolean);
   const logId = await logStart(post.campaignId, 'music_regenerate', 'Regenerating background music', { note }, postId);
@@ -476,7 +638,7 @@ export async function regenerateMusic(postId, note) {
       musicConfig: {
         enabled: true,
         volume: effectiveVolume,
-        prompt: musicPromptFor(post.article, config, note),
+        prompt: musicPromptFor(content.title, config, note),
         modelId: settings.elevenlabsMusicModelId,
       },
       captionsConfig: captionsEnabled

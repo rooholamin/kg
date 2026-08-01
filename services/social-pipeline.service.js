@@ -212,6 +212,9 @@ export async function runApproval(campaignId) {
             },
           }
         : {}),
+      // Cross-pipeline exclusivity — an article already claimed by an active
+      // (non-failed) video post never also gets a social carousel/post.
+      videoPosts: { none: { status: { not: 'failed' } } },
     },
     include: {
       category: {

@@ -22,6 +22,8 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { apiFetch } from '@/lib/api';
+import { VIDEO_PLATFORM_OPTIONS } from '@/lib/video-platforms';
+import { format } from 'date-fns';
 import {
   ArrowLeft,
   Loader2,
@@ -29,6 +31,7 @@ import {
   Upload,
   CalendarClock,
   ChevronDown,
+  ChevronUp,
   ClapperboardIcon,
   TrendingUp,
   XCircle,
@@ -45,7 +48,15 @@ import {
   Save,
   AlertCircle,
   Hash,
+  Plus,
+  Trash2,
 } from 'lucide-react';
+
+function toLocalDatetimeInputValue(iso) {
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 const TARGET_PLATFORMS = ['auto', 'instagram_reels', 'tiktok', 'youtube_shorts', 'linkedin'];
 const VIDEO_STYLES = ['auto', 'explainer', 'diy', 'listicle', 'testimonial'];
@@ -268,6 +279,31 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
     setSegments((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
   }
 
+  function renumber(list) {
+    return list.map((s, i) => ({ ...s, order: i + 1 }));
+  }
+
+  function addSegment() {
+    setSegments((prev) => renumber([
+      ...prev,
+      { hasCharacter: false, spokenPortion: '', visualDescription: '', estimatedDuration: 6 },
+    ]));
+  }
+
+  function removeSegment(index) {
+    setSegments((prev) => (prev.length <= 1 ? prev : renumber(prev.filter((_, i) => i !== index))));
+  }
+
+  function moveSegment(index, direction) {
+    setSegments((prev) => {
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+      return renumber(next);
+    });
+  }
+
   const isPlanning = post.status === 'planning';
   const isApproving = post.status === 'approved' || post.status === 'directing';
 
@@ -322,7 +358,12 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs font-medium">Segments ({segments.length})</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Segments ({segments.length})</Label>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={addSegment}>
+                  <Plus className="size-3.5" /> Add segment
+                </Button>
+              </div>
               <div className="grid sm:grid-cols-2 gap-3">
                 {segments.map((seg, i) => (
                 <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/20">
@@ -333,10 +374,19 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
                       </span>
                       Segment
                     </span>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs">On camera</Label>
+                    <div className="flex items-center gap-1">
+                      <Label className="text-xs mr-1">On camera</Label>
                       <Switch checked={!!seg.hasCharacter} onCheckedChange={(v) => updateSegment(i, 'hasCharacter', v)} />
                       {seg.estimatedDuration && <Badge variant="secondary" appearance="light" size="sm">~{seg.estimatedDuration}s</Badge>}
+                      <Button size="icon" variant="ghost" className="size-6" onClick={() => moveSegment(i, -1)} disabled={i === 0} title="Move up">
+                        <ChevronUp className="size-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="size-6" onClick={() => moveSegment(i, 1)} disabled={i === segments.length - 1} title="Move down">
+                        <ChevronDown className="size-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="size-6" onClick={() => removeSegment(i)} disabled={segments.length <= 1} title="Remove segment">
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
                     </div>
                   </div>
                   <Textarea
@@ -494,6 +544,7 @@ function SegmentTimeline({ post, invalidate }) {
   const [captionsEnabled, setCaptionsEnabled] = useState(post.captionsEnabled ?? true);
   const [musicNote, setMusicNote] = useState('');
   const [showMusicNote, setShowMusicNote] = useState(false);
+  const [isAssembling, setIsAssembling] = useState(false);
 
   useEffect(() => {
     setMusicVolume([post.musicVolume ?? 0.3]);
@@ -528,6 +579,7 @@ function SegmentTimeline({ post, invalidate }) {
 
   const regenerateMusicMutation = useMutation({
     mutationFn: async () => {
+      setIsAssembling(true);
       const res = await apiFetch(`/api/video/posts/${post.id}/regenerate-music`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -541,10 +593,12 @@ function SegmentTimeline({ post, invalidate }) {
     },
     onSuccess: () => { toast.success('Music regenerated'); setShowMusicNote(false); setMusicNote(''); invalidate(); },
     onError: (e) => toast.error(e.message),
+    onSettled: () => setIsAssembling(false),
   });
 
   const reassembleMutation = useMutation({
     mutationFn: async () => {
+      setIsAssembling(true);
       const res = await apiFetch(`/api/video/posts/${post.id}/reassemble`, { method: 'POST' });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -562,7 +616,24 @@ function SegmentTimeline({ post, invalidate }) {
       invalidate();
     },
     onError: (e) => toast.error(e.message),
+    onSettled: () => setIsAssembling(false),
   });
+
+  const { data: progressLogs } = useQuery({
+    queryKey: ['video-post-logs', post.id],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${post.id}/logs`);
+      if (!res.ok) return [];
+      const j = await res.json();
+      return j.data ?? [];
+    },
+    enabled: isAssembling,
+    refetchInterval: isAssembling ? 1500 : false,
+  });
+
+  const currentStep = isAssembling
+    ? progressLogs?.find((l) => l.status === 'running') || progressLogs?.[0]
+    : null;
 
   const segments = post.segments || [];
   const completedCount = segments.filter((s) => s.status === 'completed').length;
@@ -676,6 +747,13 @@ function SegmentTimeline({ post, invalidate }) {
           </div>
         </div>
 
+        {isAssembling && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 border border-border/60 rounded-lg px-3 py-2">
+            <Loader2 className="size-3.5 animate-spin shrink-0" />
+            <span className="truncate">{currentStep?.message || 'Starting…'}</span>
+          </div>
+        )}
+
         <Button className="w-full" onClick={() => reassembleMutation.mutate()} disabled={!canAssemble || reassembleMutation.isPending}>
           {reassembleMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
           Re-assemble
@@ -690,6 +768,89 @@ function SegmentTimeline({ post, invalidate }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PublishToControl — per-video editable channel selection + schedule
+// date/time. Unlike Social (one SocialPost row per fixed platform), one
+// video can fan out to several Buffer channels at once, so this is a single
+// editable control rather than read-only per-channel badges.
+// ---------------------------------------------------------------------------
+function PublishToControl({ post, invalidate }) {
+  const [platforms, setPlatforms] = useState(post.platforms || []);
+  const [scheduledAt, setScheduledAt] = useState(post.scheduledAt ? toLocalDatetimeInputValue(post.scheduledAt) : '');
+
+  useEffect(() => {
+    setPlatforms(post.platforms || []);
+    setScheduledAt(post.scheduledAt ? toLocalDatetimeInputValue(post.scheduledAt) : '');
+  }, [post.platforms, post.scheduledAt]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data) => {
+      const res = await apiFetch(`/api/video/posts/${post.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+    },
+    onSuccess: () => invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+
+  const isScheduled = Boolean(post.bufferPostIds && Object.keys(post.bufferPostIds).length > 0);
+
+  function togglePlatform(key) {
+    if (isScheduled) return;
+    const next = platforms.includes(key) ? platforms.filter((p) => p !== key) : [...platforms, key];
+    setPlatforms(next);
+    saveMutation.mutate({ platforms: next });
+  }
+
+  function handleDateChange(e) {
+    const v = e.target.value;
+    setScheduledAt(v);
+    saveMutation.mutate({ scheduledAt: v ? new Date(v).toISOString() : null });
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <Label className="text-xs font-medium">Publish to</Label>
+      <div className="flex flex-wrap gap-2">
+        {VIDEO_PLATFORM_OPTIONS.map(({ key, label, Icon }) => {
+          const active = platforms.includes(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => togglePlatform(key)}
+              disabled={isScheduled}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                active ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+              } ${isScheduled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Icon className="size-3.5" />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-2 gap-3 items-end">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Scheduled date/time</Label>
+          <Input type="datetime-local" value={scheduledAt} onChange={handleDateChange} disabled={isScheduled} />
+        </div>
+        {post.article?.publishDate && (
+          <p className="text-xs text-muted-foreground">
+            Article publishes {format(new Date(post.article.publishDate), 'MMM d, yyyy \u00b7 h:mm a')}
+          </p>
+        )}
+      </div>
+      {isScheduled && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">Already scheduled on Buffer — unschedule first to change channels/time.</p>
+      )}
+    </div>
   );
 }
 
@@ -781,13 +942,13 @@ export default function VideoPostDetailPage() {
   return (
     <Container>
       <div className="flex items-start gap-3 mb-5">
-        <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/video/${post.campaignId}`)} className="mt-0.5">
+        <Button variant="ghost" size="icon" onClick={() => router.push(post.campaignId ? `/dashboard/video/${post.campaignId}` : '/dashboard/video/custom')} className="mt-0.5">
           <ArrowLeft className="size-4" />
         </Button>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">Video Post</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">{post.campaignId ? 'Video Post' : 'Custom Video'}</p>
           <div className="flex items-start gap-2.5 flex-wrap">
-            <h1 className="text-xl font-semibold truncate max-w-full">{post.article?.title || 'Untitled article'}</h1>
+            <h1 className="text-xl font-semibold truncate max-w-full">{post.article?.title || post.customTitle || 'Untitled video'}</h1>
             <Badge variant={badgeCfg.variant} appearance={badgeCfg.appearance} size="sm" className="mt-1">
               {post.status.replace(/_/g, ' ')}
             </Badge>
@@ -834,6 +995,10 @@ export default function VideoPostDetailPage() {
                 ))}
               </div>
             )}
+
+            <Separator />
+            <PublishToControl post={post} invalidate={invalidate} />
+            <Separator />
 
             <div className="flex flex-wrap gap-1.5">
               {post.videoUrl && post.status !== 'uploaded' && post.status !== 'scheduled' && (
