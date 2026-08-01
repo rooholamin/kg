@@ -87,44 +87,60 @@ function musicPromptFor(title, config, note) {
   return `${mood} instrumental background music for a short-form video about "${title}" — no vocals, no drums or only very light percussion, sits gently under spoken narration, subtle enough not to compete with voice.${noteText}`;
 }
 
+// A section's video character lives inline on the Section row (as opposed to
+// the standalone VideoCharacter roster) — this flattens it into the same shape
+// both kinds of character are consumed as downstream.
+function characterFromSection(section) {
+  if (!section) return null;
+  return {
+    name: section.characterName,
+    persona: section.characterPersona || section.characterBiography,
+    tone: section.characterTone,
+    videoCharacterId: section.videoCharacterId,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // resolvePostContent — normalizes a post's title/summary/content/character
 // regardless of whether it's derived from an article+section (normal post)
-// or provided directly as a custom video (customTitle/customContent/
-// customCharacter, no article/section at all). Every planVideoPost/
-// executeVideoPost caller goes through this so those two functions never
-// need to know which kind of post they're working with.
+// or provided directly as a custom video (customTitle/customContent + either
+// a roster customCharacter or a borrowed customSection character). Every
+// planVideoPost/executeVideoPost caller goes through this so those two
+// functions never need to know which kind of post they're working with.
 // ---------------------------------------------------------------------------
 function resolvePostContent(post) {
   if (post.article) {
-    const section = post.article.category?.section;
     return {
       title: post.article.title,
       summary: post.article.summary,
       contentText: extractPlainText(post.article.content),
-      character: section
-        ? {
-            name: section.characterName,
-            persona: section.characterPersona || section.characterBiography,
-            tone: section.characterTone,
-            videoCharacterId: section.videoCharacterId,
-          }
-        : null,
+      character: characterFromSection(post.article.category?.section),
     };
   }
 
+  const roster = post.customCharacter;
   return {
     title: post.customTitle,
     summary: null,
     contentText: post.customContent,
-    character: post.customCharacter
-      ? {
-          name: post.customCharacter.name,
-          persona: post.customCharacter.persona,
-          tone: post.customCharacter.tone,
-          videoCharacterId: post.customCharacter.videoCharacterId,
-        }
-      : null,
+    character: post.customSection
+      ? characterFromSection(post.customSection)
+      : roster
+        ? { name: roster.name, persona: roster.persona, tone: roster.tone, videoCharacterId: roster.videoCharacterId }
+        : null,
+  };
+}
+
+// A custom video can be shot somewhere other than the shared KG Media Loft —
+// its own environment description replaces the global VideoEnvironment
+// singleton for that one post. Only `name`/`textDescriptor` are ever read
+// downstream (the environment reaches the agent as text, never as an image
+// ref), so a plain object stands in for the singleton row.
+function resolveEnvironment(post, globalEnvironment) {
+  if (!post.customEnvironmentDescription) return globalEnvironment;
+  return {
+    name: post.customEnvironmentName || 'Custom environment',
+    textDescriptor: post.customEnvironmentDescription,
   };
 }
 
@@ -257,7 +273,7 @@ async function planOnePost(post, { campaignId, campaign, settings, environment }
     summary: content.summary,
     contentText: content.contentText,
     character: content.character,
-    environment,
+    environment: resolveEnvironment(post, environment),
     config,
     existingPlan: post.plan,
     directorNote: post.directorNote,
@@ -290,6 +306,7 @@ export async function runVideoPlanning(campaignId) {
     include: {
       article: { include: { category: { include: { section: true } } } },
       customCharacter: true,
+      customSection: true,
     },
   });
 
@@ -299,6 +316,7 @@ export async function runVideoPlanning(campaignId) {
 
   const settings = await getVideoSettings();
   const campaign = await findCampaignOrNull(campaignId);
+  // The global default — planOnePost applies each post's own override, if any
   const environment = await getVideoEnvironment();
 
   let succeeded = 0;
@@ -330,7 +348,7 @@ export async function runVideoPlanning(campaignId) {
 export async function planStandaloneCustomPost(postId) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
-    include: { customCharacter: true },
+    include: { customCharacter: true, customSection: true },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
 
@@ -355,13 +373,14 @@ export async function rePlanPost(postId, directorNote) {
     include: {
       article: { include: { category: { include: { section: true } } } },
       customCharacter: true,
+      customSection: true,
     },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
 
   const settings = await getVideoSettings();
   const campaign = await findCampaignOrNull(post.campaignId);
-  const environment = await getVideoEnvironment();
+  const environment = resolveEnvironment(post, await getVideoEnvironment());
   const content = resolvePostContent(post);
   if (!content.character?.videoCharacterId) {
     throw new Error(`Character "${content.character?.name || 'unknown'}" has no trained video character`);
@@ -414,6 +433,7 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
     include: {
       article: { include: { category: { include: { section: true } } } },
       customCharacter: true,
+      customSection: true,
     },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
@@ -426,7 +446,7 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
 
   const settings = await getVideoSettings();
   const campaign = await findCampaignOrNull(post.campaignId);
-  const environment = await getVideoEnvironment();
+  const environment = resolveEnvironment(post, await getVideoEnvironment());
   const promptLearnings = await getRecentPromptLearnings();
   const config = resolveVideoConfig({ post, campaign, settings });
 
@@ -509,7 +529,7 @@ export async function regenerateSegment(segmentId, note) {
 export async function reassemblePost(postId) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
-    include: { article: true, customCharacter: true, segments: { orderBy: { order: 'asc' } } },
+    include: { article: true, customCharacter: true, customSection: true, segments: { orderBy: { order: 'asc' } } },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
 
@@ -609,7 +629,7 @@ export async function reassemblePost(postId) {
 export async function regenerateMusic(postId, note) {
   const post = await prisma.videoPost.findUnique({
     where: { id: postId },
-    include: { article: true, customCharacter: true },
+    include: { article: true, customCharacter: true, customSection: true },
   });
   if (!post) throw new Error(`Post not found: ${postId}`);
   if (!post.narrationVideoUrl) {

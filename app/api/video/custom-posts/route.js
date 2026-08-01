@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 import { planStandaloneCustomPost } from '@/services/video-pipeline.service';
+import { resolveCustomVideoCharacter, customEnvironmentFields } from '@/lib/video-custom-post';
 
 // Standalone custom videos — for individual, one-off use, no campaign or
 // article at all. See app/(protected)/dashboard/video/custom/page.jsx.
@@ -16,7 +17,7 @@ export async function GET() {
 
     const posts = await prisma.videoPost.findMany({
       where: { campaignId: null },
-      include: { customCharacter: true, segments: { orderBy: { order: 'asc' } } },
+      include: { customCharacter: true, customSection: true, segments: { orderBy: { order: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -33,23 +34,21 @@ export async function POST(req) {
     requireRole(session, 'superadmin', 'admin', 'editor');
 
     const body = await req.json();
-    const { title, characterId, content } = body;
-    if (!title || !characterId || !content) {
-      return NextResponse.json({ message: 'title, characterId, and content are required' }, { status: 400 });
+    const { title, characterId, sectionId, content, environmentName, environmentDescription } = body;
+    if (!title || !content || (!characterId && !sectionId)) {
+      return NextResponse.json({ message: 'title, content, and one of characterId or sectionId are required' }, { status: 400 });
     }
 
-    const character = await prisma.videoCharacter.findUnique({ where: { id: characterId } });
-    if (!character) return NextResponse.json({ message: 'Character not found' }, { status: 404 });
-    if (!character.videoCharacterId) {
-      return NextResponse.json({ message: `"${character.name}" hasn't been trained yet — train it from Video → Characters first.` }, { status: 422 });
-    }
+    const resolved = await resolveCustomVideoCharacter({ characterId, sectionId });
+    if (resolved.error) return NextResponse.json({ message: resolved.error }, { status: resolved.status });
 
     const post = await prisma.videoPost.create({
       data: {
         campaignId: null,
         customTitle: title,
         customContent: content,
-        customCharacterId: characterId,
+        ...resolved.data,
+        ...customEnvironmentFields({ environmentName, environmentDescription }),
         status: 'pending',
       },
     });

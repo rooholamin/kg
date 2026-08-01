@@ -244,6 +244,8 @@ model Section {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   categories            Category[]
+  // Custom videos that borrow this section's trained character
+  customVideoPosts      VideoPost[]
 
   @@index([status])
   @@index([slug])
@@ -1134,12 +1136,21 @@ model VideoPost {
   narration String? @db.Text
   // Custom video fields — set instead of articleId when this post's content
   // is provided directly rather than derived from an article. Exactly one of
-  // articleId or (customCharacterId + customContent) should be set; enforced
+  // articleId or (a character + customContent) should be set; enforced
   // at the application layer, not a DB constraint.
   customTitle       String?
   customContent     String? @db.Text
+  // A custom video's on-screen character is either a roster VideoCharacter or
+  // an existing section's already-trained character — exactly one of these two
+  // is set (application-enforced).
   customCharacterId String?
   customCharacter   VideoCharacter? @relation(fields: [customCharacterId], references: [id], onDelete: SetNull)
+  customSectionId   String?
+  customSection     Section?        @relation(fields: [customSectionId], references: [id], onDelete: SetNull)
+  // Per-post override of the global VideoEnvironment singleton ("KG Media
+  // Loft"). Both null (the default) means use the singleton exactly as before.
+  customEnvironmentName        String?
+  customEnvironmentDescription String? @db.Text
   segments  VideoSegment[]
   // Caption editable by user before scheduling; AI-generated initially
   generatedText String? @db.Text
@@ -1178,6 +1189,7 @@ model VideoPost {
 
   @@index([campaignId])
   @@index([articleId])
+  @@index([customSectionId])
   @@index([status])
 }
 

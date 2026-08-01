@@ -32,6 +32,9 @@ function CustomVideoCard({ post }) {
   const completedCount = segments.filter((s) => s.status === 'completed').length;
   const progressPct = segments.length > 0 ? Math.round((completedCount / segments.length) * 100) : 0;
   const badgeCfg = POST_STATUS_BADGE[post.status] ?? { variant: 'secondary', appearance: 'light' };
+  const characterName = post.customCharacter?.name
+    || post.customSection?.characterName
+    || post.customSection?.name;
 
   return (
     <Card
@@ -53,7 +56,7 @@ function CustomVideoCard({ post }) {
         <div className="min-w-0">
           <p className="text-sm font-semibold truncate">{post.customTitle || 'Untitled video'}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {post.customCharacter?.name ? `Featuring ${post.customCharacter.name}` : 'No character'}
+            {characterName ? `Featuring ${characterName}` : 'No character'}
             {segments.length > 0 ? ` — ${completedCount}/${segments.length} segments generated` : ' — No plan yet'}
           </p>
         </div>
