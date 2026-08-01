@@ -1,11 +1,13 @@
 ---
 name: kg-hub-cinematic-direction
-description: Battle-tested prompting knowledge for directing Higgsfield-generated cinematic video for KG Hub via Higgsfield's hosted MCP server — Reference Element rules, the still-image model that actually honors them, the anchor-still consistency mechanic, native-audio prompting (avatar dialogue + off-screen voiceover), and content-filter avoidance. This is execution-only knowledge — the narration/segment-breakdown/wardrobe decisions are made upstream by a separate Planner Agent and arrive already approved. Use whenever directing a shoot (PHASE: execute) or regenerating one segment (PHASE: regenerate_segment).
+description: Battle-tested prompting knowledge for Higgsfield-generated cinematic video at KG Hub — Reference Element rules, the still-image model that actually honors them, the anchor-still consistency mechanic, native-audio prompting (avatar dialogue + off-screen voiceover), and content-filter avoidance. Use whenever directing a shoot (PHASE: execute) or regenerating one segment (PHASE: regenerate_segment). ALSO use when PLANNING a video (writing narration, segment breakdowns, visualDescriptions, or a character look) — most of this file is execution procedure a planner can't act on, but `content-filter-reference.md` applies directly, since a visualDescription written at plan time becomes the generation prompt later and can be rejected for language the planner chose.
 ---
 
 # KG Hub Cinematic Direction
 
 Distilled from an internal production playbook (`Universal AI Cinematic Automation`) after many real shoots. Read `content-filter-reference.md` before writing any prompt that includes physical contact, steam/fog/mist, or camera/film-stock language.
+
+**If you're the Planner Agent, `content-filter-reference.md` is the part that concerns you** — everything else here is procedure for driving Higgsfield tools you don't have. A `visualDescription` you write today becomes a real generation prompt tomorrow, so a phrase that trips the filter costs a failed generation after the human has already approved your plan.
 
 ## Golden rules
 
@@ -57,4 +59,4 @@ The narration, segment breakdown, and `characterLook` all arrive in your brief a
 
 No `[SFX:]` block — background music is mixed in separately by the backend after assembly; don't design ambient sound in the prompt.
 
-See `content-filter-reference.md` for the specific trigger phrases to avoid and their safe replacements, and `ad-shot-structures.md` for example narration + segment breakdowns (useful context for how a plan is typically shaped, even though you don't write plans yourself).
+See `content-filter-reference.md` for the specific trigger phrases to avoid and their safe replacements, and `narration-phrasing.md` for how to word the spoken line in an avatar vs. b-roll segment prompt.
