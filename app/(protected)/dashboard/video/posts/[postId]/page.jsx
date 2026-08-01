@@ -305,7 +305,17 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   }
 
   const isPlanning = post.status === 'planning';
-  const isApproving = post.status === 'approved' || post.status === 'directing';
+  // "directing" is a resting state as much as an active one — a post stays
+  // there after execution finishes, until someone assembles it. So being busy
+  // is derived from the segments actually in flight (or still missing versus
+  // the plan) rather than from the status alone, otherwise Re-plan and
+  // Approve stay disabled forever once a shoot completes.
+  const liveSegments = post.segments || [];
+  const isExecuting =
+    post.status === 'approved' ||
+    (post.status === 'directing' &&
+      (liveSegments.some((s) => s.status === 'generating' || s.status === 'pending') ||
+        liveSegments.length < (post.plan?.segments?.length || 0)));
 
   return (
     <Card>
@@ -433,13 +443,13 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
             />
 
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => rePlanMutation.mutate()} disabled={rePlanMutation.isPending || isApproving}>
+              <Button size="sm" variant="outline" onClick={() => rePlanMutation.mutate()} disabled={rePlanMutation.isPending || isExecuting}>
                 {rePlanMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                 Re-plan
               </Button>
-              <Button size="sm" onClick={handleApproveClick} disabled={approveMutation.isPending || isApproving} className="flex-1">
-                {approveMutation.isPending || isApproving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-                {isApproving ? 'Generating…' : alreadyExecuted ? 'Re-approve & Regenerate' : 'Approve & Generate'}
+              <Button size="sm" onClick={handleApproveClick} disabled={approveMutation.isPending || isExecuting} className="flex-1">
+                {approveMutation.isPending || isExecuting ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                {isExecuting ? 'Generating…' : alreadyExecuted ? 'Re-approve & Regenerate' : 'Approve & Generate'}
               </Button>
             </div>
           </>
