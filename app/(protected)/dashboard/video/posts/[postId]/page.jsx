@@ -53,6 +53,7 @@ import {
   Link as LinkIcon,
   History,
   RotateCcw,
+  PlayCircle,
 } from 'lucide-react';
 
 function toLocalDatetimeInputValue(iso) {
@@ -734,6 +735,19 @@ function SegmentTimeline({ post, invalidate }) {
     onSettled: () => setIsAssembling(false),
   });
 
+  const continueMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${post.id}/continue`, { method: 'POST' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to continue shoot');
+      }
+      return res.json();
+    },
+    onSuccess: () => { toast.success('Shoot continued'); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
   const reassembleMutation = useMutation({
     mutationFn: async () => {
       setIsAssembling(true);
@@ -776,6 +790,11 @@ function SegmentTimeline({ post, invalidate }) {
   const segments = post.segments || [];
   const completedCount = segments.filter((s) => s.status === 'completed').length;
   const canAssemble = completedCount > 0;
+  // An interrupted shoot leaves gaps. Continuing reuses the clips Higgsfield
+  // already billed for; re-approving the plan would pay to shoot them again.
+  const missingCount = segments.filter((s) => !s.videoUrl).length;
+  const canContinue = Boolean(post.directorSessionId) && missingCount > 0
+    && !segments.some((s) => s.status === 'generating');
 
   return (
     <Card>
@@ -799,6 +818,22 @@ function SegmentTimeline({ post, invalidate }) {
         </CardToolbar>
       </CardHeader>
       <CardContent className="space-y-5">
+        {canContinue && (
+          <Alert variant="warning" appearance="light">
+            <AlertIcon><AlertCircle /></AlertIcon>
+            <div className="flex-1 flex items-center justify-between gap-3">
+              <AlertTitle className="text-xs">
+                {missingCount} segment{missingCount !== 1 ? 's' : ''} never came back — the shoot was interrupted. Continue picks up in
+                the same session and reuses clips Higgsfield already charged for, instead of reshooting the whole video.
+              </AlertTitle>
+              <Button size="sm" onClick={() => continueMutation.mutate()} disabled={continueMutation.isPending}>
+                {continueMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <PlayCircle className="size-3.5" />}
+                Continue
+              </Button>
+            </div>
+          </Alert>
+        )}
+
         <div className="flex gap-3 overflow-x-auto pb-2">
           {segments.map((segment) => (
             <SegmentBlock key={segment.id} segment={segment} postId={post.id} invalidate={invalidate} />

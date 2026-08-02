@@ -3,6 +3,7 @@ import {
   selectVideoArticles,
   planVideoPost,
   executeVideoPost,
+  continueVideoPost,
   regenerateVideoSegment,
   resolveVideoConfig,
   extractPlainText,
@@ -496,6 +497,46 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
     return result;
   } catch (error) {
     await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: error.message } });
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3b. continuePost — pick an interrupted shoot back up instead of paying to
+// redo it. Use when execution died on an Anthropic-side error (credits, model
+// overload): the Higgsfield jobs were already fired and billed, so this asks
+// the same director session to account for them and fill only the gaps.
+// ---------------------------------------------------------------------------
+export async function continuePost(postId) {
+  const post = await prisma.videoPost.findUnique({ where: { id: postId } });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+
+  await prisma.videoPost.update({ where: { id: postId }, data: { status: 'directing', errorMessage: null } });
+
+  try {
+    const { result } = await continueVideoPost({ postId });
+
+    const segments = await prisma.videoSegment.findMany({ where: { postId } });
+    const anySucceeded = segments.some((s) => s.status === 'completed');
+
+    await prisma.videoPost.update({
+      where: { id: postId },
+      data: {
+        status: anySucceeded ? 'directing' : 'failed',
+        narration: result.narration || post.narration,
+        generatedText: result.text || post.generatedText,
+        hashtags: result.hashtags || post.hashtags,
+        errorMessage: anySucceeded ? null : 'No segments could be recovered',
+      },
+    });
+
+    return result;
+  } catch (error) {
+    // A precondition failure ("nothing to continue") isn't a shoot failure —
+    // leave the post's status alone.
+    if (error.code !== 'INVALID_REQUEST') {
+      await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: error.message } });
+    }
     throw error;
   }
 }

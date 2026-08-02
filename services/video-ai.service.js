@@ -48,7 +48,15 @@ function sleep(ms) {
 // the only way to get a real response is to resend it — polling the same
 // (now-idle) session's stream again just hangs forever waiting for events
 // that will never come, since nothing is running anymore.
-async function sendAndAwaitResponse(sessionId, message, maxAttempts = 4) {
+//
+// Resending is only safe for agents whose work is READ-ONLY. A dropped turn
+// still ran its tool calls, so resending a brief that says "direct the full
+// shoot" makes the director shoot the whole video a second time and bill for
+// it — confirmed in production, where four resends of one execute brief
+// produced several shoots' worth of Higgsfield jobs and six usable clips.
+// Generation phases therefore pass maxAttempts: 1 and surface the failure, so
+// the session can be resumed with `continue` instead of restarted.
+async function sendAndAwaitResponse(sessionId, message, { maxAttempts = 4 } = {}) {
   return withSessionLock(sessionId, async () => {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       await client.beta.sessions.events.send(sessionId, {
@@ -406,7 +414,10 @@ Direct the full shoot now — generate_image + generate_video per segment, in or
 
   let responseText;
   try {
-    responseText = await sendAndAwaitResponse(sessionId, message);
+    // One attempt only — see sendAndAwaitResponse. A dropped turn here has
+    // usually already spent the Higgsfield budget, so the post is left failed
+    // for continueVideoPost to pick up rather than silently reshot.
+    responseText = await sendAndAwaitResponse(sessionId, message, { maxAttempts: 1 });
   } catch (err) {
     await logError(aiLogId, err.message);
     await prisma.videoSegment.updateMany({ where: { postId }, data: { status: 'failed', errorMessage: err.message, generationCompletedAt: new Date() } });
@@ -422,13 +433,28 @@ Direct the full shoot now — generate_image + generate_video per segment, in or
     throw new Error(`Director agent returned invalid execute JSON: ${responseText.slice(0, 200)}`);
   }
 
+  const succeeded = await applyExecuteSegments({ postId, result, directorNote });
+  await logDone(aiLogId, `Execution complete — ${succeeded}/${plannedSegments.length} segments generated`, { response: responseText, parsed: result });
+
+  return { result, sessionId };
+}
+
+// Writes an EXECUTE-shaped agent response onto the post's segment rows. Shared
+// by executeVideoPost and continueVideoPost so a resumed shoot is recorded
+// exactly like an uninterrupted one.
+async function applyExecuteSegments({ postId, result, directorNote }) {
   const completedAt = new Date();
   const resultSegments = result.segments || [];
+
   for (const seg of resultSegments) {
     const hasVideo = !!seg.videoUrl;
     const estimatedCost = estimateSegmentCost({ hasCharacter: seg.hasCharacter, duration: seg.duration });
-    const row = await prisma.videoSegment.findFirst({ where: { postId, order: seg.order }, select: { id: true } });
+    const row = await prisma.videoSegment.findFirst({ where: { postId, order: seg.order } });
     if (!row) continue;
+
+    // Never let a segment the agent couldn't deliver this time erase a clip
+    // that's already there — that clip was paid for.
+    if (!hasVideo && row.videoUrl) continue;
 
     await prisma.videoSegment.update({
       where: { id: row.id },
@@ -454,8 +480,99 @@ Direct the full shoot now — generate_image + generate_video per segment, in or
     });
   }
 
-  const succeeded = resultSegments.filter((s) => s.videoUrl).length;
-  await logDone(aiLogId, `Execution complete — ${succeeded}/${plannedSegments.length} segments generated`, { response: responseText, parsed: result });
+  return resultSegments.filter((s) => s.videoUrl).length;
+}
+
+// ---------------------------------------------------------------------------
+// continueVideoPost — resumes an interrupted shoot in the SAME director
+// session instead of starting over.
+//
+// When Anthropic drops a turn (credit exhaustion, model overload) the agent
+// has usually already fired its Higgsfield jobs; only the reply was lost. The
+// clips exist and are billed. Re-approving the plan would open a fresh session
+// and shoot everything again, so this asks the existing session to report the
+// work it already did and finish only what's genuinely missing.
+// ---------------------------------------------------------------------------
+export async function continueVideoPost({ postId }) {
+  const post = await prisma.videoPost.findUnique({
+    where: { id: postId },
+    include: { segments: { orderBy: { order: 'asc' } } },
+  });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+
+  const sessionId = post.directorSessionId;
+  if (!sessionId) {
+    const err = new Error('This post has no director session to continue — approve the plan to start the shoot.');
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  const missing = post.segments.filter((s) => !s.videoUrl);
+  if (!missing.length) {
+    const err = new Error('Every segment already has a clip — nothing to continue.');
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  const haveList = post.segments
+    .filter((s) => s.videoUrl)
+    .map((s) => s.order)
+    .join(', ') || 'none';
+
+  const message = `PHASE: continue
+
+Your previous turn was cut short by an infrastructure error before you could reply. The Higgsfield jobs you had already started still ran and were still billed, so treat them as done.
+
+Do NOT start the shoot over. Do NOT re-generate any segment that already has a clip.
+
+Segments already recorded on our side: ${haveList}
+Segments still missing a clip: ${missing.map((s) => s.order).join(', ')}
+
+First, for any job you already submitted, call job_status to collect its finished URL — reuse it rather than generating again. Only generate for segments that have no job at all.
+
+Respond with ONLY the EXECUTE OUTPUT FORMAT JSON described in your instructions, covering every segment you can account for.`;
+
+  const aiLogId = await logStart(post.campaignId, 'director_continue', `Continuing shoot — ${missing.length} segment(s) missing`, { message, sessionId }, postId);
+
+  await prisma.videoSegment.updateMany({
+    where: { postId, videoUrl: null },
+    data: { status: 'generating', errorMessage: null, generationStartedAt: new Date(), generationCompletedAt: null },
+  });
+
+  let responseText;
+  try {
+    responseText = await sendAndAwaitResponse(sessionId, message, { maxAttempts: 1 });
+  } catch (err) {
+    await logError(aiLogId, err.message);
+    await prisma.videoSegment.updateMany({
+      where: { postId, videoUrl: null },
+      data: { status: 'failed', errorMessage: err.message, generationCompletedAt: new Date() },
+    });
+    throw err;
+  }
+
+  let result;
+  try {
+    result = JSON.parse(extractJson(responseText));
+  } catch {
+    await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
+    await prisma.videoSegment.updateMany({
+      where: { postId, videoUrl: null },
+      data: { status: 'failed', errorMessage: 'Director agent returned invalid JSON', generationCompletedAt: new Date() },
+    });
+    throw new Error(`Director agent returned invalid continue JSON: ${responseText.slice(0, 200)}`);
+  }
+
+  const succeeded = await applyExecuteSegments({ postId, result, directorNote: null });
+
+  // Anything still clipless after the agent's best effort shouldn't sit in
+  // "generating" forever.
+  await prisma.videoSegment.updateMany({
+    where: { postId, videoUrl: null, status: 'generating' },
+    data: { status: 'failed', errorMessage: 'Not recovered on continue', generationCompletedAt: new Date() },
+  });
+
+  await logDone(aiLogId, `Continue complete — ${succeeded} segment(s) accounted for`, { response: responseText, parsed: result });
 
   return { result, sessionId };
 }
@@ -495,7 +612,9 @@ Respond with ONLY the REGENERATE OUTPUT FORMAT JSON described in your instructio
 
   let responseText;
   try {
-    responseText = await sendAndAwaitResponse(sessionId, message);
+    // Single attempt — a resend would shoot this segment twice (see
+    // sendAndAwaitResponse).
+    responseText = await sendAndAwaitResponse(sessionId, message, { maxAttempts: 1 });
   } catch (err) {
     await logError(aiLogId, err.message);
     await prisma.videoSegment.update({ where: { id: segment.id }, data: { status: 'failed', errorMessage: err.message, generationCompletedAt: new Date() } });
