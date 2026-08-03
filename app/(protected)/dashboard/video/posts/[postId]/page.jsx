@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/collapsible';
 import { apiFetch } from '@/lib/api';
 import { VIDEO_PLATFORM_OPTIONS } from '@/lib/video-platforms';
+import { estimateStillCost } from '@/lib/video-cost';
 import { postToast } from '@/lib/video-toast';
 import { format } from 'date-fns';
 import {
@@ -71,6 +72,8 @@ const STATUS_BADGE = {
   planning: { variant: 'info', appearance: 'light' },
   plan_ready: { variant: 'info', appearance: 'light' },
   approved: { variant: 'info', appearance: 'light' },
+  shooting_stills: { variant: 'info', appearance: 'light' },
+  stills_review: { variant: 'warning', appearance: 'light' },
   directing: { variant: 'info', appearance: 'light' },
   content_ready: { variant: 'success', appearance: 'light' },
   exporting: { variant: 'info', appearance: 'light' },
@@ -263,18 +266,18 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || 'Could not start the shoot');
+        throw new Error(j.message || 'Could not generate the start frames');
       }
       return res.json();
     },
-    onSuccess: () => { notify.success('Plan approved — shooting now, you can leave this page'); invalidate(); },
-    onError: (e) => notify.error(`Could not start the shoot: ${e.message}`),
+    onSuccess: () => { notify.success('Plan approved — generating start frames for your review, you can leave this page'); invalidate(); },
+    onError: (e) => notify.error(`Could not generate the start frames: ${e.message}`),
   });
 
   function handleApproveClick() {
     if (alreadyExecuted) {
       const ok = window.confirm(
-        'This post already has generated segments. Approving this plan will start a brand-new shoot — every existing segment will be regenerated from scratch (real Higgsfield spend). Continue?',
+        'This post already has generated segments. Approving this plan starts over from fresh start frames, and shooting them again later will regenerate every existing segment from scratch (real Higgsfield spend). Continue?',
       );
       if (!ok) return;
     }
@@ -319,6 +322,7 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   const liveSegments = post.segments || [];
   const isExecuting =
     post.status === 'approved' ||
+    post.status === 'shooting_stills' ||
     (post.status === 'directing' &&
       (liveSegments.some((s) => s.status === 'generating' || s.status === 'pending') ||
         liveSegments.length < (post.plan?.segments?.length || 0)));
@@ -455,9 +459,200 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
               </Button>
               <Button size="sm" onClick={handleApproveClick} disabled={approveMutation.isPending || isExecuting} className="flex-1">
                 {approveMutation.isPending || isExecuting ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-                {isExecuting ? 'Generating…' : alreadyExecuted ? 'Re-approve & Regenerate' : 'Approve & Generate'}
+                {isExecuting ? 'Generating…' : alreadyExecuted ? 'Re-approve & Redo Start Frames' : 'Approve & Generate Start Frames'}
               </Button>
             </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StillTile — one reviewable start frame. Regenerating a frame is ~$0.40
+// against ~$2.90 for the clip it would have produced, which is the whole
+// reason this screen exists.
+// ---------------------------------------------------------------------------
+function StillTile({ post, invalidate, label, caption, url, target, order, busy }) {
+  const notify = postToast(post);
+  const [note, setNote] = useState('');
+  const [showNote, setShowNote] = useState(false);
+
+  const regenerateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${post.id}/stills/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, order, note: note || undefined }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to start regeneration');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      notify.success(`${label} is being redone — the new frame will appear here`);
+      setShowNote(false);
+      setNote('');
+      invalidate();
+    },
+    onError: (e) => notify.error(`${label}: ${e.message}`),
+  });
+
+  return (
+    <div className="border rounded-lg overflow-hidden bg-muted/20">
+      <div className="aspect-[9/16] max-h-64 bg-black/80 flex items-center justify-center">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={label} className="h-full w-full object-contain" />
+        ) : busy ? (
+          <Loader2 className="size-5 animate-spin text-white/60" />
+        ) : (
+          <span className="text-xs text-white/60 px-3 text-center">No frame yet</span>
+        )}
+      </div>
+      <div className="p-2.5 space-y-2">
+        <p className="text-xs font-medium">{label}</p>
+        {caption && <p className="text-[11px] text-muted-foreground line-clamp-3">{caption}</p>}
+        {showNote && (
+          <Textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What's wrong with it? e.g. an extra hand in the frame, the screw threads run backwards…"
+            rows={2}
+            className="text-xs"
+          />
+        )}
+        <div className="flex gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs flex-1"
+            onClick={() => (showNote ? regenerateMutation.mutate() : setShowNote(true))}
+            disabled={regenerateMutation.isPending || busy}
+          >
+            {regenerateMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+            {showNote ? 'Redo this frame' : 'Reject'}
+          </Button>
+          {showNote && (
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowNote(false)}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StillsReviewCard — the gate between cheap stills and expensive clips. A
+// malformed frame (extra limb, hardware assembled backwards) reliably becomes
+// a malformed clip, so nothing is shot until these are signed off.
+// ---------------------------------------------------------------------------
+function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
+  const notify = postToast(post);
+  const segments = post.segments || [];
+  const brollSegments = segments.filter((s) => !s.hasCharacter);
+  const avatarCount = segments.length - brollSegments.length;
+  const isGenerating = post.status === 'shooting_stills';
+  const isShooting = post.status === 'directing' && segments.some((s) => s.status === 'generating');
+  const missingFrames = !post.anchorStillUrl || brollSegments.some((s) => !s.stillUrl);
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${post.id}/approve-stills`, { method: 'POST' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Could not start the shoot');
+      }
+      return res.json();
+    },
+    onSuccess: () => { notify.success('Frames approved — shooting now, you can leave this page'); invalidate(); },
+    onError: (e) => notify.error(`Could not start the shoot: ${e.message}`),
+  });
+
+  function handleApproveClick() {
+    if (alreadyExecuted) {
+      const ok = window.confirm(
+        'This post already has generated clips. Shooting again will regenerate every segment from scratch (real Higgsfield spend). Continue?',
+      );
+      if (!ok) return;
+    }
+    approveMutation.mutate();
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardHeading>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Film className="size-4 text-muted-foreground" />
+            Start Frames
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Check every frame before the clips are shot — a bad frame always becomes a bad clip, and the clip costs about seven times as much.
+          </CardDescription>
+        </CardHeading>
+        <CardToolbar>
+          <Badge variant="secondary" appearance="light" size="sm">
+            ~{formatCost(estimateStillCost(brollSegments.length + 1))} spent so far
+          </Badge>
+        </CardToolbar>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isGenerating && !post.anchorStillUrl ? (
+          <div className="flex items-center justify-center py-8 gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Generating start frames…
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <StillTile
+                post={post}
+                invalidate={invalidate}
+                label="Character anchor"
+                caption={`Every on-camera segment (${avatarCount}) is shot from this one frame — it's what keeps her the same person throughout.`}
+                url={post.anchorStillUrl}
+                target="anchor"
+                order={null}
+                busy={isGenerating}
+              />
+              {brollSegments.map((seg) => (
+                <StillTile
+                  key={seg.id}
+                  post={post}
+                  invalidate={invalidate}
+                  label={`Segment ${seg.order}`}
+                  caption={seg.visualDescription}
+                  url={seg.stillUrl}
+                  target="segment"
+                  order={seg.order}
+                  busy={isGenerating}
+                />
+              ))}
+            </div>
+
+            {missingFrames && (
+              <Alert variant="warning" appearance="light">
+                <AlertIcon><AlertCircle className="size-4" /></AlertIcon>
+                <AlertTitle className="text-xs">
+                  Some frames are still missing — redo them before shooting.
+                </AlertTitle>
+              </Alert>
+            )}
+
+            <Button
+              size="sm"
+              className="w-full"
+              onClick={handleApproveClick}
+              disabled={approveMutation.isPending || isGenerating || isShooting || missingFrames}
+            >
+              {approveMutation.isPending || isShooting ? <Loader2 className="size-3.5 animate-spin" /> : <ClapperboardIcon className="size-3.5" />}
+              {isShooting ? 'Shooting…' : `Approve frames & shoot ${segments.length} clip${segments.length === 1 ? '' : 's'}`}
+            </Button>
           </>
         )}
       </CardContent>
@@ -1072,6 +1267,7 @@ export default function VideoPostDetailPage() {
       // thing that reports it finishing — including a lone segment being
       // regenerated on an otherwise idle post.
       const busy = data?.status === 'planning' || data?.status === 'directing' || data?.status === 'approved'
+        || data?.status === 'shooting_stills'
         || (data?.segments || []).some((s) => s.status === 'generating');
       return busy ? 4000 : 8000;
     },
@@ -1136,8 +1332,11 @@ export default function VideoPostDetailPage() {
   // you might not like the result and want to look back at (or redraft) the
   // plan that produced it, without losing the already-generated segments.
   const showPlanReview = Boolean(post.plan) || post.status === 'planning';
-  const showTimeline = (post.segments || []).length > 0;
-  const alreadyExecuted = showTimeline;
+  const showTimeline = (post.segments || []).some((s) => s.videoUrl || s.status !== 'pending');
+  const alreadyExecuted = (post.segments || []).some((s) => s.videoUrl);
+  // Like plan review, the frames stay on screen after the shoot — if a clip
+  // came out wrong you want to see the frame it started from.
+  const showStillsReview = Boolean(post.anchorStillUrl) || post.status === 'shooting_stills';
   const badgeCfg = STATUS_BADGE[post.status] ?? { variant: 'secondary', appearance: 'light' };
 
   return (
@@ -1175,6 +1374,10 @@ export default function VideoPostDetailPage() {
             <VideoConfigCard post={post} invalidate={invalidate} />
             <PlanReviewCard post={post} invalidate={invalidate} alreadyExecuted={alreadyExecuted} />
           </>
+        )}
+
+        {showStillsReview && (
+          <StillsReviewCard post={post} invalidate={invalidate} alreadyExecuted={alreadyExecuted} />
         )}
 
         {showTimeline && <SegmentTimeline post={post} invalidate={invalidate} />}

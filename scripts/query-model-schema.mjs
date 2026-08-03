@@ -35,7 +35,7 @@ async function main() {
   });
   console.log('Session:', session.id);
 
-  const message = `PHASE: execute\n\nBefore directing this segment, per your own instructions ("Always check this before your first call to a model in a session"), please call models_explore with action "get" for each of these model_ids: ${modelIds.join(', ')}. Then, instead of proceeding to generate anything, just report back the exact raw schema JSON you got back for each one so I can review the parameter options before we continue — respond with ONLY a JSON object mapping each model_id to its schema, no generation calls yet.`;
+  const message = `PHASE: stills\n\nSCHEMA LOOKUP ONLY — do not generate anything at all in this session, no generate_image and no generate_video. Call models_explore with action "get" for each of these model_ids: ${modelIds.join(', ')}, then report back the exact raw schema JSON you got for each one so I can review the parameter options. Respond with ONLY a JSON object mapping each model_id to its schema.`;
 
   await client.beta.sessions.events.send(session.id, {
     events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],

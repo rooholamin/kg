@@ -52,6 +52,11 @@ const CHARACTER_ADMIN_AGENT_FIELDS = [
 ];
 
 const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5', '3:4', '21:9'];
+const STILL_RESOLUTIONS = [
+  { value: '1k', label: '1k — model default, avoid' },
+  { value: '2k', label: '2k — recommended' },
+  { value: '4k', label: '4k — sharpest, costs more' },
+];
 const GENRES = ['auto', 'action', 'epic', 'noir', 'drama', 'horror', 'comedy'];
 const PLATFORM_OPTIONS = VIDEO_PLATFORM_OPTIONS;
 
@@ -322,6 +327,20 @@ export default function VideoSettingsPage() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {ASPECT_RATIOS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-center">
+              <div>
+                <Label>Start frame resolution</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Nano Banana defaults to 1k, too soft for readable signage or labels — which Seedance then animates into gibberish.
+                </p>
+              </div>
+              <Select value={form.stillResolution ?? '2k'} onValueChange={(v) => setField('stillResolution', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STILL_RESOLUTIONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

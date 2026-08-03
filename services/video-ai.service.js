@@ -87,6 +87,7 @@ export function resolveVideoConfig({ post, campaign, settings }) {
     style: post?.videoStyle || campaign?.videoStyle || settings?.defaultVideoStyle || 'auto',
     shotCount: post?.targetShotCount ?? campaign?.targetShotCount ?? settings?.defaultTargetShotCount ?? null,
     orientation: post?.orientation || campaign?.orientation || settings?.defaultOrientation || '9:16',
+    stillResolution: settings?.stillResolution || '2k',
   };
 }
 
@@ -267,7 +268,8 @@ ENVIRONMENT: ${environment?.name || 'KG Media Loft'}
 ${environment?.textDescriptor || ''}
 
 CONFIG:
-- orientation: ${config.orientation} (pass this EXACT value as aspect_ratio on every generate_image/generate_video call)${learningsBlock}`;
+- orientation: ${config.orientation} (pass this EXACT value as aspect_ratio on every generate_image/generate_video call)
+- stillResolution: ${config.stillResolution} (pass this EXACT value as params.resolution on every generate_image call — the model defaults to 1k, which is too soft for legible text)${learningsBlock}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -336,21 +338,26 @@ export async function planVideoPost({ campaignId, postId, title, summary, conten
 }
 
 // ---------------------------------------------------------------------------
-// executeVideoPost — Phase 3: the plan was approved. Always opens a FRESH
-// Director Agent session (a different agent than the Planner, so it can't
-// share the Planner's session) and resends the brief + approved plan as the
-// first message. Creates one VideoSegment row per planned segment up front
-// (status "generating"), then updates each row with the agent's final
-// per-segment result (or failure) once the response comes back.
+// generateVideoStills — Phase 3a: the plan was approved, so shoot the START
+// FRAMES only and stop. Always opens a FRESH Director Agent session (a
+// different agent than the Planner, so it can't share the Planner's session)
+// and sends the brief + approved plan as the first message. Creates one
+// VideoSegment row per planned segment up front (status "pending"), then
+// records the anchor still on the post and each b-roll still on its segment.
+//
+// Nothing here generates video. A still is ~4 credits against ~29 for a 12s
+// clip, and a malformed still (extra hand, backwards hardware) reliably
+// becomes a malformed clip, so a human reviews these frames before
+// shootVideoPost is allowed to spend the video budget.
 //
 // Always starting a brand-new session here (rather than reusing an old
-// directorSessionId from a previous execute) is deliberate: it guarantees a
+// directorSessionId from a previous run) is deliberate: it guarantees a
 // clean anchor still matching the CURRENT approved plan/characterLook, which
 // matters if a post is re-approved after being revised post-execution.
 // regenerateVideoSegment is the one that reuses a session, since it's
 // specifically about staying consistent with an already-executed video.
 // ---------------------------------------------------------------------------
-export async function executeVideoPost({ campaignId, postId, title, character, environment, config, plan, directorNote, settings, promptLearnings }) {
+export async function generateVideoStills({ campaignId, postId, title, character, environment, config, plan, directorNote, settings, promptLearnings }) {
   if (!settings?.directorAgentId || !settings?.directorEnvironmentId) {
     throw new Error(
       'Video Director Agent IDs not configured. Set directorAgentId and directorEnvironmentId in Video Settings.',
@@ -384,9 +391,13 @@ export async function executeVideoPost({ campaignId, postId, title, character, e
       hasCharacter: !!s.hasCharacter,
       spokenPortion: s.spokenPortion || null,
       visualDescription: s.visualDescription || null,
-      status: 'generating',
+      status: 'pending',
       generationStartedAt: startedAt,
     })),
+  });
+  await prisma.videoPost.update({
+    where: { id: postId },
+    data: { anchorStillUrl: null, anchorStillJobId: null },
   });
 
   const planText = JSON.stringify(
@@ -407,17 +418,176 @@ export async function executeVideoPost({ campaignId, postId, title, character, e
 
   const briefText = buildExecuteBrief({ character, environment, config, promptLearnings });
 
-  const message = `PHASE: execute\n\n${briefText}\n\nAPPROVED PLAN:\n${planText}\n${directorNote ? `\nDIRECTOR NOTE: ${directorNote}\n` : ''}
-Direct the full shoot now — generate_image + generate_video per segment, in order, with native audio and the exact configured orientation on every call. Respond with ONLY the EXECUTE OUTPUT FORMAT JSON described in your instructions.`;
+  const brollCount = plannedSegments.filter((s) => !s.hasCharacter).length;
 
-  const aiLogId = await logStart(campaignId, 'director_execute_send', `Executing approved plan for "${title}" (${plannedSegments.length} segments)`, { message, sessionId }, postId);
+  const message = `PHASE: stills\n\n${briefText}\n\nAPPROVED PLAN:\n${planText}\n${directorNote ? `\nDIRECTOR NOTE: ${directorNote}\n` : ''}
+Generate the START FRAMES ONLY: one character anchor still, plus one still for each of the ${brollCount} b-roll segment(s). Do NOT call generate_video for anything — a human reviews these frames before the shoot is unlocked. Respond with ONLY the STILLS OUTPUT FORMAT JSON described in your instructions.`;
+
+  const aiLogId = await logStart(campaignId, 'director_stills_send', `Generating start frames for "${title}" (anchor + ${brollCount} b-roll)`, { message, sessionId }, postId);
 
   let responseText;
   try {
-    // One attempt only — see sendAndAwaitResponse. A dropped turn here has
-    // usually already spent the Higgsfield budget, so the post is left failed
-    // for continueVideoPost to pick up rather than silently reshot.
+    // One attempt only — see sendAndAwaitResponse. A dropped turn has usually
+    // already spent the Higgsfield budget, so re-sending would pay twice.
     responseText = await sendAndAwaitResponse(sessionId, message, { maxAttempts: 1 });
+  } catch (err) {
+    await logError(aiLogId, err.message);
+    throw err;
+  }
+
+  let result;
+  try {
+    result = JSON.parse(extractJson(responseText));
+  } catch {
+    await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
+    throw new Error(`Director agent returned invalid stills JSON: ${responseText.slice(0, 200)}`);
+  }
+
+  await prisma.videoPost.update({
+    where: { id: postId },
+    data: {
+      anchorStillUrl: result.anchorStill?.url || null,
+      anchorStillJobId: result.anchorStill?.jobId || null,
+    },
+  });
+
+  for (const still of result.stills || []) {
+    const row = await prisma.videoSegment.findFirst({ where: { postId, order: still.order } });
+    if (!row) continue;
+    await prisma.videoSegment.update({
+      where: { id: row.id },
+      data: {
+        stillUrl: still.url || null,
+        stillJobId: still.jobId || null,
+        errorMessage: still.url ? null : (still.errorMessage || 'Still generation failed'),
+      },
+    });
+  }
+
+  const stillCount = (result.anchorStill?.url ? 1 : 0) + (result.stills || []).filter((s) => s.url).length;
+  await logDone(aiLogId, `Start frames ready — ${stillCount} still(s) awaiting review`, { response: responseText, parsed: result });
+
+  return { result, sessionId };
+}
+
+// ---------------------------------------------------------------------------
+// regenerateVideoStill — a human rejected one start frame. Redoes just that
+// frame in the same session so the replacement stays usable as a start_image
+// for the eventual shoot.
+// ---------------------------------------------------------------------------
+export async function regenerateVideoStill({ postId, target, order, note }) {
+  const post = await prisma.videoPost.findUnique({ where: { id: postId } });
+  if (!post?.directorSessionId) {
+    const err = new Error('This post has no director session — approve the plan to generate its start frames first.');
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  const isAnchor = target === 'anchor';
+  const label = isAnchor ? 'the character anchor still' : `the still for segment ${order}`;
+
+  const message = `PHASE: regenerate_still
+
+A human rejected ${label}. Generate that ONE still again, addressing the note below, and keep everything else about the frame as it was.
+${isAnchor ? 'TARGET: anchor' : `TARGET: segment\nORDER: ${order}`}
+NOTE: ${note || '(no specific note — the frame just looked wrong; produce a cleaner take)'}
+
+Do not generate video, and do not touch any other still. Respond with ONLY the SINGLE STILL OUTPUT FORMAT JSON described in your instructions.`;
+
+  const aiLogId = await logStart(post.campaignId, 'director_still_regenerate', `Regenerating ${label}`, { message, sessionId: post.directorSessionId }, postId);
+
+  let responseText;
+  try {
+    responseText = await sendAndAwaitResponse(post.directorSessionId, message, { maxAttempts: 1 });
+  } catch (err) {
+    await logError(aiLogId, err.message);
+    throw err;
+  }
+
+  let result;
+  try {
+    result = JSON.parse(extractJson(responseText));
+  } catch {
+    await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
+    throw new Error(`Director agent returned invalid still JSON: ${responseText.slice(0, 200)}`);
+  }
+
+  if (!result.url) {
+    await logError(aiLogId, result.errorMessage || 'Still regeneration failed', { response: responseText });
+    throw new Error(result.errorMessage || 'Still regeneration failed');
+  }
+
+  if (isAnchor) {
+    await prisma.videoPost.update({
+      where: { id: postId },
+      data: { anchorStillUrl: result.url, anchorStillJobId: result.jobId || null },
+    });
+  } else {
+    const row = await prisma.videoSegment.findFirst({ where: { postId, order } });
+    if (row) {
+      await prisma.videoSegment.update({
+        where: { id: row.id },
+        data: { stillUrl: result.url, stillJobId: result.jobId || null, errorMessage: null },
+      });
+    }
+  }
+
+  await logDone(aiLogId, `${isAnchor ? 'Anchor' : `Segment ${order}`} still regenerated`, { response: responseText, parsed: result });
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// shootVideoPost — Phase 3b: the human approved the start frames, so now spend
+// the video budget. Reuses the same director session the stills were made in,
+// which is what keeps their job ids valid as start_image references.
+// ---------------------------------------------------------------------------
+export async function shootVideoPost({ postId, directorNote }) {
+  const post = await prisma.videoPost.findUnique({
+    where: { id: postId },
+    include: { segments: { orderBy: { order: 'asc' } } },
+  });
+  if (!post?.directorSessionId) {
+    const err = new Error('This post has no director session — approve the plan to generate its start frames first.');
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+  if (!post.anchorStillJobId) {
+    const err = new Error('This post has no approved anchor still to shoot from.');
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  const missingStill = post.segments.find((s) => !s.hasCharacter && !s.stillJobId);
+  if (missingStill) {
+    const err = new Error(`Segment ${missingStill.order} has no start frame yet — regenerate it before shooting.`);
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  const stillMap = post.segments
+    .map((s) => `- segment ${s.order} (${s.hasCharacter ? 'avatar' : 'b-roll'}): start_image job id ${s.hasCharacter ? post.anchorStillJobId : s.stillJobId}`)
+    .join('\n');
+
+  const message = `PHASE: shoot
+
+A human reviewed and approved every start frame. Shoot the clips now, each starting from exactly the approved still listed below — do not generate any new stills.
+
+APPROVED STILLS:
+${stillMap}
+${directorNote ? `\nDIRECTOR NOTE: ${directorNote}\n` : ''}
+Generate one clip per segment, in order, with native audio and the exact configured orientation on every call. Respond with ONLY the SHOOT OUTPUT FORMAT JSON described in your instructions.`;
+
+  await prisma.videoSegment.updateMany({
+    where: { postId },
+    data: { status: 'generating', generationStartedAt: new Date(), errorMessage: null },
+  });
+
+  const aiLogId = await logStart(post.campaignId, 'director_shoot_send', `Shooting ${post.segments.length} approved segment(s)`, { message, sessionId: post.directorSessionId }, postId);
+
+  let responseText;
+  try {
+    responseText = await sendAndAwaitResponse(post.directorSessionId, message, { maxAttempts: 1 });
   } catch (err) {
     await logError(aiLogId, err.message);
     await prisma.videoSegment.updateMany({ where: { postId }, data: { status: 'failed', errorMessage: err.message, generationCompletedAt: new Date() } });
@@ -430,17 +600,17 @@ Direct the full shoot now — generate_image + generate_video per segment, in or
   } catch {
     await logError(aiLogId, `Agent returned invalid JSON: ${responseText.slice(0, 200)}`, { response: responseText });
     await prisma.videoSegment.updateMany({ where: { postId }, data: { status: 'failed', errorMessage: 'Director agent returned invalid JSON', generationCompletedAt: new Date() } });
-    throw new Error(`Director agent returned invalid execute JSON: ${responseText.slice(0, 200)}`);
+    throw new Error(`Director agent returned invalid shoot JSON: ${responseText.slice(0, 200)}`);
   }
 
   const succeeded = await applyExecuteSegments({ postId, result, directorNote });
-  await logDone(aiLogId, `Execution complete — ${succeeded}/${plannedSegments.length} segments generated`, { response: responseText, parsed: result });
+  await logDone(aiLogId, `Shoot complete — ${succeeded}/${post.segments.length} segments generated`, { response: responseText, parsed: result });
 
-  return { result, sessionId };
+  return { result, sessionId: post.directorSessionId };
 }
 
 // Writes an EXECUTE-shaped agent response onto the post's segment rows. Shared
-// by executeVideoPost and continueVideoPost so a resumed shoot is recorded
+// by shootVideoPost and continueVideoPost so a resumed shoot is recorded
 // exactly like an uninterrupted one.
 async function applyExecuteSegments({ postId, result, directorNote }) {
   const completedAt = new Date();
@@ -530,7 +700,7 @@ Segments still missing a clip: ${missing.map((s) => s.order).join(', ')}
 
 First, for any job you already submitted, call job_status to collect its finished URL — reuse it rather than generating again. Only generate for segments that have no job at all.
 
-Respond with ONLY the EXECUTE OUTPUT FORMAT JSON described in your instructions, covering every segment you can account for.`;
+Respond with ONLY the SHOOT OUTPUT FORMAT JSON described in your instructions, covering every segment you can account for.`;
 
   const aiLogId = await logStart(post.campaignId, 'director_continue', `Continuing shoot — ${missing.length} segment(s) missing`, { message, sessionId }, postId);
 
@@ -579,7 +749,7 @@ Respond with ONLY the EXECUTE OUTPUT FORMAT JSON described in your instructions,
 
 // ---------------------------------------------------------------------------
 // regenerateVideoSegment — redoes exactly one segment, reusing the post's
-// existing DIRECTOR session (from executeVideoPost) so the agent retains
+// existing DIRECTOR session (from generateVideoStills) so the agent retains
 // full context — including the character anchor still's job id — of the
 // rest of the already-executed video, without touching any other
 // VideoSegment row.
@@ -724,7 +894,7 @@ async function sendSessionMessageAndParse(sessionId, message) {
  * rather than silently deadlocking waiting for a tool result nobody sends.
  */
 async function streamAgentResponse(sessionId) {
-  const textParts = [];
+  let textParts = [];
   let done = false;
 
   while (!done) {
@@ -737,6 +907,14 @@ async function streamAgentResponse(sessionId) {
         for (const block of event.content ?? []) {
           if (block.type === 'text' && block.text) textParts.push(block.text);
         }
+      } else if (evType === 'user.message') {
+        // A user message mid-stream means a new turn is starting, so
+        // everything collected so far answered a previous one. This happens
+        // for real: sending to a session whose last turn was dropped makes
+        // the platform resume that turn first and queue ours behind it, and
+        // both answers then arrive on the same stream. Keeping both produced
+        // a reply containing two JSON objects that parsed as neither.
+        textParts = [];
       } else if (evType === 'session.status_idle') {
         if (event.stop_reason?.type === 'end_turn') {
           done = true;
@@ -797,9 +975,61 @@ This summary will be injected into your next session to maintain editorial conti
   }
 }
 
+/**
+ * Pull the agent's JSON answer out of a reply that may also contain prose.
+ *
+ * Deliberately takes the LAST parseable object rather than the first. A reply
+ * can legitimately carry more than one JSON block — a resumed turn's answer
+ * followed by the answer to the message that resumed it, say — and the naive
+ * first-brace-to-last-brace match then spans both and parses as nothing. That
+ * cost a real 11-segment shoot: every clip existed and was billed, but the
+ * reply describing them was thrown away as invalid. The last block is the
+ * agent's most recent word on the subject, which is the one we want.
+ */
 function extractJson(text) {
-  const match = text.match(/\{[\s\S]*\}/);
-  return match ? match[0] : text;
+  if (!text) return text;
+
+  const fenced = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map((m) => m[1].trim());
+  for (const block of fenced.reverse()) {
+    try {
+      JSON.parse(block);
+      return block;
+    } catch { /* not this one */ }
+  }
+
+  // No usable fence — walk the raw text for balanced top-level objects,
+  // ignoring braces that appear inside string literals.
+  const candidates = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        candidates.push(text.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+
+  for (const candidate of candidates.reverse()) {
+    try {
+      JSON.parse(candidate);
+      return candidate;
+    } catch { /* keep looking backwards */ }
+  }
+
+  return text;
 }
 
 export function extractPlainText(contentJson) {

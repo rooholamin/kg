@@ -53,6 +53,8 @@ const POST_STATUS_BADGE = {
   planning: { variant: 'info', appearance: 'light' },
   plan_ready: { variant: 'info', appearance: 'light' },
   approved: { variant: 'info', appearance: 'light' },
+  shooting_stills: { variant: 'info', appearance: 'light' },
+  stills_review: { variant: 'warning', appearance: 'light' },
   directing: { variant: 'info', appearance: 'light' },
   content_ready: { variant: 'success', appearance: 'light' },
   exporting: { variant: 'info', appearance: 'light' },

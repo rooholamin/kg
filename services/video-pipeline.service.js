@@ -2,7 +2,9 @@ import { prisma } from '@/lib/prisma';
 import {
   selectVideoArticles,
   planVideoPost,
-  executeVideoPost,
+  generateVideoStills,
+  regenerateVideoStill,
+  shootVideoPost,
   continueVideoPost,
   regenerateVideoSegment,
   resolveVideoConfig,
@@ -106,7 +108,7 @@ function characterFromSection(section) {
 // regardless of whether it's derived from an article+section (normal post)
 // or provided directly as a custom video (customTitle/customContent + either
 // a roster customCharacter or a borrowed customSection character). Every
-// planVideoPost/executeVideoPost caller goes through this so those two
+// planVideoPost/generateVideoStills caller goes through this so those two
 // functions never need to know which kind of post they're working with.
 // ---------------------------------------------------------------------------
 function resolvePostContent(post) {
@@ -425,8 +427,10 @@ export async function rePlanPost(postId, directorNote) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. approvePlan — Phase 2 -> Phase 3. Human approves (optionally edited)
-// plan; triggers real Higgsfield generation for every planned segment.
+// 3. approvePlan — Phase 2 -> Phase 3a. Human approves the (optionally edited)
+// plan, which buys the START FRAMES only. The post then parks in stills_review
+// until a human has looked at those frames; approveStills is what releases the
+// far more expensive video generation.
 // ---------------------------------------------------------------------------
 export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
   const post = await prisma.videoPost.findUnique({
@@ -463,10 +467,10 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
     },
   });
 
-  await prisma.videoPost.update({ where: { id: postId }, data: { status: 'directing' } });
+  await prisma.videoPost.update({ where: { id: postId }, data: { status: 'shooting_stills' } });
 
   try {
-    const { result } = await executeVideoPost({
+    const { result } = await generateVideoStills({
       campaignId: post.campaignId,
       postId,
       title: content.title,
@@ -479,6 +483,43 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
       promptLearnings,
     });
 
+    await prisma.videoPost.update({
+      where: { id: postId },
+      data: {
+        status: 'stills_review',
+        errorMessage: result.anchorStill?.url ? null : 'The character anchor still failed to generate',
+      },
+    });
+
+    return result;
+  } catch (error) {
+    await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: error.message } });
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3a-bis. regenerateStill — a human rejected one start frame. Cheap to redo,
+// and the whole point of the gate, so it stays available for as long as the
+// post sits in stills_review.
+// ---------------------------------------------------------------------------
+export async function regenerateStill(postId, { target, order, note } = {}) {
+  return regenerateVideoStill({ postId, target, order, note });
+}
+
+// ---------------------------------------------------------------------------
+// 3b. approveStills — the human signed off on the frames. This is the point
+// where the video budget is actually committed.
+// ---------------------------------------------------------------------------
+export async function approveStills(postId, { directorNote } = {}) {
+  const post = await prisma.videoPost.findUnique({ where: { id: postId } });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+
+  await prisma.videoPost.update({ where: { id: postId }, data: { status: 'directing', errorMessage: null } });
+
+  try {
+    const { result } = await shootVideoPost({ postId, directorNote: directorNote ?? post.directorNote });
+
     const segments = await prisma.videoSegment.findMany({ where: { postId } });
     const anySucceeded = segments.some((s) => s.status === 'completed');
 
@@ -486,7 +527,7 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
       where: { id: postId },
       data: {
         status: anySucceeded ? 'directing' : 'failed',
-        narration: result.narration || plan.narration,
+        narration: result.narration || post.narration,
         generatedText: result.text || post.generatedText,
         hashtags: result.hashtags || post.hashtags,
         genre: result.genre || post.genre,
@@ -496,7 +537,9 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
 
     return result;
   } catch (error) {
-    await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: error.message } });
+    if (error.code !== 'INVALID_REQUEST') {
+      await prisma.videoPost.update({ where: { id: postId }, data: { status: 'failed', errorMessage: error.message } });
+    }
     throw error;
   }
 }

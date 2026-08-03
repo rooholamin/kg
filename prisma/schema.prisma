@@ -987,6 +987,10 @@ enum VideoPostStatus {
   planning
   plan_ready
   approved
+  // Start frames are generated and waiting on a human look before any video is
+  // shot — a bad still reliably produces a bad clip, and the clip costs ~7x more
+  shooting_stills
+  stills_review
   directing
   content_ready
   exporting
@@ -1169,6 +1173,11 @@ model VideoPost {
   duration                     Int?
   aspectRatio                  String?
   genre                        String?
+  // The one character start frame every avatar segment shoots from — generating
+  // a second one mid-video is what makes the character change appearance, so
+  // it's held on the post rather than per segment.
+  anchorStillUrl               String?
+  anchorStillJobId             String?
   // Pre-music, pre-captions concatenated base render — kept so a music-only
   // regeneration never has to re-download/re-normalize/re-concatenate segments
   narrationVideoUrl            String?
@@ -1214,6 +1223,11 @@ model VideoSegment {
   // This segment's slice of the post's full continuous narration
   spokenPortion         String?               @db.Text
   visualDescription     String?               @db.Text
+  // This segment's start frame, reviewed by a human before the clip is shot.
+  // Avatar segments all share the post's anchor still, so these are only set
+  // for b-roll segments, which get their own subject each.
+  stillUrl              String?
+  stillJobId            String?
   // Raw Higgsfield clip (native audio already baked in — dialogue if
   // hasCharacter, off-screen voiceover narration otherwise)
   videoUrl              String?
@@ -1342,6 +1356,12 @@ model VideoSettings {
   defaultVideoStyle           VideoStyle          @default(auto)
   defaultTargetShotCount      Int?
   defaultOrientation          String              @default("9:16")
+  // Start-frame resolution passed to nano_banana_2 (1k | 2k | 4k). The model
+  // silently defaults to 1k, which is too soft to render legible signage or
+  // labels — Seedance then animates that mush into gibberish text. 2k is the
+  // floor for anything with writing in frame; 4k costs more but renders the
+  // cleanest detail.
+  stillResolution             String              @default("2k")
   updatedAt                   DateTime            @updatedAt
 }
 

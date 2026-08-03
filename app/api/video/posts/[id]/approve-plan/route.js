@@ -7,11 +7,12 @@ import { prisma } from '@/lib/prisma';
 import { approvePlan } from '@/services/video-pipeline.service';
 import { startBackgroundJob } from '@/lib/background-job';
 
-// Phase 2 -> Phase 3: approves the (optionally human-edited) draft plan and
-// kicks off real Higgsfield generation for every planned segment.
+// Phase 2 -> Phase 3a: approves the (optionally human-edited) draft plan and
+// buys the START FRAMES only. Video generation stays locked until a human
+// approves those frames (see the approve-stills route).
 //
-// A full shoot far outlasts the 300s proxy timeout, so it runs in the
-// background and the client polls segment status for progress.
+// Still generation outlasts the 300s proxy timeout, so it runs in the
+// background and the client polls post status for progress.
 export async function POST(req, { params }) {
   try {
     const session = await getServerSession(authOptions);

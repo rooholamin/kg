@@ -63,7 +63,7 @@ export async function PATCH(req, { params }) {
 
     if (action === 'stop') {
       await prisma.videoPost.updateMany({
-        where: { campaignId: id, status: { in: ['pending', 'planning', 'plan_ready', 'approved', 'directing'] } },
+        where: { campaignId: id, status: { in: ['pending', 'planning', 'plan_ready', 'approved', 'shooting_stills', 'stills_review', 'directing'] } },
         data: { status: 'failed', errorMessage: 'Pipeline stopped by user' },
       });
       await prisma.videoCampaign.update({ where: { id }, data: { status: 'cancelled' } });

@@ -58,6 +58,7 @@ export async function PATCH(req) {
       'defaultVideoStyle',
       'defaultTargetShotCount',
       'defaultOrientation',
+      'stillResolution',
     ];
     const memoryAllowed = ['sessionRotateAfter'];
 
