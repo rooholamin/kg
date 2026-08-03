@@ -5,9 +5,13 @@ import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 import { approvePlan } from '@/services/video-pipeline.service';
+import { startBackgroundJob } from '@/lib/background-job';
 
 // Phase 2 -> Phase 3: approves the (optionally human-edited) draft plan and
 // kicks off real Higgsfield generation for every planned segment.
+//
+// A full shoot far outlasts the 300s proxy timeout, so it runs in the
+// background and the client polls segment status for progress.
 export async function POST(req, { params }) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,13 +22,15 @@ export async function POST(req, { params }) {
     const body = await req.json().catch(() => ({}));
     const { plan: editedPlan, directorNote } = body;
 
-    const result = await approvePlan(id, { editedPlan, directorNote });
+    const post = await prisma.videoPost.findUnique({ where: { id }, select: { id: true, plan: true } });
+    if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });
+    if (!post.plan && !editedPlan) {
+      return NextResponse.json({ message: 'Post has no draft plan to approve — run planning first.' }, { status: 422 });
+    }
 
-    const updated = await prisma.videoPost.findUnique({
-      where: { id },
-      include: { segments: { orderBy: { order: 'asc' } } },
-    });
-    return NextResponse.json({ data: updated, result });
+    startBackgroundJob(`approve-plan ${id}`, () => approvePlan(id, { editedPlan, directorNote }));
+
+    return NextResponse.json({ started: true }, { status: 202 });
   } catch (e) {
     return routeError(e, 'Failed to approve plan');
   }

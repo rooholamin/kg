@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { Container } from '@/components/common/container';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardHeading, CardTitle, CardDescription, CardToolbar } from '@/components/ui/card';
@@ -23,6 +22,7 @@ import {
 } from '@/components/ui/collapsible';
 import { apiFetch } from '@/lib/api';
 import { VIDEO_PLATFORM_OPTIONS } from '@/lib/video-platforms';
+import { postToast } from '@/lib/video-toast';
 import { format } from 'date-fns';
 import {
   ArrowLeft,
@@ -107,6 +107,7 @@ function formatCost(cost) {
 // Phase 1 brief.
 // ---------------------------------------------------------------------------
 function VideoConfigCard({ post, invalidate }) {
+  const notify = postToast(post);
   const effective = post.effectiveConfig || {};
   const [targetPlatform, setTargetPlatform] = useState(post.targetPlatform ?? '');
   const [videoStyle, setVideoStyle] = useState(post.videoStyle ?? '');
@@ -134,8 +135,8 @@ function VideoConfigCard({ post, invalidate }) {
       });
       if (!res.ok) throw new Error('Failed to save config override');
     },
-    onSuccess: () => { toast.success('Config saved — re-plan to apply it'); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success('Config saved — re-plan to apply it'); invalidate(); },
+    onError: (e) => notify.error(e.message),
   });
 
   return (
@@ -214,6 +215,7 @@ function VideoConfigCard({ post, invalidate }) {
 // asks for changes) unless the note explicitly asks for a full rewrite.
 // ---------------------------------------------------------------------------
 function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
+  const notify = postToast(post);
   const [narration, setNarration] = useState(post.plan?.narration || post.narration || '');
   const [characterLook, setCharacterLook] = useState(post.plan?.characterLook || '');
   const [segments, setSegments] = useState(post.plan?.segments || []);
@@ -244,8 +246,8 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
       }
       return res.json();
     },
-    onSuccess: () => { toast.success('Plan revised — targeted edit applied (full rewrite only if your note asked for one)'); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success('Plan revised — targeted edit applied (full rewrite only if your note asked for one)'); invalidate(); },
+    onError: (e) => notify.error(`Re-plan failed: ${e.message}`),
   });
 
   const approveMutation = useMutation({
@@ -261,12 +263,12 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || 'Approval failed');
+        throw new Error(j.message || 'Could not start the shoot');
       }
       return res.json();
     },
-    onSuccess: () => { toast.success('Plan approved — generating segments now'); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success('Plan approved — shooting now, you can leave this page'); invalidate(); },
+    onError: (e) => notify.error(`Could not start the shoot: ${e.message}`),
   });
 
   function handleApproveClick() {
@@ -466,7 +468,9 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
 // ---------------------------------------------------------------------------
 // SegmentBlock — one block in the timeline strip
 // ---------------------------------------------------------------------------
-function SegmentBlock({ segment, postId, invalidate }) {
+function SegmentBlock({ segment, post, invalidate }) {
+  const postId = post.id;
+  const notify = postToast(post);
   const [note, setNote] = useState('');
   const [showNote, setShowNote] = useState(false);
   const [showUrlForm, setShowUrlForm] = useState(false);
@@ -489,8 +493,8 @@ function SegmentBlock({ segment, postId, invalidate }) {
       }
       return res.json();
     },
-    onSuccess: () => { toast.success(`Segment ${segment.order} clip updated`); setShowUrlForm(false); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success(`Segment ${segment.order} clip updated`); setShowUrlForm(false); invalidate(); },
+    onError: (e) => notify.error(`Segment ${segment.order}: ${e.message}`),
   });
 
   const restoreMutation = useMutation({
@@ -504,8 +508,8 @@ function SegmentBlock({ segment, postId, invalidate }) {
       }
       return res.json();
     },
-    onSuccess: () => { toast.success(`Segment ${segment.order} restored — re-assemble to apply`); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success(`Segment ${segment.order} restored — re-assemble to apply`); invalidate(); },
+    onError: (e) => notify.error(`Segment ${segment.order}: ${e.message}`),
   });
 
   const regenerateMutation = useMutation({
@@ -517,12 +521,16 @@ function SegmentBlock({ segment, postId, invalidate }) {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || 'Regeneration failed');
+        throw new Error(j.message || 'Could not start regeneration');
       }
       return res.json();
     },
-    onSuccess: () => { toast.success(`Segment ${segment.order} regenerated`); setShowNote(false); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => {
+      notify.success(`Segment ${segment.order} regenerating — you can leave this page`);
+      setShowNote(false);
+      invalidate();
+    },
+    onError: (e) => notify.error(`Segment ${segment.order} could not start: ${e.message}`),
   });
 
   const generationMs = segment.generationStartedAt && segment.generationCompletedAt
@@ -678,12 +686,13 @@ function SegmentBlock({ segment, postId, invalidate }) {
 // SegmentTimeline — segment strip + music lane + re-assemble
 // ---------------------------------------------------------------------------
 function SegmentTimeline({ post, invalidate }) {
+  const notify = postToast(post);
   const [musicVolume, setMusicVolume] = useState([post.musicVolume ?? 0.3]);
   const [preMuteVolume, setPreMuteVolume] = useState(post.musicVolume || 0.3);
   const [captionsEnabled, setCaptionsEnabled] = useState(post.captionsEnabled ?? true);
   const [musicNote, setMusicNote] = useState('');
   const [showMusicNote, setShowMusicNote] = useState(false);
-  const [isAssembling, setIsAssembling] = useState(false);
+  const [justStarted, setJustStarted] = useState(false);
 
   useEffect(() => {
     setMusicVolume([post.musicVolume ?? 0.3]);
@@ -700,7 +709,7 @@ function SegmentTimeline({ post, invalidate }) {
       });
       if (!res.ok) throw new Error('Failed to save music volume');
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => notify.error(e.message),
   });
 
   const saveCaptionsMutation = useMutation({
@@ -713,12 +722,11 @@ function SegmentTimeline({ post, invalidate }) {
       if (!res.ok) throw new Error('Failed to save captions setting');
     },
     onSuccess: () => invalidate(),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => notify.error(e.message),
   });
 
   const regenerateMusicMutation = useMutation({
     mutationFn: async () => {
-      setIsAssembling(true);
       const res = await apiFetch(`/api/video/posts/${post.id}/regenerate-music`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -726,13 +734,18 @@ function SegmentTimeline({ post, invalidate }) {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || 'Failed to regenerate music');
+        throw new Error(j.message || 'Could not start music regeneration');
       }
       return res.json();
     },
-    onSuccess: () => { toast.success('Music regenerated'); setShowMusicNote(false); setMusicNote(''); invalidate(); },
-    onError: (e) => toast.error(e.message),
-    onSettled: () => setIsAssembling(false),
+    onSuccess: () => {
+      setJustStarted(true);
+      notify.success('Regenerating music — you can leave this page');
+      setShowMusicNote(false);
+      setMusicNote('');
+      invalidate();
+    },
+    onError: (e) => notify.error(`Could not start music regeneration: ${e.message}`),
   });
 
   const continueMutation = useMutation({
@@ -740,37 +753,30 @@ function SegmentTimeline({ post, invalidate }) {
       const res = await apiFetch(`/api/video/posts/${post.id}/continue`, { method: 'POST' });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || 'Failed to continue shoot');
+        throw new Error(j.message || 'Could not continue shoot');
       }
       return res.json();
     },
-    onSuccess: () => { toast.success('Shoot continued'); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success('Continuing the shoot — you can leave this page'); invalidate(); },
+    onError: (e) => notify.error(`Could not continue: ${e.message}`),
   });
 
   const reassembleMutation = useMutation({
     mutationFn: async () => {
-      setIsAssembling(true);
       const res = await apiFetch(`/api/video/posts/${post.id}/reassemble`, { method: 'POST' });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || 'Re-assembly failed');
+        throw new Error(j.message || 'Could not start re-assembly');
       }
       return res.json();
     },
-    onSuccess: (data) => {
-      const skipReason = data?.result?.captionsSkipReason;
-      if (skipReason) {
-        toast.success(`Video assembled (captions skipped: ${skipReason})`);
-      } else {
-        toast.success('Video assembled');
-      }
-      invalidate();
-    },
-    onError: (e) => toast.error(e.message),
-    onSettled: () => setIsAssembling(false),
+    onSuccess: () => { setJustStarted(true); notify.success('Assembling — you can leave this page'); invalidate(); },
+    onError: (e) => notify.error(`Could not start assembly: ${e.message}`),
   });
 
+  // Assembly runs server-side and outlives the request, so progress is read
+  // from the pipeline's own log rows. Polling unconditionally also means a
+  // page reload mid-assembly still shows where it's up to.
   const { data: progressLogs } = useQuery({
     queryKey: ['video-post-logs', post.id],
     queryFn: async () => {
@@ -779,13 +785,28 @@ function SegmentTimeline({ post, invalidate }) {
       const j = await res.json();
       return j.data ?? [];
     },
-    enabled: isAssembling,
-    refetchInterval: isAssembling ? 1500 : false,
+    refetchInterval: (query) =>
+      justStarted || (query.state.data ?? []).some((l) => l.status === 'running') ? 1500 : 5000,
   });
 
-  const currentStep = isAssembling
-    ? progressLogs?.find((l) => l.status === 'running') || progressLogs?.[0]
-    : null;
+  const runningStep = progressLogs?.find(
+    (l) => l.status === 'running' && (l.step?.startsWith('assembly') || l.step?.startsWith('music')),
+  );
+  // justStarted covers the gap between the click and the first log row landing.
+  const isAssembling = Boolean(runningStep) || justStarted;
+  const currentStep = runningStep || (justStarted ? progressLogs?.[0] : null);
+
+  useEffect(() => {
+    if (!justStarted) return undefined;
+    if (runningStep) {
+      setJustStarted(false);
+      return undefined;
+    }
+    // Short jobs can finish before a running row is ever observed — don't let
+    // the spinner outlive the work.
+    const timer = setTimeout(() => setJustStarted(false), 30000);
+    return () => clearTimeout(timer);
+  }, [justStarted, runningStep]);
 
   const segments = post.segments || [];
   const completedCount = segments.filter((s) => s.status === 'completed').length;
@@ -836,7 +857,7 @@ function SegmentTimeline({ post, invalidate }) {
 
         <div className="flex gap-3 overflow-x-auto pb-2">
           {segments.map((segment) => (
-            <SegmentBlock key={segment.id} segment={segment} postId={post.id} invalidate={invalidate} />
+            <SegmentBlock key={segment.id} segment={segment} post={post} invalidate={invalidate} />
           ))}
         </div>
 
@@ -951,6 +972,7 @@ function SegmentTimeline({ post, invalidate }) {
 // editable control rather than read-only per-channel badges.
 // ---------------------------------------------------------------------------
 function PublishToControl({ post, invalidate }) {
+  const notify = postToast(post);
   const [platforms, setPlatforms] = useState(post.platforms || []);
   const [scheduledAt, setScheduledAt] = useState(post.scheduledAt ? toLocalDatetimeInputValue(post.scheduledAt) : '');
 
@@ -969,7 +991,7 @@ function PublishToControl({ post, invalidate }) {
       if (!res.ok) throw new Error('Failed to save');
     },
     onSuccess: () => invalidate(),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => notify.error(e.message),
   });
 
   const isScheduled = Boolean(post.bufferPostIds && Object.keys(post.bufferPostIds).length > 0);
@@ -1045,20 +1067,26 @@ export default function VideoPostDetailPage() {
       return j.data;
     },
     refetchInterval: (query) => {
-      const s = query.state.data?.status;
-      return s === 'planning' || s === 'directing' || s === 'approved' ? 4000 : 8000;
+      const data = query.state.data;
+      // Work now runs server-side past the request, so polling is the only
+      // thing that reports it finishing — including a lone segment being
+      // regenerated on an otherwise idle post.
+      const busy = data?.status === 'planning' || data?.status === 'directing' || data?.status === 'approved'
+        || (data?.segments || []).some((s) => s.status === 'generating');
+      return busy ? 4000 : 8000;
     },
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['video-post', postId] });
+  const notify = postToast(post ?? { id: postId });
 
   const exportMutation = useMutation({
     mutationFn: async () => {
       const res = await apiFetch(`/api/video/posts/${postId}/export`, { method: 'POST' });
       if (!res.ok) throw new Error('Failed to start export');
     },
-    onSuccess: () => { toast.success('Export started'); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success('Export started'); invalidate(); },
+    onError: (e) => notify.error(`Export failed: ${e.message}`),
   });
 
   const scheduleMutation = useMutation({
@@ -1069,8 +1097,8 @@ export default function VideoPostDetailPage() {
         throw new Error(j.message || 'Failed to schedule');
       }
     },
-    onSuccess: () => { toast.success('Scheduled via Buffer'); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success('Scheduled via Buffer'); invalidate(); },
+    onError: (e) => notify.error(`Scheduling failed: ${e.message}`),
   });
 
   const unscheduleMutation = useMutation({
@@ -1078,8 +1106,8 @@ export default function VideoPostDetailPage() {
       const res = await apiFetch(`/api/video/posts/${postId}/unschedule`, { method: 'POST' });
       if (!res.ok) throw new Error('Failed to unschedule');
     },
-    onSuccess: () => { toast.success('Removed from Buffer'); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success('Removed from Buffer'); invalidate(); },
+    onError: (e) => notify.error(e.message),
   });
 
   const analyticsMutation = useMutation({
@@ -1088,8 +1116,8 @@ export default function VideoPostDetailPage() {
       if (!res.ok) throw new Error('Failed to pull analytics');
       return res.json();
     },
-    onSuccess: () => { toast.success('Analytics updated'); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => { notify.success('Analytics updated'); invalidate(); },
+    onError: (e) => notify.error(e.message),
   });
 
   if (isLoading) {

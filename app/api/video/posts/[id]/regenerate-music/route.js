@@ -5,9 +5,11 @@ import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
 import { prisma } from '@/lib/prisma';
 import { regenerateMusic } from '@/services/video-pipeline.service';
+import { startBackgroundJob } from '@/lib/background-job';
 
 // Swaps in a fresh background music track without re-touching Higgsfield or
 // re-processing segments — reuses the base render from the last Re-assemble.
+// Backgrounded like the other render work; progress comes from the logs.
 export async function POST(req, { params }) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,13 +20,12 @@ export async function POST(req, { params }) {
     const body = await req.json().catch(() => ({}));
     const note = body.note || null;
 
-    const result = await regenerateMusic(id, note);
+    const post = await prisma.videoPost.findUnique({ where: { id }, select: { id: true } });
+    if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });
 
-    const updated = await prisma.videoPost.findUnique({
-      where: { id },
-      include: { segments: { orderBy: { order: 'asc' } } },
-    });
-    return NextResponse.json({ data: updated, result });
+    startBackgroundJob(`regenerate-music ${id}`, () => regenerateMusic(id, note));
+
+    return NextResponse.json({ started: true }, { status: 202 });
   } catch (e) {
     return routeError(e, 'Failed to regenerate music');
   }
