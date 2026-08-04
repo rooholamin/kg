@@ -3,7 +3,11 @@ import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { requireRole } from '@/lib/require-role';
 import { routeError } from '@/lib/route-error';
-import { getArticles, createArticle } from '@/services/article.service';
+import {
+  getArticles,
+  getArticlesPage,
+  createArticle,
+} from '@/services/article.service';
 import { ArticleFormSchema } from '@/app/(protected)/dashboard/articles/forms/article-schema';
 
 function mapArticle(a, { full = false } = {}) {
@@ -62,8 +66,9 @@ export async function GET(req) {
     // List views (700+ rows) only need the lean shape; callers that render
     // full article body (approvals preview, edit-by-id) opt in explicitly.
     const full = searchParams.get('full') === 'true';
+    const page = searchParams.get('page');
 
-    const rows = await getArticles({
+    const filters = {
       topicId: topicId && topicId !== 'all' ? topicId : null,
       categoryId: categoryId && categoryId !== 'all' ? categoryId : null,
       sectionId: sectionId && sectionId !== 'all' ? sectionId : null,
@@ -72,8 +77,29 @@ export async function GET(req) {
       rejectedBySet: rejectedBy === 'set',
       publishDateFrom,
       publishDateTo,
-      includeContent: full,
-    });
+      search: searchParams.get('search'),
+      readiness: searchParams.get('readiness'),
+      sort: searchParams.get('sort'),
+      dir: searchParams.get('dir'),
+    };
+
+    // Paged callers get one screen of rows and a total; the unpaged shape is
+    // kept for callers that genuinely need the whole set.
+    if (page) {
+      const result = await getArticlesPage({
+        ...filters,
+        page,
+        pageSize: searchParams.get('pageSize'),
+      });
+      return NextResponse.json({
+        data: result.rows.map((a) => mapArticle(a)),
+        total: result.total,
+        page: result.page,
+        pageSize: result.pageSize,
+      });
+    }
+
+    const rows = await getArticles({ ...filters, includeContent: full });
 
     if (countOnly) {
       return NextResponse.json({ total: rows.length });

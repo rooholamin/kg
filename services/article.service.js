@@ -181,7 +181,79 @@ export async function getArticleVersions(articleId) {
  *   includeContent?: boolean;
  * }} [filters]
  */
-export async function getArticles(filters = {}) {
+/** Stages that stop an article from being counted as overdue. */
+const PUBLISHED_STATUSES = ['publishing', 'post_publish'];
+
+/** Everything the list views need, and nothing heavy (no `content`). */
+const ARTICLE_LIST_SELECT = {
+  id: true,
+  title: true,
+  summary: true,
+  topicId: true,
+  categoryId: true,
+  status: true,
+  publishDate: true,
+  readinessDeadline: true,
+  seoScore: true,
+  wordpressPostId: true,
+  approvedById: true,
+  approvedAt: true,
+  rejectedById: true,
+  rejectedAt: true,
+  featuredImage: true,
+  galleryImages: true,
+  videoUrl: true,
+  isEditorsChoice: true,
+  views: true,
+  likes: true,
+  commentsCount: true,
+  createdAt: true,
+  updatedAt: true,
+  topic: { select: { id: true, name: true, targetKeyword: true } },
+  category: { select: { id: true, name: true, sectionId: true } },
+};
+
+/**
+ * Readiness as a query, so the list can page on the server instead of pulling
+ * every row into the browser to filter it there.
+ *
+ * @param {'on_track'|'at_risk'|'overdue'} readiness
+ * @param {Date} now
+ */
+function readinessWhere(readiness, now) {
+  const dated = { readinessDeadline: { not: null }, publishDate: { not: null } };
+
+  if (readiness === 'overdue') {
+    return {
+      ...dated,
+      publishDate: { not: null, lt: now },
+      status: { notIn: PUBLISHED_STATUSES },
+    };
+  }
+
+  if (readiness === 'at_risk') {
+    return {
+      ...dated,
+      readinessDeadline: { not: null, lt: now },
+      publishDate: { not: null, gte: now },
+    };
+  }
+
+  return {
+    OR: [
+      { readinessDeadline: null },
+      { publishDate: null },
+      { readinessDeadline: { gte: now }, publishDate: { gte: now } },
+      { publishDate: { lt: now }, status: { in: PUBLISHED_STATUSES } },
+    ],
+  };
+}
+
+/**
+ * @param {object} filters
+ * @returns {object} Prisma `where` for Article
+ */
+function buildArticleWhere(filters = {}) {
   const {
     topicId,
     categoryId,
@@ -191,16 +263,23 @@ export async function getArticles(filters = {}) {
     rejectedBySet,
     publishDateFrom,
     publishDateTo,
-    includeContent = false,
+    search,
+    readiness,
   } = filters;
 
-  const where = {
+  const term = typeof search === 'string' ? search.trim() : '';
+
+  return {
     ...(topicId ? { topicId } : {}),
     ...(categoryId ? { categoryId } : {}),
     ...(sectionId ? { category: { sectionId } } : {}),
     ...(status && status !== 'all' ? { status } : {}),
     ...(approvedBySet ? { approvedById: { not: null } } : {}),
     ...(rejectedBySet ? { rejectedById: { not: null } } : {}),
+    ...(term ? { title: { contains: term, mode: 'insensitive' } } : {}),
+    ...(readiness && readiness !== 'all'
+      ? readinessWhere(readiness, new Date())
+      : {}),
     ...(publishDateFrom || publishDateTo ? {
       publishDate: {
         ...(publishDateFrom ? { gte: new Date(publishDateFrom) } : {}),
@@ -208,38 +287,65 @@ export async function getArticles(filters = {}) {
       },
     } : {}),
   };
+}
+
+const ARTICLE_SORT_FIELDS = {
+  title: 'title',
+  publish: 'publishDate',
+  readyBy: 'readinessDeadline',
+  stage: 'status',
+  seo: 'seoScore',
+  updated: 'updatedAt',
+};
+
+/**
+ * @param {string} [sort]
+ * @param {'asc'|'desc'} [dir]
+ */
+function buildArticleOrderBy(sort, dir = 'desc') {
+  const field = ARTICLE_SORT_FIELDS[sort];
+  const sortDir = dir === 'asc' ? 'asc' : 'desc';
+  if (!field) return { updatedAt: 'desc' };
+  // Rows without a date belong at the end either way, not interleaved.
+  if (field === 'publishDate' || field === 'readinessDeadline' || field === 'seoScore') {
+    return { [field]: { sort: sortDir, nulls: 'last' } };
+  }
+  return { [field]: sortDir };
+}
+
+/**
+ * One page of articles plus the total matching count.
+ *
+ * @param {object} filters
+ * @param {number} filters.page      1-based
+ * @param {number} filters.pageSize
+ */
+export async function getArticlesPage(filters = {}) {
+  const where = buildArticleWhere(filters);
+  const pageSize = Math.min(Math.max(Number(filters.pageSize) || 25, 1), 100);
+  const page = Math.max(Number(filters.page) || 1, 1);
+
+  const [total, rows] = await Promise.all([
+    prisma.article.count({ where }),
+    prisma.article.findMany({
+      where,
+      orderBy: buildArticleOrderBy(filters.sort, filters.dir),
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: ARTICLE_LIST_SELECT,
+    }),
+  ]);
+
+  return { rows, total, page, pageSize };
+}
+
+export async function getArticles(filters = {}) {
+  const { includeContent = false } = filters;
 
   return prisma.article.findMany({
-    where,
-    orderBy: { updatedAt: 'desc' },
-    select: {
-      id: true,
-      title: true,
-      summary: true,
-      content: includeContent,
-      topicId: true,
-      categoryId: true,
-      status: true,
-      publishDate: true,
-      readinessDeadline: true,
-      seoScore: true,
-      wordpressPostId: true,
-      approvedById: true,
-      approvedAt: true,
-      rejectedById: true,
-      rejectedAt: true,
-      featuredImage: true,
-      galleryImages: true,
-      videoUrl: true,
-      isEditorsChoice: true,
-      views: true,
-      likes: true,
-      commentsCount: true,
-      createdAt: true,
-      updatedAt: true,
-      topic: { select: { id: true, name: true, targetKeyword: true } },
-      category: { select: { id: true, name: true, sectionId: true } },
-    },
+    where: buildArticleWhere(filters),
+    orderBy: buildArticleOrderBy(filters.sort, filters.dir),
+    select: { ...ARTICLE_LIST_SELECT, content: includeContent },
   });
 }
 
