@@ -101,6 +101,21 @@ function ArticlePreviewModal({ article, open, onOpenChange, onApprove, onReject,
   const [rejectNotes, setRejectNotes] = useState('');
   const [rejectMode, setRejectMode] = useState(false);
 
+  // The approvals list omits the (heavy) body for every card — fetch it lazily
+  // for just the one article being previewed, instead of shipping full
+  // content for every row in the list.
+  const needsContentFetch = Boolean(article) && article.content === undefined;
+  const { data: detailJson, isFetching: loadingContent } = useQuery({
+    queryKey: ['articles', article?.id, 'detail'],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/articles/${article.id}`);
+      if (!res.ok) throw new Error('Failed to load article body');
+      return res.json();
+    },
+    enabled: open && needsContentFetch,
+  });
+  const resolvedContent = needsContentFetch ? detailJson?.data?.content : article?.content;
+
   function handleClose() {
     setRejectMode(false);
     setRejectNotes('');
@@ -190,7 +205,16 @@ function ArticlePreviewModal({ article, open, onOpenChange, onApprove, onReject,
           {article.summary && (
             <p className="text-sm text-muted-foreground mb-4 leading-relaxed">{article.summary}</p>
           )}
-          <ContentRenderer content={article.content} />
+          {needsContentFetch && loadingContent ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ) : (
+            <ContentRenderer content={resolvedContent} />
+          )}
         </div>
 
         <Separator />

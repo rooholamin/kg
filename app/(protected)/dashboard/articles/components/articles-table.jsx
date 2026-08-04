@@ -58,8 +58,9 @@ function readinessFromRow(row) {
   return 'on_track';
 }
 
-async function fetchArticles({ categoryId, status }) {
+async function fetchArticles({ sectionId, categoryId, status }) {
   const qs = new URLSearchParams();
+  if (sectionId && sectionId !== 'all') qs.set('sectionId', sectionId);
   if (categoryId && categoryId !== 'all') qs.set('categoryId', categoryId);
   if (status && status !== 'all') qs.set('status', status);
   const response = await apiFetch(`/api/articles?${qs.toString()}`);
@@ -78,11 +79,22 @@ export function ArticlesTable() {
   const [deleting, setDeleting] = useState(null);
   const [search, setSearch] = useState('');
   const [stage, setStage] = useState('all');
+  const [sectionId, setSectionId] = useState('all');
   const [categoryId, setCategoryId] = useState('all');
   const [readiness, setReadiness] = useState('all');
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 });
   const [rowSelection, setRowSelection] = useState({});
   const [sorting, setSorting] = useState([{ id: 'publish', desc: false }]);
+
+  const { data: secJson } = useQuery({
+    queryKey: ['sections'],
+    queryFn: async () => {
+      const r = await apiFetch('/api/sections');
+      if (!r.ok) throw new Error('Failed');
+      return r.json();
+    },
+  });
+  const sections = secJson?.data ?? [];
 
   const { data: catJson } = useQuery({
     queryKey: ['categories'],
@@ -92,7 +104,14 @@ export function ArticlesTable() {
       return r.json();
     },
   });
-  const categories = catJson?.data ?? [];
+  const allCategories = catJson?.data ?? [];
+  const categories = useMemo(
+    () =>
+      sectionId === 'all'
+        ? allCategories
+        : allCategories.filter((c) => c.sectionId === sectionId),
+    [allCategories, sectionId],
+  );
 
   const {
     data: artJson,
@@ -100,8 +119,8 @@ export function ArticlesTable() {
     isError: loadError,
     error: errObj,
   } = useQuery({
-    queryKey: ['articles', { categoryId, stage }],
-    queryFn: () => fetchArticles({ categoryId, status: stage }),
+    queryKey: ['articles', { sectionId, categoryId, stage }],
+    queryFn: () => fetchArticles({ sectionId, categoryId, status: stage }),
   });
   const rows = artJson?.data ?? [];
   const loadErrorMsg = errObj?.message;
@@ -109,7 +128,7 @@ export function ArticlesTable() {
   const data = useMemo(() => {
     const q = search.toLowerCase();
     return rows.filter((a) => {
-      if (q && !a.title.toLowerCase().includes(q)) return false;
+      if (q && !(a.title || '').toLowerCase().includes(q)) return false;
       if (readiness !== 'all') {
         const r = readinessFromRow(a);
         if (r !== readiness) return false;
@@ -117,6 +136,15 @@ export function ArticlesTable() {
       return true;
     });
   }, [search, rows, readiness]);
+
+  const handleSectionChange = (value) => {
+    setSectionId(value);
+    if (value === 'all') return;
+    const stillValid = allCategories.some(
+      (c) => c.id === categoryId && c.sectionId === value,
+    );
+    if (!stillValid) setCategoryId('all');
+  };
 
   const columns = useMemo(
     () => [
@@ -334,7 +362,7 @@ export function ArticlesTable() {
             <AlertDescription>{loadErrorMsg}</AlertDescription>
           </Alert>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div>
             <Label className="text-xs">Stage</Label>
             <Select value={stage} onValueChange={setStage}>
@@ -346,6 +374,22 @@ export function ArticlesTable() {
                 {PIPELINE_STAGES.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Section</Label>
+            <Select value={sectionId} onValueChange={handleSectionChange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sections</SelectItem>
+                {sections.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
                   </SelectItem>
                 ))}
               </SelectContent>

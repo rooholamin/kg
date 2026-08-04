@@ -166,14 +166,38 @@ export async function getArticleVersions(articleId) {
 }
 
 /**
- * @param {{ topicId?: string | null; categoryId?: string | null; status?: string | null }} [filters]
+ * Fields needed to render list/table/preview views. Deliberately excludes the
+ * heavy `content` (TipTap doc, ~15-40KB each) and other rarely-used long-text
+ * columns — with ~700 articles in production, including those on every list
+ * fetch balloons the response to 10MB+ and was locking up the Articles page
+ * whenever a filter changed and re-fetched everything. Pass `includeContent`
+ * to opt into the full row (used by the approvals preview + edit-by-id flows).
+ *
+ * @param {{
+ *   topicId?: string | null;
+ *   categoryId?: string | null;
+ *   sectionId?: string | null;
+ *   status?: string | null;
+ *   includeContent?: boolean;
+ * }} [filters]
  */
 export async function getArticles(filters = {}) {
-  const { topicId, categoryId, status, approvedBySet, rejectedBySet, publishDateFrom, publishDateTo } = filters;
+  const {
+    topicId,
+    categoryId,
+    sectionId,
+    status,
+    approvedBySet,
+    rejectedBySet,
+    publishDateFrom,
+    publishDateTo,
+    includeContent = false,
+  } = filters;
 
   const where = {
     ...(topicId ? { topicId } : {}),
     ...(categoryId ? { categoryId } : {}),
+    ...(sectionId ? { category: { sectionId } } : {}),
     ...(status && status !== 'all' ? { status } : {}),
     ...(approvedBySet ? { approvedById: { not: null } } : {}),
     ...(rejectedBySet ? { rejectedById: { not: null } } : {}),
@@ -188,9 +212,33 @@ export async function getArticles(filters = {}) {
   return prisma.article.findMany({
     where,
     orderBy: { updatedAt: 'desc' },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      summary: true,
+      content: includeContent,
+      topicId: true,
+      categoryId: true,
+      status: true,
+      publishDate: true,
+      readinessDeadline: true,
+      seoScore: true,
+      wordpressPostId: true,
+      approvedById: true,
+      approvedAt: true,
+      rejectedById: true,
+      rejectedAt: true,
+      featuredImage: true,
+      galleryImages: true,
+      videoUrl: true,
+      isEditorsChoice: true,
+      views: true,
+      likes: true,
+      commentsCount: true,
+      createdAt: true,
+      updatedAt: true,
       topic: { select: { id: true, name: true, targetKeyword: true } },
-      category: { select: { id: true, name: true } },
+      category: { select: { id: true, name: true, sectionId: true } },
     },
   });
 }
@@ -300,7 +348,7 @@ export async function createArticle(data, opts = {}) {
       },
       include: {
         topic: { select: { id: true, name: true, targetKeyword: true } },
-        category: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true, sectionId: true } },
       },
     });
     await contentLog(
@@ -388,7 +436,7 @@ export async function updateArticle(id, data, opts = {}) {
       },
       include: {
         topic: { select: { id: true, name: true, targetKeyword: true } },
-        category: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true, sectionId: true } },
       },
     });
     const logAction = statusChanged ? 'status_change' : 'update';

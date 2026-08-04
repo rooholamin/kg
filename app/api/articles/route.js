@@ -6,14 +6,15 @@ import { routeError } from '@/lib/route-error';
 import { getArticles, createArticle } from '@/services/article.service';
 import { ArticleFormSchema } from '@/app/(protected)/dashboard/articles/forms/article-schema';
 
-function mapArticle(a) {
+function mapArticle(a, { full = false } = {}) {
   return {
     id: a.id,
     title: a.title,
     summary: a.summary,
-    content: a.content,
+    ...(full ? { content: a.content } : {}),
     topicId: a.topicId,
     categoryId: a.categoryId,
+    sectionId: a.category.sectionId ?? null,
     status: a.status,
     topicName: a.topic.name,
     categoryName: a.category.name,
@@ -51,28 +52,34 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const topicId = searchParams.get('topicId') || null;
     const categoryId = searchParams.get('categoryId') || null;
+    const sectionId = searchParams.get('sectionId') || null;
     const status = searchParams.get('status') || null;
     const approvedBy = searchParams.get('approvedBy') || null;
     const rejectedBy = searchParams.get('rejectedBy') || null;
     const publishDateFrom = searchParams.get('publishDateFrom') || null;
     const publishDateTo = searchParams.get('publishDateTo') || null;
     const countOnly = searchParams.get('countOnly') === 'true';
+    // List views (700+ rows) only need the lean shape; callers that render
+    // full article body (approvals preview, edit-by-id) opt in explicitly.
+    const full = searchParams.get('full') === 'true';
 
     const rows = await getArticles({
       topicId: topicId && topicId !== 'all' ? topicId : null,
       categoryId: categoryId && categoryId !== 'all' ? categoryId : null,
+      sectionId: sectionId && sectionId !== 'all' ? sectionId : null,
       status: status && status !== 'all' ? status : null,
       approvedBySet: approvedBy === 'set',
       rejectedBySet: rejectedBy === 'set',
       publishDateFrom,
       publishDateTo,
+      includeContent: full,
     });
 
     if (countOnly) {
       return NextResponse.json({ total: rows.length });
     }
 
-    const data = rows.map(mapArticle);
+    const data = rows.map((a) => mapArticle(a, { full }));
 
     return NextResponse.json({ data });
   } catch (e) {
@@ -105,7 +112,7 @@ export async function POST(request) {
     const row = await createArticle(parsed.data, {
       createdBy: session.user?.id ?? null,
     });
-    return NextResponse.json({ data: mapArticle(row) });
+    return NextResponse.json({ data: mapArticle(row, { full: true }) });
   } catch (e) {
     console.error('[api/articles POST]', e);
     if (e?.code === 'VALIDATION' || e?.code === 'NOT_FOUND') {

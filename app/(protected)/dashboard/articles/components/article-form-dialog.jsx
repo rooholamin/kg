@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PIPELINE_STAGES } from '@/app/(protected)/dashboard/_mock';
 import { ImageUploadInput } from '@/components/custom/image-upload-input';
 import { GalleryUploadInput } from '@/components/custom/gallery-upload-input';
@@ -76,6 +77,10 @@ export function ArticleFormDialog({ open, onOpenChange, article }) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const isEdit = Boolean(article?.id);
+  // List views omit the (heavy) body to keep the Articles table fast with
+  // 700+ rows — `content` is `undefined` (as opposed to `null`) in that case,
+  // so fetch it lazily here only when the row didn't already include it.
+  const needsContentFetch = isEdit && article.content === undefined;
 
   const { data: topJson, isError: topError, error: topErr } = useQuery({
     queryKey: ['topics', 'all'],
@@ -83,6 +88,19 @@ export function ArticleFormDialog({ open, onOpenChange, article }) {
     enabled: open,
   });
   const topics = topJson?.data ?? [];
+
+  const { data: detailJson, isFetching: loadingContent } = useQuery({
+    queryKey: ['articles', article?.id, 'detail'],
+    queryFn: async () => {
+      const r = await apiFetch(`/api/articles/${article.id}`);
+      if (!r.ok) throw new Error('Failed to load article body');
+      return r.json();
+    },
+    enabled: open && needsContentFetch,
+  });
+  const fetchedContent = detailJson?.data?.content;
+  const resolvedContent = needsContentFetch ? fetchedContent : article?.content;
+  const isLoadingContent = open && needsContentFetch && fetchedContent === undefined;
 
   const form = useForm({
     resolver: zodResolver(ArticleFormSchema),
@@ -105,6 +123,9 @@ export function ArticleFormDialog({ open, onOpenChange, article }) {
   useEffect(() => {
     if (!open) return;
     if (isEdit) {
+      // Wait for the lazily-fetched body before resetting, otherwise the
+      // editor briefly shows empty and then repopulates once it arrives.
+      if (isLoadingContent) return;
       form.reset({
         title: article.title,
         summary: article.summary ?? '',
@@ -115,7 +136,7 @@ export function ArticleFormDialog({ open, onOpenChange, article }) {
         featuredImage: article.featuredImage || null,
         videoUrl: article.videoUrl || null,
         isEditorsChoice: Boolean(article.isEditorsChoice),
-        content: article.content && article.content.type === 'doc' ? article.content : emptyDoc,
+        content: resolvedContent && resolvedContent.type === 'doc' ? resolvedContent : emptyDoc,
         galleryImages: Array.isArray(article.galleryImages) ? article.galleryImages : [],
       });
     } else {
@@ -133,7 +154,7 @@ export function ArticleFormDialog({ open, onOpenChange, article }) {
         galleryImages: [],
       });
     }
-  }, [open, isEdit, article, form]);
+  }, [open, isEdit, article, form, isLoadingContent, resolvedContent]);
 
   useEffect(() => {
     if (!open || isEdit) return;
@@ -418,23 +439,30 @@ export function ArticleFormDialog({ open, onOpenChange, article }) {
                 </div>
               </div>
 
-              <FormField
-                control={form.control}
-                name="content"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Body</FormLabel>
-                    <FormControl>
-                      <RichTextEditor
-                        value={field.value}
-                        onChange={field.onChange}
-                        placeholder="Write the full article. Use the toolbar to format, add images, or embed a YouTube video."
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {isLoadingContent ? (
+                <div className="space-y-2">
+                  <FormLabel>Body</FormLabel>
+                  <Skeleton className="h-48 w-full" />
+                </div>
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="content"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Body</FormLabel>
+                      <FormControl>
+                        <RichTextEditor
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder="Write the full article. Use the toolbar to format, add images, or embed a YouTube video."
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </DialogBody>
             <DialogFooter>
               <Button
@@ -448,6 +476,7 @@ export function ArticleFormDialog({ open, onOpenChange, article }) {
                 type="submit"
                 disabled={
                   isProcessing ||
+                  isLoadingContent ||
                   topics.length === 0 ||
                   !topicIdWatch ||
                   !form.watch('title')?.trim() ||
