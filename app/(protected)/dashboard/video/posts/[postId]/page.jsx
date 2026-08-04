@@ -221,6 +221,7 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   const notify = postToast(post);
   const [narration, setNarration] = useState(post.plan?.narration || post.narration || '');
   const [characterLook, setCharacterLook] = useState(post.plan?.characterLook || '');
+  const [subjectAnchor, setSubjectAnchor] = useState(post.plan?.subjectAnchor || '');
   const [segments, setSegments] = useState(post.plan?.segments || []);
   const [genre, setGenre] = useState(post.plan?.genre || '');
   const [captionText, setCaptionText] = useState(post.plan?.text || '');
@@ -230,6 +231,7 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   useEffect(() => {
     setNarration(post.plan?.narration || post.narration || '');
     setCharacterLook(post.plan?.characterLook || '');
+    setSubjectAnchor(post.plan?.subjectAnchor || '');
     setSegments(post.plan?.segments || []);
     setGenre(post.plan?.genre || '');
     setCaptionText(post.plan?.text || '');
@@ -260,7 +262,16 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          plan: { ...post.plan, narration, characterLook, segments, genre, text: captionText, hashtags },
+          plan: {
+            ...post.plan,
+            narration,
+            characterLook,
+            subjectAnchor: subjectAnchor.trim() || null,
+            segments,
+            genre,
+            text: captionText,
+            hashtags,
+          },
           directorNote: note || undefined,
         }),
       });
@@ -295,7 +306,7 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   function addSegment() {
     setSegments((prev) => renumber([
       ...prev,
-      { hasCharacter: false, spokenPortion: '', visualDescription: '', estimatedDuration: 6 },
+      { hasCharacter: false, spokenPortion: '', visualDescription: '', estimatedDuration: 6, stillReferenceOrder: null },
     ]));
   }
 
@@ -377,6 +388,20 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
               />
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Subject anchor (the one recurring thing this video is about)</Label>
+              <Textarea
+                value={subjectAnchor}
+                onChange={(e) => setSubjectAnchor(e.target.value)}
+                placeholder="e.g. a six-foot reach-in closet with warm walnut-fronted shelving, one brushed-brass rail, cream canvas bins…"
+                rows={2}
+                className="text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Repeated verbatim in every frame that shows it. Without it each shot invents a different version of the subject.
+              </p>
+            </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium">Segments ({segments.length})</Label>
@@ -423,6 +448,21 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
                     rows={2}
                     className="text-xs"
                   />
+                  <div className="flex items-center gap-2">
+                    <Label className="text-[11px] text-muted-foreground shrink-0">Match frame of segment</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={segments.length}
+                      placeholder="—"
+                      value={seg.stillReferenceOrder ?? ''}
+                      onChange={(e) =>
+                        updateSegment(i, 'stillReferenceOrder', e.target.value ? Number(e.target.value) : null)
+                      }
+                      className="h-7 w-16 text-xs"
+                      title="For a before/after pair: reuse that segment's frame as an image reference so both shots show literally the same thing. Leave empty otherwise."
+                    />
+                  </div>
                 </div>
                 ))}
               </div>
@@ -555,11 +595,12 @@ function StillTile({ post, invalidate, label, caption, url, target, order, busy 
 function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
   const notify = postToast(post);
   const segments = post.segments || [];
-  const brollSegments = segments.filter((s) => !s.hasCharacter);
-  const avatarCount = segments.length - brollSegments.length;
   const isGenerating = post.status === 'shooting_stills';
   const isShooting = post.status === 'directing' && segments.some((s) => s.status === 'generating');
-  const missingFrames = !post.anchorStillUrl || brollSegments.some((s) => !s.stillUrl);
+  // An avatar segment with no frame of its own predates per-segment character
+  // frames and falls back to the anchor, so it isn't "missing".
+  const missingFrames =
+    !post.anchorStillUrl || segments.some((s) => !s.stillUrl && !s.hasCharacter);
 
   const approveMutation = useMutation({
     mutationFn: async () => {
@@ -598,7 +639,7 @@ function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
         </CardHeading>
         <CardToolbar>
           <Badge variant="secondary" appearance="light" size="sm">
-            ~{formatCost(estimateStillCost(brollSegments.length + 1))} spent so far
+            ~{formatCost(estimateStillCost(segments.filter((s) => s.stillUrl).length + 1))} spent so far
           </Badge>
         </CardToolbar>
       </CardHeader>
@@ -614,18 +655,18 @@ function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
                 post={post}
                 invalidate={invalidate}
                 label="Character anchor"
-                caption={`Every on-camera segment (${avatarCount}) is shot from this one frame — it's what keeps her the same person throughout.`}
+                caption="The canonical look. Every on-camera frame is generated from this one, so redoing it means redoing those too."
                 url={post.anchorStillUrl}
                 target="anchor"
                 order={null}
                 busy={isGenerating}
               />
-              {brollSegments.map((seg) => (
+              {segments.map((seg) => (
                 <StillTile
                   key={seg.id}
                   post={post}
                   invalidate={invalidate}
-                  label={`Segment ${seg.order}`}
+                  label={`Segment ${seg.order}${seg.hasCharacter ? ' · on camera' : ''}`}
                   caption={seg.visualDescription}
                   url={seg.stillUrl}
                   target="segment"

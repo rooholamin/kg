@@ -391,25 +391,32 @@ export async function generateVideoStills({ campaignId, postId, title, character
       hasCharacter: !!s.hasCharacter,
       spokenPortion: s.spokenPortion || null,
       visualDescription: s.visualDescription || null,
+      stillReferenceOrder: Number.isInteger(s.stillReferenceOrder) ? s.stillReferenceOrder : null,
       status: 'pending',
       generationStartedAt: startedAt,
     })),
   });
   await prisma.videoPost.update({
     where: { id: postId },
-    data: { anchorStillUrl: null, anchorStillJobId: null },
+    data: {
+      anchorStillUrl: null,
+      anchorStillJobId: null,
+      subjectAnchor: plan.subjectAnchor || null,
+    },
   });
 
   const planText = JSON.stringify(
     {
       narration: plan.narration,
       characterLook: plan.characterLook,
+      subjectAnchor: plan.subjectAnchor || null,
       segments: plannedSegments.map((s) => ({
         order: s.order,
         hasCharacter: s.hasCharacter,
         spokenPortion: s.spokenPortion,
         visualDescription: s.visualDescription,
         estimatedDuration: s.estimatedDuration,
+        stillReferenceOrder: Number.isInteger(s.stillReferenceOrder) ? s.stillReferenceOrder : null,
       })),
     },
     null,
@@ -418,12 +425,10 @@ export async function generateVideoStills({ campaignId, postId, title, character
 
   const briefText = buildExecuteBrief({ character, environment, config, promptLearnings });
 
-  const brollCount = plannedSegments.filter((s) => !s.hasCharacter).length;
-
   const message = `PHASE: stills\n\n${briefText}\n\nAPPROVED PLAN:\n${planText}\n${directorNote ? `\nDIRECTOR NOTE: ${directorNote}\n` : ''}
-Generate the START FRAMES ONLY: one character anchor still, plus one still for each of the ${brollCount} b-roll segment(s). Do NOT call generate_video for anything — a human reviews these frames before the shoot is unlocked. Respond with ONLY the STILLS OUTPUT FORMAT JSON described in your instructions.`;
+Generate the START FRAMES ONLY: the character anchor still, plus one frame for each of the ${plannedSegments.length} segment(s) — avatar segments included, each chained off the anchor. Do NOT call generate_video for anything — a human reviews these frames before the shoot is unlocked. Respond with ONLY the STILLS OUTPUT FORMAT JSON described in your instructions.`;
 
-  const aiLogId = await logStart(campaignId, 'director_stills_send', `Generating start frames for "${title}" (anchor + ${brollCount} b-roll)`, { message, sessionId }, postId);
+  const aiLogId = await logStart(campaignId, 'director_stills_send', `Generating start frames for "${title}" (anchor + ${plannedSegments.length} segments)`, { message, sessionId }, postId);
 
   let responseText;
   try {
@@ -464,7 +469,7 @@ Generate the START FRAMES ONLY: one character anchor still, plus one still for e
     });
   }
 
-  const stillCount = (result.anchorStill?.url ? 1 : 0) + (result.stills || []).filter((s) => s.url).length;
+  const stillCount = (result.stills || []).filter((s) => s.url).length;
   await logDone(aiLogId, `Start frames ready — ${stillCount} still(s) awaiting review`, { response: responseText, parsed: result });
 
   return { result, sessionId };
@@ -558,7 +563,11 @@ export async function shootVideoPost({ postId, directorNote }) {
     throw err;
   }
 
-  const missingStill = post.segments.find((s) => !s.hasCharacter && !s.stillJobId);
+  // Avatar segments predating per-segment character frames fall back to the
+  // shared anchor, so an older post can still be shot or re-shot.
+  const stillJobIdFor = (s) => s.stillJobId || (s.hasCharacter ? post.anchorStillJobId : null);
+
+  const missingStill = post.segments.find((s) => !stillJobIdFor(s));
   if (missingStill) {
     const err = new Error(`Segment ${missingStill.order} has no start frame yet — regenerate it before shooting.`);
     err.code = 'INVALID_REQUEST';
@@ -566,7 +575,7 @@ export async function shootVideoPost({ postId, directorNote }) {
   }
 
   const stillMap = post.segments
-    .map((s) => `- segment ${s.order} (${s.hasCharacter ? 'avatar' : 'b-roll'}): start_image job id ${s.hasCharacter ? post.anchorStillJobId : s.stillJobId}`)
+    .map((s) => `- segment ${s.order} (${s.hasCharacter ? 'avatar' : 'b-roll'}): start_image job id ${stillJobIdFor(s)}`)
     .join('\n');
 
   const message = `PHASE: shoot

@@ -30,7 +30,11 @@ export async function POST(req, { params }) {
       );
     }
 
-    const missing = post.segments.filter((s) => !s.hasCharacter && !s.stillJobId).map((s) => s.order);
+    // Avatar segments from before per-segment character frames fall back to the
+    // shared anchor rather than blocking the shoot.
+    const missing = post.segments
+      .filter((s) => !s.stillJobId && !s.hasCharacter)
+      .map((s) => s.order);
     if (missing.length) {
       return NextResponse.json(
         { message: `Segment ${missing.join(', ')} has no start frame yet — regenerate it before shooting.` },
