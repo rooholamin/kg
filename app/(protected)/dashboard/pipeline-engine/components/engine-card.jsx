@@ -17,6 +17,7 @@ const ENGINE_UI = {
     accentClass: 'text-sky-600 dark:text-sky-400',
     dotClass: 'bg-sky-500',
     badgeRunning: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30',
+    requiresN8n: true,
   },
   writing: {
     icon: '✍️',
@@ -25,6 +26,7 @@ const ENGINE_UI = {
     accentClass: 'text-violet-600 dark:text-violet-400',
     dotClass: 'bg-violet-500',
     badgeRunning: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30',
+    requiresN8n: true,
   },
   images: {
     icon: '🎨',
@@ -33,6 +35,26 @@ const ENGINE_UI = {
     accentClass: 'text-amber-600 dark:text-amber-400',
     dotClass: 'bg-amber-500',
     badgeRunning: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+    requiresN8n: true,
+  },
+  seo: {
+    icon: '🔎',
+    label: 'SEO',
+    description: 'On-page SEO pass on every published article',
+    accentClass: 'text-emerald-600 dark:text-emerald-400',
+    dotClass: 'bg-emerald-500',
+    badgeRunning: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+    requiresN8n: false,
+  },
+  'kingsgate-linking': {
+    icon: '🔗',
+    label: 'Kingsgate Linking',
+    description: 'Reviews a batch of 10 articles, links at most one',
+    accentClass: 'text-rose-600 dark:text-rose-400',
+    dotClass: 'bg-rose-500',
+    badgeRunning: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
+    requiresN8n: false,
+    isBatch: true,
   },
 };
 
@@ -109,7 +131,8 @@ export function EngineCard({
 
   const countdown = useCountdown(isRunning ? engine?.nextRunMs : null);
 
-  const canStart = (isIdle || isPaused || isStalled) && n8nAvailable;
+  const needsN8n = ui.requiresN8n ?? true;
+  const canStart = (isIdle || isPaused || isStalled) && (!needsN8n || n8nAvailable);
   const canPause = isRunning && !isStalled;
 
   const statusCfg = STATUS_CONFIG[displayStatus] ?? STATUS_CONFIG.idle;
@@ -168,16 +191,28 @@ export function EngineCard({
           </div>
         )}
 
-        {/* Currently processing */}
+        {/* Currently processing — single article or, for batch engines, the whole batch */}
         {isRunning && engine?.currentArticle && (
           <div className="px-2.5 py-2 rounded-lg bg-muted/40 border border-border/50">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Processing</p>
             <p className="text-xs font-medium leading-snug line-clamp-2">{engine.currentArticle.title}</p>
           </div>
         )}
-        {isWaiting && !engine?.currentArticle && (
+        {isRunning && engine?.currentBatchArticles?.length > 0 && (
+          <div className="px-2.5 py-2 rounded-lg bg-muted/40 border border-border/50">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
+              Reviewing batch of {engine.currentBatchArticles.length}
+            </p>
+            <p className="text-xs font-medium leading-snug line-clamp-2">
+              {engine.currentBatchArticles.map((a) => a.title).join(' · ')}
+            </p>
+          </div>
+        )}
+        {isWaiting && !engine?.currentArticle && !(engine?.currentBatchArticles?.length > 0) && (
           <p className="text-[11px] text-muted-foreground/70 italic">
-            Watching for new articles…
+            {ui.isBatch
+              ? `Waiting for a full batch to accumulate (${queueCount} ready so far)…`
+              : 'Watching for new articles…'}
           </p>
         )}
 
@@ -252,7 +287,7 @@ export function EngineCard({
           )}
           {!canStart && !canPause && (
             <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" disabled>
-              {!n8nAvailable ? 'AI offline' : 'Running'}
+              {needsN8n && !n8nAvailable ? 'AI offline' : 'Running'}
             </Button>
           )}
         </div>

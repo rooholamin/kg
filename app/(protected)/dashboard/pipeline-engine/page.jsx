@@ -11,7 +11,7 @@ export default function PipelineEnginePage() {
     <>
       <PageHeader
         title="Editor in Chief"
-        description="Start the engine and watch it process articles one by one — research, write, create assets, and queue for approval."
+        description="Start the engines and watch them process articles — research, write, create assets, queue for approval, optimize on-page SEO, and selectively add Kingsgate backlinks."
       />
       <EngineDashboard />
     </>

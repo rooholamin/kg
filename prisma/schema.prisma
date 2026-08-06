@@ -305,6 +305,16 @@ model Article {
   readinessDeadline      DateTime?
   seoScore               Int?
   wordpressPostId        Int?
+  // "seo" engine (Editor in Chief, 4th engine) — on-page SEO optimization,
+  // runs on every article once it reaches post_publish
+  seoOptimized           Boolean                @default(false)
+  seoOptimizedAt         DateTime?
+  // "kingsgate-linking" engine (5th engine) — batch-of-N comparative selection;
+  // linkReviewed is set on ALL articles in a batch, kingsgateLinkUrl only on
+  // the one (if any) actually chosen as that batch's winner
+  linkReviewed           Boolean                @default(false)
+  linkReviewedAt         DateTime?
+  kingsgateLinkUrl       String?
   approvedById           String?
   approvedAt             DateTime?
   rejectedById           String?
@@ -334,6 +344,7 @@ model Article {
   pipelineEngineLogs     PipelineEngineLog[]
   socialPosts            SocialPost[]
   videoPosts             VideoPost[]
+  seoOptimizationRuns    SeoOptimizationRun[]
 
   @@index([topicId])
   @@index([categoryId])
@@ -649,18 +660,22 @@ enum PipelineEngineStatus {
   paused
 }
 
-/// One row per engine type: "research" | "writing" | "images"
+/// One row per engine type: "research" | "writing" | "images" | "seo" | "kingsgate-linking"
 model PipelineEngine {
-  id                 String               @id // "research" | "writing" | "images"
-  status             PipelineEngineStatus @default(idle)
-  pauseReason        String?
-  currentArticleId   String?
-  currentStep        String? // "research" | "writing" | "assets"
-  delayMinutes       Int                  @default(0) // wait N minutes between jobs
-  lastJobCompletedAt DateTime?
-  totalProcessed     Int                  @default(0)
-  totalFailed        Int                  @default(0)
-  updatedAt          DateTime             @updatedAt
+  id                     String               @id // "research" | "writing" | "images" | "seo" | "kingsgate-linking"
+  status                 PipelineEngineStatus @default(idle)
+  pauseReason            String?
+  currentArticleId       String?
+  currentStep            String? // "research" | "writing" | "assets" | "seo" | "kingsgate-linking"
+  // Batch-style engines (e.g. "kingsgate-linking") claim several articles at
+  // once instead of one via currentArticleId — stays empty for single-article
+  // engines. See services/pipeline-engine.service.js processNext().
+  currentBatchArticleIds String[]             @default([])
+  delayMinutes           Int                  @default(0) // wait N minutes between jobs
+  lastJobCompletedAt     DateTime?
+  totalProcessed         Int                  @default(0)
+  totalFailed            Int                  @default(0)
+  updatedAt              DateTime             @updatedAt
 }
 
 /// Immutable log entry for each article step processed by the pipeline engine
@@ -776,6 +791,71 @@ model ArticleAutomationRun {
   @@index([articleId])
   @@index([workflowType])
   @@index([status])
+}
+
+// ─── SEO Pipeline (Editor in Chief — "seo" + "kingsgate-linking" engines) ────
+
+/// Per-article on-page SEO optimization result — written by the "seo" engine
+/// (services/seo-ai.service.js). One article can have several rows over time
+/// (e.g. a future manual re-run); the most recent is what the article's SEO
+/// tab shows. Deliberately separate from ArticleAutomationRun since this is a
+/// Managed Agent session, not an n8n workflow.
+model SeoOptimizationRun {
+  id             String              @id @default(uuid())
+  articleId      String
+  status         AutomationRunStatus @default(running)
+  previousTitle  String?
+  previousMeta   String?             @db.Text
+  changesSummary String?             @db.Text
+  agentSessionId String?
+  errorMessage   String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  article        Article             @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// One row per "kingsgate-linking" batch run (services/kingsgate-linking.service.js) —
+/// records the WHOLE batch's outcome (all article ids considered), not just the
+/// winner, so "why wasn't article X linked this round" stays answerable. No FK
+/// relation to Article (articleIds is a plain id list, same pattern as
+/// ScheduleBatch.sectionIds elsewhere in this schema) since a batch spans many
+/// articles and none of them "belong" to it the way a child row would.
+model KingsgateLinkingBatchRun {
+  id                String              @id @default(uuid())
+  articleIds        String[]
+  status            AutomationRunStatus @default(running)
+  selectedArticleId String?
+  matchedFeature    String?
+  linkedPostUrl     String?
+  reasoning         String?             @db.Text
+  agentSessionId    String?
+  errorMessage      String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([status])
+  @@index([selectedArticleId])
+  @@index([createdAt])
+}
+
+/// Anthropic Managed Agent references for the two SEO pipeline engines —
+/// "seo" (per-article on-page optimization) and "kingsgate-linking"
+/// (batch-of-N selective backlink insertion). Mirrors VideoSettings/SocialSettings.
+model SeoSettings {
+  id                   String   @id @default("singleton")
+  seoAgentId           String?
+  seoEnvironmentId     String?
+  linkingAgentId       String?
+  linkingEnvironmentId String?
+  // Vault holding the static_bearer credential for our own internal MCP
+  // server (app/api/mcp/seo) — same pattern as VideoSettings.higgsfieldVaultId.
+  mcpVaultId           String?
+  linkingBatchSize     Int      @default(10)
+  updatedAt            DateTime @updatedAt
 }
 
 // ─── Social Content Pipeline ──────────────────────────────────────────────────

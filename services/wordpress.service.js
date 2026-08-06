@@ -7,10 +7,12 @@ import { contentLog } from '@/services/content-log.service';
 
 /**
  * Build a Basic Auth header value from WP Application Password credentials.
+ * Exported so other WordPress-facing tools (e.g. services/mcp-seo-tools.service.js)
+ * can reuse the exact same auth/fetch helpers rather than duplicating them.
  * @param {string} username
  * @param {string} appPassword
  */
-function basicAuth(username, appPassword) {
+export function basicAuth(username, appPassword) {
   return 'Basic ' + Buffer.from(`${username}:${appPassword}`).toString('base64');
 }
 
@@ -18,7 +20,7 @@ function basicAuth(username, appPassword) {
  * Normalise a WP site URL — strip trailing slash, ensure https is not doubled.
  * @param {string} siteUrl
  */
-function normaliseUrl(siteUrl) {
+export function normaliseUrl(siteUrl) {
   return siteUrl.replace(/\/+$/, '');
 }
 
@@ -29,7 +31,7 @@ function normaliseUrl(siteUrl) {
  * @param {object | null} content
  * @returns {string}
  */
-function contentToHtml(content) {
+export function contentToHtml(content) {
   if (!content) return '';
 
   // Passthrough HTML format
@@ -179,7 +181,7 @@ function randomPublishDateTime(publishDate) {
  * @param {{ username: string; appPassword: string }} creds
  * @param {RequestInit} [options]
  */
-async function wpFetch(url, creds, options = {}) {
+export async function wpFetch(url, creds, options = {}) {
   const res = await fetch(url, {
     ...options,
     headers: {

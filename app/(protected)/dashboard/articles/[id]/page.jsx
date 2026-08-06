@@ -9,6 +9,10 @@ import {
   getArticleAssetRequests,
   getArticleAutomationRuns,
 } from '@/services/article.service';
+import {
+  getArticleSeoOptimizationRun,
+  getArticleKingsgateLinkingBatchRun,
+} from '@/services/seo.service';
 import { ArticleDetailContent } from './components/article-detail-content';
 import { ArticleDetailActions } from '../components/article-detail-actions';
 
@@ -31,6 +35,11 @@ function toArticleView(row) {
     readinessDeadline: row.readinessDeadline,
     seoScore: row.seoScore,
     wordpressPostId: row.wordpressPostId,
+    seoOptimized: row.seoOptimized,
+    seoOptimizedAt: row.seoOptimizedAt,
+    linkReviewed: row.linkReviewed,
+    linkReviewedAt: row.linkReviewedAt,
+    kingsgateLinkUrl: row.kingsgateLinkUrl,
     featuredImage: row.featuredImage,
     galleryImages: row.galleryImages,
     videoUrl: row.videoUrl,
@@ -49,12 +58,14 @@ export default async function ArticleDetailPage({ params }) {
   if (!row) notFound();
 
   const article = toArticleView(row);
-  const [activityLogs, versionRows, research, assetRequests, automationRuns] = await Promise.all([
+  const [activityLogs, versionRows, research, assetRequests, automationRuns, seoRun, linkingBatchRun] = await Promise.all([
     getArticleContentLogs(id),
     getArticleVersions(id),
     getArticleResearch(id),
     getArticleAssetRequests(id),
     getArticleAutomationRuns(id),
+    getArticleSeoOptimizationRun(id),
+    getArticleKingsgateLinkingBatchRun(id),
   ]);
 
   const versionUserIds = [
@@ -113,6 +124,8 @@ export default async function ArticleDetailPage({ params }) {
         research={research ?? null}
         assetRequests={assetRequests}
         automationRuns={automationRuns}
+        seoRun={seoRun ?? null}
+        linkingBatchRun={linkingBatchRun ?? null}
       />
     </>
   );

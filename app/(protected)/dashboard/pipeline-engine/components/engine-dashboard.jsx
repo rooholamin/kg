@@ -133,7 +133,7 @@ function getOverallCharacterState(engines) {
 // Main component
 // ---------------------------------------------------------------------------
 
-const ENGINE_IDS = ['research', 'writing', 'images'];
+const ENGINE_IDS = ['research', 'writing', 'images', 'seo', 'kingsgate-linking'];
 
 export function EngineDashboard() {
   const queryClient = useQueryClient();
@@ -158,12 +158,12 @@ export function EngineDashboard() {
   const pendingImages = data?.pendingImages ?? 0;
   const skippedCounts = data?.skippedCounts ?? {};
 
-  // Queue counts per engine type
-  const queueByEngine = {
-    research: (byStage.planning ?? 0) + (byStage.research ?? 0),
-    writing: byStage.writing ?? 0,
-    images: byStage.assets ?? 0,
-  };
+  // Queue counts per engine type — each engine's own live count (computed
+  // server-side from its actual filter, including the seo/kingsgate-linking
+  // boolean-flag filters that byStage's plain status grouping can't express).
+  const queueByEngine = Object.fromEntries(
+    ENGINE_IDS.map((id) => [id, engines[id]?.queueCount ?? 0]),
+  );
 
   const startMutation = useMutation({
     mutationFn: startEngine,
@@ -251,7 +251,7 @@ export function EngineDashboard() {
         </div>
 
         {/* ── Engine cards ─────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {ENGINE_IDS.map((id) => (
             <EngineCard
               key={id}

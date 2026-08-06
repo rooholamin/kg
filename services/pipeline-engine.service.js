@@ -1,12 +1,14 @@
 import { prisma } from '@/lib/prisma';
 import { triggerResearch, triggerWriting, triggerAssets } from '@/services/article-automation.service';
+import { runSeoOptimization } from '@/services/seo-ai.service';
+import { runKingsgateLinkingBatch } from '@/services/kingsgate-linking.service';
 import { contentLog } from '@/services/content-log.service';
 
 // ---------------------------------------------------------------------------
 // Engine configuration
 // ---------------------------------------------------------------------------
 
-export const ENGINE_IDS = ['research', 'writing', 'images'];
+export const ENGINE_IDS = ['research', 'writing', 'images', 'seo', 'kingsgate-linking'];
 
 const ENGINE_CONFIGS = {
   research: {
@@ -24,6 +26,25 @@ const ENGINE_CONFIGS = {
     queueStatuses: ['assets'],
     step: 'assets',
   },
+  // Every article, one at a time, once it's published — on-page SEO only
+  // (meta description, title, headings, keyword placement, citability). No
+  // linking decision happens here at all; see 'kingsgate-linking' below.
+  seo: {
+    label: 'SEO Engine',
+    queueStatuses: ['post_publish'],
+    extraWhere: { seoOptimized: false },
+    step: 'seo',
+  },
+  // Batch-of-N comparative selection, only after an article has already been
+  // through the 'seo' engine. Strictly waits for a full batch (see
+  // processNext's batchSize branch) rather than ever processing a partial one.
+  'kingsgate-linking': {
+    label: 'Kingsgate Linking Engine',
+    queueStatuses: ['post_publish'],
+    extraWhere: { seoOptimized: true, linkReviewed: false },
+    batchSize: 10,
+    step: 'kingsgate-linking',
+  },
 };
 
 const STALL_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
@@ -38,6 +59,8 @@ const skippedArticleIds = {
   research: new Set(),
   writing: new Set(),
   images: new Set(),
+  seo: new Set(),
+  'kingsgate-linking': new Set(),
 };
 
 // ---------------------------------------------------------------------------
@@ -66,7 +89,10 @@ function enrichEngine(engine) {
     Date.now() - new Date(engine.updatedAt).getTime() > STALL_THRESHOLD_MS;
 
   // Waiting = running but not currently processing anything (polling for new articles)
-  const isWaiting = engine.status === 'running' && !engine.currentArticleId;
+  const isWaiting =
+    engine.status === 'running' &&
+    !engine.currentArticleId &&
+    !(engine.currentBatchArticleIds?.length > 0);
 
   let nextRunMs = null;
   if (engine.status === 'running' && engine.delayMinutes > 0 && engine.lastJobCompletedAt) {
@@ -78,12 +104,21 @@ function enrichEngine(engine) {
   return { ...engine, isStalled, isWaiting, nextRunMs };
 }
 
+/** Build the Prisma `where` clause for an engine's queue, honoring extraWhere + skip list. */
+function buildQueueWhere(config, skipList) {
+  return {
+    status: { in: config.queueStatuses },
+    ...(config.extraWhere ?? {}),
+    ...(skipList.length > 0 ? { id: { notIn: skipList } } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the status of all 3 engines plus the combined queue.
+ * Returns the status of all engines plus the combined (research/writing/images) queue.
  */
 export async function getEngineStatus() {
   const ALL_QUEUE_STATUSES = ['planning', 'research', 'writing', 'assets'];
@@ -122,19 +157,45 @@ export async function getEngineStatus() {
     }),
   ]);
 
-  // Build engines map, fetching current article for each running engine
+  // Build engines map, fetching current article(s) + a fresh queue count for each engine
   const engineMap = {};
   await Promise.all(
     ENGINE_IDS.map(async (id) => {
-      const row = engineRows.find((e) => e.id === id) ?? { id, status: 'idle', totalProcessed: 0, totalFailed: 0, delayMinutes: 0, lastJobCompletedAt: null, currentArticleId: null, currentStep: null, pauseReason: null, updatedAt: new Date() };
+      const config = ENGINE_CONFIGS[id];
+      const row = engineRows.find((e) => e.id === id) ?? {
+        id,
+        status: 'idle',
+        totalProcessed: 0,
+        totalFailed: 0,
+        delayMinutes: 0,
+        lastJobCompletedAt: null,
+        currentArticleId: null,
+        currentBatchArticleIds: [],
+        currentStep: null,
+        pauseReason: null,
+        updatedAt: new Date(),
+      };
       const enriched = enrichEngine(row);
-      const currentArticle = row.currentArticleId
-        ? await prisma.article.findUnique({
-            where: { id: row.currentArticleId },
-            select: { id: true, title: true, status: true, category: { select: { name: true } } },
-          })
-        : null;
-      engineMap[id] = { ...enriched, currentArticle };
+
+      const [currentArticle, currentBatchArticles, queueCount] = await Promise.all([
+        row.currentArticleId
+          ? prisma.article.findUnique({
+              where: { id: row.currentArticleId },
+              select: { id: true, title: true, status: true, category: { select: { name: true } } },
+            })
+          : null,
+        row.currentBatchArticleIds?.length
+          ? prisma.article.findMany({
+              where: { id: { in: row.currentBatchArticleIds } },
+              select: { id: true, title: true },
+            })
+          : [],
+        prisma.article.count({
+          where: buildQueueWhere(config, [...skippedArticleIds[id]]),
+        }),
+      ]);
+
+      engineMap[id] = { ...enriched, currentArticle, currentBatchArticles, queueCount };
     }),
   );
 
@@ -177,14 +238,35 @@ async function cleanupStaleState() {
     }),
   ]);
 
-  if (resetAssets.count > 0 || failedRuns.count > 0) {
+  // Same "crashed mid-flight" cleanup for the two SEO engines' own audit tables.
+  const [failedSeoRuns, failedLinkingRuns] = await Promise.all([
+    prisma.seoOptimizationRun.updateMany({
+      where: { status: 'running' },
+      data: {
+        status: 'failed',
+        errorMessage: 'Interrupted — server restarted or engine was stopped',
+        updatedAt: new Date(),
+      },
+    }).catch(() => ({ count: 0 })),
+    prisma.kingsgateLinkingBatchRun.updateMany({
+      where: { status: 'running' },
+      data: {
+        status: 'failed',
+        errorMessage: 'Interrupted — server restarted or engine was stopped',
+        updatedAt: new Date(),
+      },
+    }).catch(() => ({ count: 0 })),
+  ]);
+
+  const total = resetAssets.count + failedRuns.count + failedSeoRuns.count + failedLinkingRuns.count;
+  if (total > 0) {
     console.log(
-      `[pipeline-engine] Stale cleanup: ${resetAssets.count} asset(s) unblocked, ${failedRuns.count} run(s) cleared`,
+      `[pipeline-engine] Stale cleanup: ${resetAssets.count} asset(s) unblocked, ${failedRuns.count} automation run(s) cleared, ${failedSeoRuns.count} SEO run(s) cleared, ${failedLinkingRuns.count} linking batch(es) cleared`,
     );
     await contentLog({
       type: 'system',
       action: 'automation',
-      message: `Engine startup cleanup: ${resetAssets.count} stuck asset(s) unblocked, ${failedRuns.count} zombie run(s) cleared`,
+      message: `Engine startup cleanup: ${resetAssets.count} stuck asset(s) unblocked, ${failedRuns.count + failedSeoRuns.count + failedLinkingRuns.count} zombie run(s) cleared`,
     });
   }
 
@@ -213,7 +295,7 @@ export async function startEngine(engineId, userId) {
 
   skippedArticleIds[engineId].clear();
 
-  // Only cleanup on first engine start (avoid redundant cleanup on each of 3 starts)
+  // Only cleanup on first engine start (avoid redundant cleanup on each start)
   const anyOtherRunning = (
     await prisma.pipelineEngine.count({
       where: { id: { not: engineId }, status: 'running' },
@@ -226,7 +308,13 @@ export async function startEngine(engineId, userId) {
   await prisma.pipelineEngine.upsert({
     where: { id: engineId },
     create: { id: engineId, status: 'running' },
-    update: { status: 'running', pauseReason: null, currentArticleId: null, currentStep: null },
+    update: {
+      status: 'running',
+      pauseReason: null,
+      currentArticleId: null,
+      currentBatchArticleIds: [],
+      currentStep: null,
+    },
   });
 
   await contentLog({
@@ -244,7 +332,7 @@ export async function startEngine(engineId, userId) {
 }
 
 /**
- * Pause a specific engine. Stops after the current article's step finishes.
+ * Pause a specific engine. Stops after the current article's (or batch's) step finishes.
  */
 export async function pauseEngine(engineId, userId, reason = 'manual') {
   assertValidEngine(engineId);
@@ -289,53 +377,42 @@ export async function updateEngineSettings(engineId, { delayMinutes }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Fire-and-forget: find the next article for this engine, run its step,
- * then schedule itself again (respecting delayMinutes rate limit).
+ * Fire-and-forget: find the next article (or, for batch-style engines, the
+ * next full batch) for this engine, run its step, then schedule itself again
+ * (respecting delayMinutes rate limit).
  */
 export async function processNext(engineId, userId) {
   const engine = await prisma.pipelineEngine.findUnique({ where: { id: engineId } });
   if (!engine || engine.status !== 'running') return;
 
-  // Concurrency guard: if currentArticleId is set, another processNext chain is
-  // actively mid-step for this engine. Bail to avoid double-processing.
-  // (startEngine clears currentArticleId before firing, so this only blocks
-  //  genuine concurrent calls, not stale values from a previous session.)
-  if (engine.currentArticleId) {
-    console.log(`[pipeline-engine/${engineId}] Article ${engine.currentArticleId} already in progress — exiting duplicate chain`);
+  // Concurrency guard: if a claim is already held, another processNext chain
+  // is actively mid-step for this engine. Bail to avoid double-processing.
+  // (startEngine clears claims before firing, so this only blocks genuine
+  //  concurrent calls, not stale values from a previous session.)
+  if (engine.currentArticleId || engine.currentBatchArticleIds?.length > 0) {
+    console.log(`[pipeline-engine/${engineId}] Already in progress — exiting duplicate chain`);
     return;
   }
 
   const config = ENGINE_CONFIGS[engineId];
   const skipList = [...skippedArticleIds[engineId]];
+  const where = buildQueueWhere(config, skipList);
 
+  if (config.batchSize) {
+    return processNextBatch(engineId, userId, config, where);
+  }
+  return processNextSingle(engineId, userId, config, where);
+}
+
+/** Single-article engines (research/writing/images/seo) — unchanged shape from before batching was added. */
+async function processNextSingle(engineId, userId, config, where) {
   const article = await prisma.article.findFirst({
-    where: {
-      status: { in: config.queueStatuses },
-      ...(skipList.length > 0 ? { id: { notIn: skipList } } : {}),
-    },
+    where,
     orderBy: [{ readinessDeadline: 'asc' }, { createdAt: 'asc' }],
   });
 
   if (!article) {
-    // Keep the engine running and poll again — new articles may arrive at any time.
-    // Touch the record so stall detection sees fresh activity.
-    await prisma.pipelineEngine.update({
-      where: { id: engineId },
-      data: { currentArticleId: null, currentStep: null },
-    }).catch(() => {});  // swallow — poll must always be scheduled
-
-    const skipped = skippedArticleIds[engineId].size;
-    console.log(
-      `[pipeline-engine/${engineId}] Queue empty${skipped > 0 ? ` (${skipped} skipped)` : ''} — will recheck in ${EMPTY_QUEUE_POLL_MS / 1000}s`,
-    );
-
-    setTimeout(
-      () =>
-        processNext(engineId, userId).catch((err) =>
-          console.error(`[pipeline-engine/${engineId}] poll error:`, err),
-        ),
-      EMPTY_QUEUE_POLL_MS,
-    );
+    await goIdleAndPoll(engineId, userId);
     return;
   }
 
@@ -359,50 +436,130 @@ export async function processNext(engineId, userId) {
     skippedArticleIds[engineId].add(article.id);
   }
 
-  const now = new Date();
+  await releaseClaimAndContinue(engineId, userId, {
+    logStatus,
+    release: { currentArticleId: null, currentStep: null },
+    logRows: [{ articleId: article.id, steps, status: logStatus, error, startedAt }],
+  });
+}
 
+/** Batch-style engines (kingsgate-linking) — strictly waits for a FULL batch before claiming. */
+async function processNextBatch(engineId, userId, config, where) {
+  const count = await prisma.article.count({ where });
+
+  if (count < config.batchSize) {
+    // Not enough eligible articles yet — behave exactly like an empty queue
+    // rather than ever processing a partial batch.
+    await goIdleAndPoll(engineId, userId);
+    return;
+  }
+
+  const articles = await prisma.article.findMany({
+    where,
+    orderBy: [{ readinessDeadline: 'asc' }, { createdAt: 'asc' }],
+    take: config.batchSize,
+  });
+  const articleIds = articles.map((a) => a.id);
+
+  // Claim the whole batch
+  await prisma.pipelineEngine.update({
+    where: { id: engineId },
+    data: { currentBatchArticleIds: articleIds, currentStep: config.step },
+  });
+
+  const startedAt = new Date();
+  let logStatus = 'completed';
+  let error = null;
+
+  try {
+    await processBatchStep(engineId, articleIds, userId);
+  } catch (err) {
+    logStatus = 'failed';
+    error = err?.message ?? 'Unknown error';
+    console.error(`[pipeline-engine/${engineId}] Batch [${articleIds.join(', ')}] failed:`, err);
+    articleIds.forEach((id) => skippedArticleIds[engineId].add(id));
+  }
+
+  // One PipelineEngineLog row per article in the batch (same startedAt/status)
+  // so the shared "History" tab stays useful without a schema change to make
+  // PipelineEngineLog.articleId nullable/plural.
+  await releaseClaimAndContinue(engineId, userId, {
+    logStatus,
+    release: { currentBatchArticleIds: [], currentStep: null },
+    logRows: articleIds.map((articleId) => ({
+      articleId,
+      steps: [config.step],
+      status: logStatus,
+      error,
+      startedAt,
+    })),
+  });
+}
+
+/** Shared "queue is empty" handling — keeps the engine running and polls again. */
+async function goIdleAndPoll(engineId, userId) {
+  // Touch the record so stall detection sees fresh activity.
+  await prisma.pipelineEngine.update({
+    where: { id: engineId },
+    data: { currentArticleId: null, currentBatchArticleIds: [], currentStep: null },
+  }).catch(() => {}); // swallow — poll must always be scheduled
+
+  const skipped = skippedArticleIds[engineId].size;
+  console.log(
+    `[pipeline-engine/${engineId}] Queue empty${skipped > 0 ? ` (${skipped} skipped)` : ''} — will recheck in ${EMPTY_QUEUE_POLL_MS / 1000}s`,
+  );
+
+  setTimeout(
+    () =>
+      processNext(engineId, userId).catch((err) =>
+        console.error(`[pipeline-engine/${engineId}] poll error:`, err),
+      ),
+    EMPTY_QUEUE_POLL_MS,
+  );
+}
+
+/**
+ * Shared tail of processNext, for both single and batch engines:
+ * release the claim, bump counters, write log row(s), then schedule the next
+ * run (respecting the rate-limit delay).
+ */
+async function releaseClaimAndContinue(engineId, userId, { logStatus, release, logRows }) {
   // Step 1 — Release the claim. This MUST succeed for the chain to continue.
-  // Use only fields that existed before the migration (id, status, currentArticleId,
-  // currentStep, totalProcessed, totalFailed) so this never fails due to a stale
-  // Prisma client that doesn't yet know about newer columns.
   try {
     await prisma.pipelineEngine.update({
       where: { id: engineId },
       data: {
-        currentArticleId: null,
-        currentStep: null,
+        ...release,
         ...(logStatus === 'completed'
           ? { totalProcessed: { increment: 1 } }
           : { totalFailed: { increment: 1 } }),
       },
     });
   } catch (releaseErr) {
-    console.error(`[pipeline-engine/${engineId}] CRITICAL: failed to release article claim:`, releaseErr);
+    console.error(`[pipeline-engine/${engineId}] CRITICAL: failed to release claim:`, releaseErr);
     // Last resort — try bare minimum without counters
     await prisma.pipelineEngine.update({
       where: { id: engineId },
-      data: { currentArticleId: null, currentStep: null },
+      data: release,
     }).catch(() => {});
   }
 
-  // Step 2 — Update lastJobCompletedAt (best-effort, new column may not exist on old client)
+  const now = new Date();
+
+  // Step 2 — Update lastJobCompletedAt (best-effort)
   prisma.pipelineEngine.update({
     where: { id: engineId },
     data: { lastJobCompletedAt: now },
   }).catch(() => {});
 
-  // Step 3 — Write log entry (best-effort)
-  prisma.pipelineEngineLog.create({
-    data: {
-      engineId,
-      articleId: article.id,
-      steps,
-      status: logStatus,
-      error,
-      startedAt,
-      completedAt: now,
-    },
-  }).catch((logErr) =>
+  // Step 3 — Write log entries (best-effort)
+  Promise.all(
+    logRows.map((row) =>
+      prisma.pipelineEngineLog.create({
+        data: { engineId, ...row, completedAt: now },
+      }),
+    ),
+  ).catch((logErr) =>
     console.error(`[pipeline-engine/${engineId}] Log creation failed (non-fatal):`, logErr),
   );
 
@@ -439,8 +596,19 @@ async function processArticleStep(engineId, articleId, userId, steps) {
       return processWritingStep(articleId, userId, steps);
     case 'images':
       return processAssetsStep(articleId, userId, steps);
+    case 'seo':
+      return processSeoStep(articleId, userId, steps);
     default:
-      throw new Error(`Unknown engine: ${engineId}`);
+      throw new Error(`Unknown single-article engine: ${engineId}`);
+  }
+}
+
+async function processBatchStep(engineId, articleIds, userId) {
+  switch (engineId) {
+    case 'kingsgate-linking':
+      return processKingsgateLinkingStep(articleIds, userId);
+    default:
+      throw new Error(`Unknown batch engine: ${engineId}`);
   }
 }
 
@@ -495,4 +663,25 @@ async function processAssetsStep(articleId, userId, steps) {
       `Assets incomplete: ${result.failed ?? 0}/${result.total ?? 0} image(s) failed — article skipped until engine restarts`,
     );
   }
+}
+
+async function processSeoStep(articleId, userId, steps) {
+  await prisma.pipelineEngine.update({
+    where: { id: 'seo' },
+    data: { currentStep: 'seo' },
+  });
+
+  const result = await runSeoOptimization(articleId, userId);
+  if (!result.ok) throw new Error(result.error ?? 'SEO optimization failed');
+  steps.push('seo');
+}
+
+async function processKingsgateLinkingStep(articleIds, userId) {
+  await prisma.pipelineEngine.update({
+    where: { id: 'kingsgate-linking' },
+    data: { currentStep: 'kingsgate-linking' },
+  });
+
+  const result = await runKingsgateLinkingBatch(articleIds, userId);
+  if (!result.ok) throw new Error(result.error ?? 'Kingsgate linking batch failed');
 }

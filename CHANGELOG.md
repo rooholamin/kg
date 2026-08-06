@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.4.0] — SEO Pipeline: On-Page Optimization + Selective Kingsgate Linking — 2026-08-06
+
+### Added
+
+- **Two new Editor in Chief engines — `seo` and `kingsgate-linking`.** Every article that reaches `post_publish` automatically flows into the `seo` engine (per-article on-page SEO via a new Claude Managed Agent), then into `kingsgate-linking` once optimized (batch-of-10 comparative review that inserts AT MOST ONE natural backlink to a matching kingsgateluxuryhomes.com post, per batch). `services/pipeline-engine.service.js` generalized to support both a per-engine `extraWhere` filter (beyond `status`) and batch-style claiming (`PipelineEngine.currentBatchArticleIds`) alongside the existing single-article engines — the linking engine strictly waits for a full batch of 10 to accumulate rather than ever processing a partial one.
+- **`Article.seoOptimized`/`seoOptimizedAt`, `Article.linkReviewed`/`linkReviewedAt`, `Article.kingsgateLinkUrl`** — booleans, not new `ArticleStatus` values, so `post_publish` keeps its existing meaning everywhere else in the app (Social/Video pipeline eligibility, readiness stats).
+- **`SeoOptimizationRun`** — per-article on-page audit trail (agent session id, before/after title/meta snapshot, change summary, status/error).
+- **`KingsgateLinkingBatchRun`** — per-batch audit trail (all article ids considered, which one — if any — was selected, matched feature, linked post URL, agent's reasoning).
+- **`SeoSettings`** — agent/environment/vault IDs for both new Managed Agents (mirrors `SocialSettings`/`VideoSettings`).
+- **`app/api/mcp/seo`** — a small, hand-rolled stateless Streamable HTTP MCP server (JSON-RPC 2.0, `static_bearer` vault auth) exposing exactly two tools: `update_article` (writes to both the KGHub DB and the live WordPress post) and `get_kingsgate_posts_for_feature` (deterministic, exact-id lookup against kingsgateluxuryhomes.com's `features` taxonomy — posts only, never the `project` custom post type).
+- **`seo-agent.yaml`** — on-page SEO only (meta description, title clarity, heading hierarchy, keyword placement, AI-search passage citability); no knowledge of Kingsgate or linking at all.
+- **`kingsgate-linking-agent.yaml`** — reviews a full batch of 10 already-optimized articles together and picks at most one winner; comparative selection by design, so the link rate is capped structurally rather than by a per-article threshold.
+- **`scripts/sync-kingsgate-features.mjs`** — fetches the ~300 kingsgateluxuryhomes.com `features` taxonomy terms into `data/kingsgate-features.json`, embedded into the linking agent's task message each batch (not re-fetched live, and not baked into the agent definition — rerun manually if Kingsgate adds terms).
+- **`scripts/create-mcp-vault.mjs`** — ops utility to register the MCP server's `static_bearer` credential in an Anthropic vault.
+- **`/dashboard/seo`** — replaced the Milestone-1 mock shell with live data: SEO/link status per article, recent on-page runs, recent linking batches (which articles were considered, which one won, why).
+- **Article detail page — SEO tab** — replaced the mock stub with real `SeoOptimizationRun`/`KingsgateLinkingBatchRun` data (status badges, change summary, link outcome + reasoning); header now shows "SEO optimized" / "Kingsgate linked" badges inline.
+- **`/dashboard/pipeline-engine`** — 2 new `EngineCard`s (SEO, Kingsgate Linking); engine queue counts now computed per-engine server-side (supports the new boolean-flag-based queues, not just `Article.status` grouping).
+
+### Changed
+
+- **`app/api/pipeline-engine/[type]/start`** — only `research`/`writing`/`images` require n8n to be reachable before starting; `seo`/`kingsgate-linking` talk to Anthropic Managed Agents exclusively and are unaffected by n8n's health.
+
+---
+
 ## [1.3.1] — Articles Bulk Actions — 2026-06-25
 
 ### Added

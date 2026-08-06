@@ -1,0 +1,928 @@
+{
+  "source": "https://kingsgateluxuryhomes.com/wp-json/wp/v2/features",
+  "fetchedAt": "2026-08-06T05:45:13.740Z",
+  "totalTerms": 299,
+  "usedTerms": 184,
+  "features": [
+    {
+      "id": 80,
+      "name": "Wide-Plank Hardwood Floors",
+      "count": 78
+    },
+    {
+      "id": 194,
+      "name": "Walk-In Glass Shower",
+      "count": 76
+    },
+    {
+      "id": 106,
+      "name": "Spa-Inspired Ensuite",
+      "count": 76
+    },
+    {
+      "id": 113,
+      "name": "Double Vanity",
+      "count": 74
+    },
+    {
+      "id": 151,
+      "name": "Coffered Tray Ceilings",
+      "count": 72
+    },
+    {
+      "id": 121,
+      "name": "Integrated Recessed Lighting",
+      "count": 72
+    },
+    {
+      "id": 92,
+      "name": "Gourmet Kitchen",
+      "count": 70
+    },
+    {
+      "id": 107,
+      "name": "Freestanding Soaker Tub",
+      "count": 68
+    },
+    {
+      "id": 95,
+      "name": "Professional Grade Appliances",
+      "count": 68
+    },
+    {
+      "id": 206,
+      "name": "Skylight",
+      "count": 64
+    },
+    {
+      "id": 115,
+      "name": "Fully Finished Basement",
+      "count": 62
+    },
+    {
+      "id": 90,
+      "name": "Polished Chrome Fixtures",
+      "count": 62
+    },
+    {
+      "id": 167,
+      "name": "Built-In Shelving with LED Lighting",
+      "count": 62
+    },
+    {
+      "id": 99,
+      "name": "Undermount Sink",
+      "count": 60
+    },
+    {
+      "id": 74,
+      "name": "Grand Foyer",
+      "count": 58
+    },
+    {
+      "id": 146,
+      "name": "Rear Deck",
+      "count": 58
+    },
+    {
+      "id": 101,
+      "name": "Primary Suite Retreat",
+      "count": 58
+    },
+    {
+      "id": 64,
+      "name": "Interlock Driveway",
+      "count": 58
+    },
+    {
+      "id": 119,
+      "name": "Recreation Room",
+      "count": 58
+    },
+    {
+      "id": 131,
+      "name": "North York Location",
+      "count": 56
+    },
+    {
+      "id": 166,
+      "name": "Linear Fireplace Insert",
+      "count": 56
+    },
+    {
+      "id": 171,
+      "name": "Marble Slab Backsplash",
+      "count": 54
+    },
+    {
+      "id": 200,
+      "name": "Walkout Basement",
+      "count": 54
+    },
+    {
+      "id": 125,
+      "name": "Under-Cabinet Lighting",
+      "count": 54
+    },
+    {
+      "id": 79,
+      "name": "Built-In Cabinetry",
+      "count": 54
+    },
+    {
+      "id": 89,
+      "name": "Marble Surfaces",
+      "count": 52
+    },
+    {
+      "id": 185,
+      "name": "Open-Tread Oak Staircase",
+      "count": 52
+    },
+    {
+      "id": 114,
+      "name": "Multiple Ensuites",
+      "count": 52
+    },
+    {
+      "id": 195,
+      "name": "Rainfall Shower Head",
+      "count": 52
+    },
+    {
+      "id": 98,
+      "name": "Stone Countertops",
+      "count": 52
+    },
+    {
+      "id": 153,
+      "name": "Crown Moulding",
+      "count": 52
+    },
+    {
+      "id": 59,
+      "name": "Natural Stone Exterior",
+      "count": 52
+    },
+    {
+      "id": 179,
+      "name": "Stainless Steel Wall Oven",
+      "count": 50
+    },
+    {
+      "id": 105,
+      "name": "Feature Accent Wall",
+      "count": 50
+    },
+    {
+      "id": 189,
+      "name": "Walk-In Closet",
+      "count": 50
+    },
+    {
+      "id": 162,
+      "name": "Open-Concept Main Floor",
+      "count": 50
+    },
+    {
+      "id": 154,
+      "name": "Wainscoting Panel Moulding",
+      "count": 48
+    },
+    {
+      "id": 152,
+      "name": "LED Cove Lighting",
+      "count": 48
+    },
+    {
+      "id": 103,
+      "name": "Custom Closet System",
+      "count": 46
+    },
+    {
+      "id": 141,
+      "name": "Black-Framed Windows",
+      "count": 46
+    },
+    {
+      "id": 78,
+      "name": "Glass Railings",
+      "count": 46
+    },
+    {
+      "id": 156,
+      "name": "Main Floor Home Office",
+      "count": 46
+    },
+    {
+      "id": 181,
+      "name": "Main Floor Powder Room",
+      "count": 46
+    },
+    {
+      "id": 198,
+      "name": "Upper Floor Laundry",
+      "count": 44
+    },
+    {
+      "id": 73,
+      "name": "Open Concept Floor Plan",
+      "count": 44
+    },
+    {
+      "id": 94,
+      "name": "Custom Kitchen Cabinetry",
+      "count": 44
+    },
+    {
+      "id": 81,
+      "name": "Large-Format Porcelain Tile",
+      "count": 44
+    },
+    {
+      "id": 149,
+      "name": "Marble Foyer Floors",
+      "count": 44
+    },
+    {
+      "id": 145,
+      "name": "Double Garage",
+      "count": 42
+    },
+    {
+      "id": 116,
+      "name": "Basement Wet Bar",
+      "count": 42
+    },
+    {
+      "id": 201,
+      "name": "Polished Tile Basement Floors",
+      "count": 42
+    },
+    {
+      "id": 168,
+      "name": "Walnut Wood Accents",
+      "count": 40
+    },
+    {
+      "id": 139,
+      "name": "Charcoal Shingle Roof",
+      "count": 40
+    },
+    {
+      "id": 160,
+      "name": "Formal Dining Room",
+      "count": 40
+    },
+    {
+      "id": 96,
+      "name": "Integrated Refrigerator",
+      "count": 38
+    },
+    {
+      "id": 144,
+      "name": "Stone Paver Driveway",
+      "count": 36
+    },
+    {
+      "id": 170,
+      "name": "Glass Cabinet Inserts",
+      "count": 36
+    },
+    {
+      "id": 327,
+      "name": "Crystal Chandelier",
+      "count": 36
+    },
+    {
+      "id": 93,
+      "name": "Waterfall Island",
+      "count": 34
+    },
+    {
+      "id": 72,
+      "name": "Backyard Entertainment Area",
+      "count": 34
+    },
+    {
+      "id": 100,
+      "name": "Custom Range Hood",
+      "count": 34
+    },
+    {
+      "id": 183,
+      "name": "Floating Vanity",
+      "count": 34
+    },
+    {
+      "id": 63,
+      "name": "Professional Landscaping",
+      "count": 34
+    },
+    {
+      "id": 65,
+      "name": "Stone Hardscaping",
+      "count": 32
+    },
+    {
+      "id": 169,
+      "name": "White Shaker Cabinetry",
+      "count": 32
+    },
+    {
+      "id": 140,
+      "name": "Arched Windows",
+      "count": 32
+    },
+    {
+      "id": 165,
+      "name": "Dark Marble Fireplace",
+      "count": 30
+    },
+    {
+      "id": 148,
+      "name": "Ornate Black Iron Balcony Railing",
+      "count": 30
+    },
+    {
+      "id": 56,
+      "name": "Covered Entry Portico",
+      "count": 30
+    },
+    {
+      "id": 199,
+      "name": "Stacked Washer Dryer",
+      "count": 28
+    },
+    {
+      "id": 51,
+      "name": "Two-Storey Home",
+      "count": 28
+    },
+    {
+      "id": 85,
+      "name": "Book-Matched Stone Veining",
+      "count": 28
+    },
+    {
+      "id": 182,
+      "name": "Textured Wallpaper",
+      "count": 28
+    },
+    {
+      "id": 180,
+      "name": "Beverage Fridge",
+      "count": 28
+    },
+    {
+      "id": 138,
+      "name": "Limestone Exterior Cladding",
+      "count": 26
+    },
+    {
+      "id": 205,
+      "name": "Dormer Windows",
+      "count": 26
+    },
+    {
+      "id": 86,
+      "name": "Custom Millwork",
+      "count": 26
+    },
+    {
+      "id": 54,
+      "name": "Floor-to-Ceiling Windows",
+      "count": 26
+    },
+    {
+      "id": 97,
+      "name": "Butler's Pantry",
+      "count": 26
+    },
+    {
+      "id": 174,
+      "name": "Dark Walnut Kitchen Island",
+      "count": 24
+    },
+    {
+      "id": 87,
+      "name": "Wood Veneer Cabinetry",
+      "count": 24
+    },
+    {
+      "id": 202,
+      "name": "Multiple Ensuite Bedrooms",
+      "count": 24
+    },
+    {
+      "id": 186,
+      "name": "Black Iron Balusters",
+      "count": 24
+    },
+    {
+      "id": 117,
+      "name": "Wine Storage",
+      "count": 24
+    },
+    {
+      "id": 329,
+      "name": "Bay Window Sitting Area",
+      "count": 22
+    },
+    {
+      "id": 71,
+      "name": "Privacy Fencing",
+      "count": 22
+    },
+    {
+      "id": 75,
+      "name": "Soaring Ceilings",
+      "count": 22
+    },
+    {
+      "id": 330,
+      "name": "Gas Range with Pot Filler",
+      "count": 22
+    },
+    {
+      "id": 172,
+      "name": "Marble Countertops",
+      "count": 22
+    },
+    {
+      "id": 341,
+      "name": "White Marble Fireplace Surround",
+      "count": 22
+    },
+    {
+      "id": 122,
+      "name": "LED Lighting Throughout",
+      "count": 22
+    },
+    {
+      "id": 52,
+      "name": "Stone Facade",
+      "count": 22
+    },
+    {
+      "id": 124,
+      "name": "Exterior Accent Lighting",
+      "count": 22
+    },
+    {
+      "id": 102,
+      "name": "Walk-In Dressing Room",
+      "count": 20
+    },
+    {
+      "id": 67,
+      "name": "Outdoor Living Area",
+      "count": 20
+    },
+    {
+      "id": 57,
+      "name": "Integrated Double Car Garage",
+      "count": 20
+    },
+    {
+      "id": 173,
+      "name": "Waterfall Island Countertop",
+      "count": 20
+    },
+    {
+      "id": 62,
+      "name": "Exterior Glass Panels",
+      "count": 20
+    },
+    {
+      "id": 84,
+      "name": "Natural Stone Flooring",
+      "count": 20
+    },
+    {
+      "id": 49,
+      "name": "Contemporary Architecture",
+      "count": 20
+    },
+    {
+      "id": 204,
+      "name": "Classical Facade Detailing",
+      "count": 20
+    },
+    {
+      "id": 319,
+      "name": "Mansard Roof",
+      "count": 20
+    },
+    {
+      "id": 203,
+      "name": "White Stucco Exterior",
+      "count": 18
+    },
+    {
+      "id": 188,
+      "name": "Primary Bedroom Balcony",
+      "count": 18
+    },
+    {
+      "id": 53,
+      "name": "Custom Stone Cladding",
+      "count": 18
+    },
+    {
+      "id": 164,
+      "name": "Built-In Ceiling Speakers",
+      "count": 16
+    },
+    {
+      "id": 176,
+      "name": "Glass Globe Pendant Lights",
+      "count": 16
+    },
+    {
+      "id": 321,
+      "name": "Second Kitchen",
+      "count": 16
+    },
+    {
+      "id": 77,
+      "name": "Floating Staircase",
+      "count": 16
+    },
+    {
+      "id": 316,
+      "name": "Vessel Sinks",
+      "count": 16
+    },
+    {
+      "id": 317,
+      "name": "LED Staircase Lighting",
+      "count": 16
+    },
+    {
+      "id": 58,
+      "name": "Flat Roof Sections",
+      "count": 14
+    },
+    {
+      "id": 137,
+      "name": "French-Inspired Architecture",
+      "count": 14
+    },
+    {
+      "id": 184,
+      "name": "Dark Marble Vanity Top",
+      "count": 14
+    },
+    {
+      "id": 112,
+      "name": "Backlit Mirrors",
+      "count": 14
+    },
+    {
+      "id": 196,
+      "name": "Wall-Mounted Toilet",
+      "count": 14
+    },
+    {
+      "id": 178,
+      "name": "Matte Black Fixtures",
+      "count": 14
+    },
+    {
+      "id": 191,
+      "name": "Mirrored Closet Doors",
+      "count": 12
+    },
+    {
+      "id": 322,
+      "name": "Leaded Glass Entry Door",
+      "count": 12
+    },
+    {
+      "id": 147,
+      "name": "Private Balcony",
+      "count": 12
+    },
+    {
+      "id": 61,
+      "name": "Metal Cladding Accents",
+      "count": 12
+    },
+    {
+      "id": 340,
+      "name": "Mosaic Tile Backsplash",
+      "count": 10
+    },
+    {
+      "id": 192,
+      "name": "Matte Black Bathroom Fixtures",
+      "count": 10
+    },
+    {
+      "id": 193,
+      "name": "Candelabra Wall Sconces",
+      "count": 10
+    },
+    {
+      "id": 161,
+      "name": "Brass Chandelier",
+      "count": 10
+    },
+    {
+      "id": 335,
+      "name": "Cedar Sauna",
+      "count": 10
+    },
+    {
+      "id": 175,
+      "name": "Walnut Range Hood",
+      "count": 10
+    },
+    {
+      "id": 60,
+      "name": "Brick Masonry",
+      "count": 10
+    },
+    {
+      "id": 55,
+      "name": "Oversized Glazing",
+      "count": 10
+    },
+    {
+      "id": 109,
+      "name": "Dual Rain Heads",
+      "count": 8
+    },
+    {
+      "id": 320,
+      "name": "Curved Staircase",
+      "count": 8
+    },
+    {
+      "id": 333,
+      "name": "In-Home Elevator",
+      "count": 8
+    },
+    {
+      "id": 50,
+      "name": "Modern Transitional Style",
+      "count": 8
+    },
+    {
+      "id": 337,
+      "name": "Two-Storey Living Room",
+      "count": 8
+    },
+    {
+      "id": 143,
+      "name": "Decorative Scrollwork Glass Door",
+      "count": 8
+    },
+    {
+      "id": 120,
+      "name": "In-Slab Radiant Heating",
+      "count": 8
+    },
+    {
+      "id": 111,
+      "name": "Heated Bathroom Floors",
+      "count": 8
+    },
+    {
+      "id": 197,
+      "name": "LED Illuminated Mirror",
+      "count": 6
+    },
+    {
+      "id": 336,
+      "name": "Tudor-Inspired Architecture",
+      "count": 6
+    },
+    {
+      "id": 91,
+      "name": "Integrated Handles",
+      "count": 6
+    },
+    {
+      "id": 108,
+      "name": "Curbless Walk-In Shower",
+      "count": 6
+    },
+    {
+      "id": 68,
+      "name": "Inground Pool",
+      "count": 6
+    },
+    {
+      "id": 163,
+      "name": "Ornate Plaster Ceiling",
+      "count": 6
+    },
+    {
+      "id": 326,
+      "name": "Cast Limestone Fireplace Surround",
+      "count": 6
+    },
+    {
+      "id": 159,
+      "name": "Geometric Brass Pendant Light",
+      "count": 6
+    },
+    {
+      "id": 158,
+      "name": "Brass Hardware",
+      "count": 6
+    },
+    {
+      "id": 157,
+      "name": "Grey Built-In Cabinetry",
+      "count": 6
+    },
+    {
+      "id": 150,
+      "name": "Marble Floor Inlay",
+      "count": 6
+    },
+    {
+      "id": 142,
+      "name": "Ornate Wrought Iron Front Door",
+      "count": 6
+    },
+    {
+      "id": 318,
+      "name": "Teal Accent Tile",
+      "count": 6
+    },
+    {
+      "id": 187,
+      "name": "Smart Home System",
+      "count": 6
+    },
+    {
+      "id": 88,
+      "name": "Matte Lacquer Cabinetry",
+      "count": 4
+    },
+    {
+      "id": 83,
+      "name": "Heated Tile Floors",
+      "count": 4
+    },
+    {
+      "id": 82,
+      "name": "Herringbone Hardwood Inlay",
+      "count": 4
+    },
+    {
+      "id": 323,
+      "name": "Wrought Iron Staircase Balusters",
+      "count": 4
+    },
+    {
+      "id": 110,
+      "name": "Steam Shower",
+      "count": 4
+    },
+    {
+      "id": 118,
+      "name": "Home Theatre",
+      "count": 4
+    },
+    {
+      "id": 190,
+      "name": "Walnut Closet Paneling",
+      "count": 4
+    },
+    {
+      "id": 177,
+      "name": "Induction Cooktop",
+      "count": 4
+    },
+    {
+      "id": 342,
+      "name": "Mosaic Tile Shower Ceiling",
+      "count": 4
+    },
+    {
+      "id": 126,
+      "name": "Smart Home Automation",
+      "count": 4
+    },
+    {
+      "id": 338,
+      "name": "Herringbone Tile Floor",
+      "count": 2
+    },
+    {
+      "id": 207,
+      "name": "Home Gym",
+      "count": 2
+    },
+    {
+      "id": 324,
+      "name": "Circular Plaster Ceiling Dome",
+      "count": 2
+    },
+    {
+      "id": 345,
+      "name": "Reeded Oak Millwork",
+      "count": 2
+    },
+    {
+      "id": 70,
+      "name": "Integrated Outdoor Lighting",
+      "count": 2
+    },
+    {
+      "id": 76,
+      "name": "10-Foot Ceilings",
+      "count": 2
+    },
+    {
+      "id": 104,
+      "name": "Private Bedroom Terrace",
+      "count": 2
+    },
+    {
+      "id": 346,
+      "name": "Black Marble Exterior Feature Wall",
+      "count": 2
+    },
+    {
+      "id": 347,
+      "name": "Chevron Tile Shower Surround",
+      "count": 2
+    },
+    {
+      "id": 155,
+      "name": "LED-Lit Architectural Columns",
+      "count": 2
+    },
+    {
+      "id": 69,
+      "name": "Pool Cabana",
+      "count": 2
+    },
+    {
+      "id": 328,
+      "name": "Venetian Mirror Accents",
+      "count": 2
+    },
+    {
+      "id": 339,
+      "name": "Octagonal Skylight",
+      "count": 2
+    },
+    {
+      "id": 127,
+      "name": "Multi-Zone Climate Control",
+      "count": 2
+    },
+    {
+      "id": 128,
+      "name": "Integrated Sound System",
+      "count": 2
+    },
+    {
+      "id": 334,
+      "name": "Leaded-Glass Skylight",
+      "count": 2
+    },
+    {
+      "id": 123,
+      "name": "Automated Lighting Control",
+      "count": 2
+    },
+    {
+      "id": 332,
+      "name": "Gold Mosaic Tile Shower",
+      "count": 2
+    },
+    {
+      "id": 325,
+      "name": "Oval Skylight Dome",
+      "count": 2
+    },
+    {
+      "id": 343,
+      "name": "Mudroom",
+      "count": 2
+    },
+    {
+      "id": 66,
+      "name": "Covered Loggia",
+      "count": 2
+    },
+    {
+      "id": 331,
+      "name": "Geometric Screen Columns",
+      "count": 2
+    },
+    {
+      "id": 344,
+      "name": "Pickering Location",
+      "count": 1
+    }
+  ]
+}

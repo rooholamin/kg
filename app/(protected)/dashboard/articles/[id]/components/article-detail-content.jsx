@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Container } from '@/components/common/container';
-import { MilestoneNote } from '@/components/custom/milestone-note';
 import { ReadinessBadge } from '@/components/custom/readiness-badge';
 import { PipelineStageBadge } from '@/components/custom/pipeline-stage-badge';
 import { PIPELINE_STAGES } from '@/app/(protected)/dashboard/_mock';
@@ -1255,6 +1254,165 @@ function AutomationRunsTab({ runs }) {
 }
 
 // ---------------------------------------------------------------------------
+// SEO tab — on-page SEO run (seo engine) + Kingsgate linking batch outcome
+// (kingsgate-linking engine). Two independent engines, shown together since
+// they're both "SEO" from an editor's point of view.
+// ---------------------------------------------------------------------------
+
+/** Small header badges — visible without opening the SEO tab. */
+function SeoStatusBadges({ article }) {
+  return (
+    <>
+      {article.seoOptimized && (
+        <Badge variant="success" appearance="light" className="gap-1">
+          <CheckCheck className="size-3.5" />
+          SEO optimized
+        </Badge>
+      )}
+      {article.kingsgateLinkUrl && (
+        <Badge variant="outline" appearance="light" className="gap-1">
+          <ExternalLink className="size-3.5" />
+          Kingsgate linked
+        </Badge>
+      )}
+    </>
+  );
+}
+
+function SeoTab({ article, seoRun, linkingBatchRun }) {
+  const seoCfg = seoRun ? (RUN_STATUS_CFG[seoRun.status] ?? RUN_STATUS_CFG.running) : null;
+  const linkCfg = linkingBatchRun ? (RUN_STATUS_CFG[linkingBatchRun.status] ?? RUN_STATUS_CFG.running) : null;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2">
+            <span>On-page SEO</span>
+            {seoCfg ? (
+              <Badge
+                variant="outline"
+                className={cn(
+                  'border-transparent text-xs',
+                  seoRun.status === 'completed' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                  seoRun.status === 'running' && 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
+                  seoRun.status === 'failed' && 'bg-rose-500/10 text-rose-700 dark:text-rose-300',
+                )}
+              >
+                {seoCfg.label}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" size="sm" appearance="light">
+                Not run yet
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <div className="flex justify-between max-w-sm">
+            <span className="text-muted-foreground">Score</span>
+            <span>{article.seoScore != null ? article.seoScore : '—'}</span>
+          </div>
+          <div className="flex justify-between max-w-sm">
+            <span className="text-muted-foreground">Last optimized</span>
+            <span>{article.seoOptimizedAt ? formatDateTime(article.seoOptimizedAt) : '—'}</span>
+          </div>
+          {!seoRun && (
+            <p className="text-xs text-muted-foreground pt-1">
+              This article hasn&apos;t been through the SEO engine yet — it runs automatically once an article reaches
+              post_publish (start it from Editor in Chief if it&apos;s idle).
+            </p>
+          )}
+          {seoRun?.status === 'failed' && seoRun.errorMessage && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-400">
+              <AlertTriangle className="size-3.5 mt-px shrink-0" aria-hidden />
+              {seoRun.errorMessage}
+            </div>
+          )}
+          {seoRun?.changesSummary && (
+            <div className="mt-2 rounded-md bg-muted/40 border border-border/50 px-3 py-2">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                What the agent changed
+              </p>
+              <p className="text-xs text-foreground/90 whitespace-pre-wrap">{seoRun.changesSummary}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2">
+            <span>Kingsgate link</span>
+            {linkCfg ? (
+              <Badge
+                variant="outline"
+                className={cn(
+                  'border-transparent text-xs',
+                  linkingBatchRun.status === 'completed' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                  linkingBatchRun.status === 'running' && 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
+                  linkingBatchRun.status === 'failed' && 'bg-rose-500/10 text-rose-700 dark:text-rose-300',
+                )}
+              >
+                {linkCfg.label}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" size="sm" appearance="light">
+                Not reviewed yet
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {article.kingsgateLinkUrl ? (
+            <div className="flex justify-between max-w-sm items-center">
+              <span className="text-muted-foreground">Linked to</span>
+              <a
+                href={article.kingsgateLinkUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary hover:underline flex items-center gap-1"
+              >
+                {article.kingsgateLinkUrl.length > 40
+                  ? `${article.kingsgateLinkUrl.slice(0, 40)}…`
+                  : article.kingsgateLinkUrl}
+                <ExternalLink className="size-3" aria-hidden />
+              </a>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {article.linkReviewed
+                ? "Reviewed by the Kingsgate Linking engine, but not selected — most articles aren't, by design."
+                : "Not reviewed yet — this happens in a batch of 10 articles, after the SEO engine has finished with this one."}
+            </p>
+          )}
+          {linkingBatchRun?.matchedFeature && (
+            <div className="flex justify-between max-w-sm">
+              <span className="text-muted-foreground">Matched feature</span>
+              <span>{linkingBatchRun.matchedFeature}</span>
+            </div>
+          )}
+          {linkingBatchRun?.status === 'failed' && linkingBatchRun.errorMessage && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-400">
+              <AlertTriangle className="size-3.5 mt-px shrink-0" aria-hidden />
+              {linkingBatchRun.errorMessage}
+            </div>
+          )}
+          {linkingBatchRun?.reasoning && (
+            <div className="mt-2 rounded-md bg-muted/40 border border-border/50 px-3 py-2">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                Agent&apos;s reasoning (batch of {linkingBatchRun.articleIds?.length ?? '—'})
+              </p>
+              <p className="text-xs text-foreground/90 whitespace-pre-wrap">{linkingBatchRun.reasoning}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Asset gallery
 // ---------------------------------------------------------------------------
 
@@ -1789,6 +1947,8 @@ export function ArticleDetailContent({
   research = null,
   assetRequests = [],
   automationRuns = [],
+  seoRun = null,
+  linkingBatchRun = null,
 }) {
   const router = useRouter();
   const [previewVersion, setPreviewVersion] = useState(null);
@@ -2051,6 +2211,7 @@ export function ArticleDetailContent({
                     Editor&apos;s choice
                   </Badge>
                 )}
+                <SeoStatusBadges article={article} />
               </div>
               <h1 className="text-2xl font-semibold tracking-tight text-foreground drop-shadow-sm">
                 {article.title}
@@ -2068,6 +2229,7 @@ export function ArticleDetailContent({
                   Editor&apos;s choice
                 </Badge>
               )}
+              <SeoStatusBadges article={article} />
             </div>
             <h1 className="text-2xl font-semibold tracking-tight">{article.title}</h1>
           </div>
@@ -2098,7 +2260,7 @@ export function ArticleDetailContent({
             ['assets', `Assets${localAssets.length ? ` (${localAssets.length})` : ''}`],
             ['automation', `Runs${automationRuns.length ? ` (${automationRuns.length})` : ''}`],
             ['pipeline', 'Pipeline'],
-            ['seo', 'SEO'],
+            ['seo', `SEO${article.seoOptimized ? ' ✓' : ''}${article.kingsgateLinkUrl ? ' 🔗' : ''}`],
             ['social', 'Social'],
             ['versions', 'Versions'],
             ['activity', 'Activity'],
@@ -2361,24 +2523,7 @@ export function ArticleDetailContent({
 
         {/* SEO */}
         <TabsContent value="seo" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>SEO</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between max-w-sm">
-                <span className="text-muted-foreground">Score</span>
-                <span>{article.seoScore != null ? article.seoScore : '—'}</span>
-              </div>
-              <div className="flex justify-between max-w-sm">
-                <span className="text-muted-foreground">Internal links</span>
-                <span>— (M10)</span>
-              </div>
-            </CardContent>
-          </Card>
-          <MilestoneNote className="mt-4" milestone={10}>
-            Rule-based SEO checks and link suggestions in Milestone 10.
-          </MilestoneNote>
+          <SeoTab article={article} seoRun={seoRun} linkingBatchRun={linkingBatchRun} />
         </TabsContent>
 
         {/* Versions */}
