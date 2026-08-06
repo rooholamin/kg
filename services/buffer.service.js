@@ -180,7 +180,7 @@ export async function schedulePost({ postId, settings }) {
     const input = {
       channelId,
       text: filledCaption,
-      schedulingType: post.platform === 'instagram_story' ? 'notification' : 'automatic',
+      schedulingType: post.platform === 'instagram_story' ? 'automatic' : 'automatic',
       assets: [],
     };
 
