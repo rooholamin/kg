@@ -16,7 +16,13 @@
  * by the video pipeline, just backed by a shared secret instead of OAuth.
  */
 import { NextResponse } from 'next/server';
-import { updateArticleTool, getKingsgatePostsForFeatureTool } from '@/services/mcp-seo-tools.service';
+import {
+  updateArticleTool,
+  getKingsgatePostsForFeatureTool,
+  getNextPrivatePostTool,
+  deletePostWithMediaTool,
+  publishNewsPostTool,
+} from '@/services/mcp-seo-tools.service';
 
 const PROTOCOL_VERSION = '2025-06-18';
 
@@ -61,6 +67,45 @@ const TOOLS = [
       required: ['featureId'],
     },
   },
+  {
+    name: 'get_next_private_post',
+    description:
+      'Finds the newest private-status post on insights.kghub.ca (the news-crawler queue - private status is used exclusively for this). Returns the post (id, title, cleaned body HTML, an extracted sourceUrl for citation, and a featuredImageUrl if one exists) plus, for all 7 KG Hub sections, their classification blurb and full writer persona. Returns found:false if the queue is currently empty - that is a normal, expected outcome, not an error.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'delete_post_with_media',
+    description:
+      "Permanently deletes a post AND its attached media from insights.kghub.ca. Use ONLY when a post from get_next_private_post does not genuinely fit any of the 7 sections. This is irreversible - there is no undo and nothing is logged.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        postId: { type: 'number', description: 'The WordPress post id, from get_next_private_post.' },
+      },
+      required: ['postId'],
+    },
+  },
+  {
+    name: 'publish_news_post',
+    description:
+      'Publishes the rewritten article: updates the WordPress post with the final content, sets authorship to the matched section\'s own writer persona, and marks it published. Use ONLY after deciding the post genuinely fits one specific section.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        postId: { type: 'number', description: 'The WordPress post id, from get_next_private_post.' },
+        sectionSlug: {
+          type: 'string',
+          description: 'One of the exact section slugs from get_next_private_post\'s sections list (e.g. "kg-invest"). Never invent one.',
+        },
+        title: { type: 'string', description: 'The rewritten headline (not a copy of the original title).' },
+        contentHtml: {
+          type: 'string',
+          description: 'The FULL rewritten article body as Gutenberg block HTML - the complete post content, not a fragment.',
+        },
+      },
+      required: ['postId', 'sectionSlug', 'contentHtml'],
+    },
+  },
 ];
 
 async function callTool(name, args) {
@@ -69,6 +114,12 @@ async function callTool(name, args) {
       return updateArticleTool(args ?? {});
     case 'get_kingsgate_posts_for_feature':
       return getKingsgatePostsForFeatureTool(args ?? {});
+    case 'get_next_private_post':
+      return getNextPrivatePostTool();
+    case 'delete_post_with_media':
+      return deletePostWithMediaTool(args ?? {});
+    case 'publish_news_post':
+      return publishNewsPostTool(args ?? {});
     default:
       return { ok: false, error: `Unknown tool: ${name}` };
   }

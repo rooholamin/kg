@@ -150,3 +150,214 @@ export async function getKingsgatePostsForFeatureTool({ featureId } = {}) {
     return { ok: false, error: err?.message ?? 'Kingsgate WordPress request failed' };
   }
 }
+
+// ---------------------------------------------------------------------------
+// News Writer tools — used ONLY by news-writer-agent.yaml (a standalone
+// Scheduled Deployment, not driven by any KGHub service). These 3 tools are
+// the entire bridge between that agent and insights.kghub.ca: the agent has
+// no other way to read/write WordPress. Deliberately stateless — no DB
+// tracking of this job at all, per the "no audit" decision.
+// ---------------------------------------------------------------------------
+
+/** Regex for the crawler's trailing plain-text citation line, e.g. "source: https://..." */
+const SOURCE_LINE_RE = /source:\s*(https?:\/\/\S+)/i;
+// Matches the whole trailing block containing that line (a <p> tag, optionally
+// preceded by whitespace/newlines, with an optional trailing <br>), so it can
+// be stripped from the body handed to the agent.
+const SOURCE_BLOCK_RE = /<p>\s*source:\s*https?:\/\/\S+\s*(?:<br\s*\/?>)?\s*<\/p>\s*$/i;
+
+/** Any one Section's WordPress credentials for insights.kghub.ca — confirmed
+ * live that these are Editor-level (can see private posts site-wide, not
+ * just their own). Used only for reads and the delete-with-media call;
+ * the final publish always authenticates as the MATCHED section itself. */
+async function getAnySectionCreds() {
+  const section = await prisma.section.findFirst({
+    where: { wpSiteUrl: { not: null }, wpUsername: { not: null }, wpAppPassword: { not: null } },
+    orderBy: { name: 'asc' },
+  });
+  if (!section) return null;
+  return {
+    base: normaliseUrl(section.wpSiteUrl),
+    creds: { username: section.wpUsername, appPassword: section.wpAppPassword },
+  };
+}
+
+function stripHtmlTags(html) {
+  return String(html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * get_next_private_post — finds the newest private-status post on
+ * insights.kghub.ca (no tag filter — private status is used exclusively by
+ * this news pipeline), extracts and strips the crawler's trailing
+ * "source: <url>" citation line, and returns it alongside all 7 Sections'
+ * classification blurb + full persona, pulled live from the Section table
+ * (not hardcoded) — one call gives the agent everything it needs to decide
+ * relevance, pick a section, and write in that persona's voice.
+ */
+export async function getNextPrivatePostTool() {
+  const anyCreds = await getAnySectionCreds();
+  if (!anyCreds) {
+    return { ok: false, error: 'No Section has WordPress credentials configured for insights.kghub.ca' };
+  }
+
+  try {
+    const listRes = await wpFetch(
+      `${anyCreds.base}/wp-json/wp/v2/posts?status=private&per_page=1&orderby=date&order=desc&_fields=id,title,content,excerpt,link,featured_media`,
+      anyCreds.creds,
+    );
+    if (!listRes.ok) {
+      return { ok: false, error: `WordPress query failed: HTTP ${listRes.status}` };
+    }
+    const posts = await listRes.json();
+    if (!Array.isArray(posts) || posts.length === 0) {
+      return { ok: true, found: false };
+    }
+    const post = posts[0];
+
+    const rawContent = post.content?.rendered ?? '';
+    const sourceMatch = rawContent.match(SOURCE_LINE_RE);
+    const sourceUrl = sourceMatch ? sourceMatch[1] : null;
+    const contentHtml = rawContent.replace(SOURCE_BLOCK_RE, '').trim();
+
+    let featuredImageUrl = null;
+    if (post.featured_media) {
+      try {
+        const mediaRes = await wpFetch(
+          `${anyCreds.base}/wp-json/wp/v2/media/${post.featured_media}?_fields=source_url`,
+          anyCreds.creds,
+        );
+        if (mediaRes.ok) {
+          const media = await mediaRes.json();
+          featuredImageUrl = media?.source_url ?? null;
+        }
+      } catch {
+        // Non-fatal — the agent can still write the article without the image.
+      }
+    }
+
+    const sections = await prisma.section.findMany({
+      where: { slug: { startsWith: 'kg-' } },
+      select: {
+        slug: true,
+        name: true,
+        description: true,
+        characterName: true,
+        characterBackground: true,
+        characterRole: true,
+        characterBiography: true,
+        characterTone: true,
+        characterWritingStyle: true,
+        characterPersona: true,
+        characterSampleVoice: true,
+      },
+      orderBy: { slug: 'asc' },
+    });
+
+    return {
+      ok: true,
+      found: true,
+      post: {
+        id: post.id,
+        title: stripHtmlTags(post.title?.rendered ?? ''),
+        contentHtml,
+        sourceUrl,
+        featuredImageUrl,
+      },
+      sections,
+    };
+  } catch (err) {
+    return { ok: false, error: err?.message ?? 'WordPress request failed' };
+  }
+}
+
+/**
+ * delete_post_with_media — hard-deletes a non-matching post AND its media
+ * via the site's custom kg/v1 route (the exact same endpoint the old
+ * "KG News Manager" n8n workflow already used for its Telegram delete
+ * button). No undo, no log — per the explicit "delete non-matches" decision.
+ */
+export async function deletePostWithMediaTool({ postId } = {}) {
+  const id = Number(postId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: 'postId must be a positive integer' };
+  }
+
+  const anyCreds = await getAnySectionCreds();
+  if (!anyCreds) {
+    return { ok: false, error: 'No Section has WordPress credentials configured for insights.kghub.ca' };
+  }
+
+  try {
+    const res = await wpFetch(`${anyCreds.base}/wp-json/kg/v1/posts/${id}/delete-with-media`, anyCreds.creds, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: `Delete failed: ${body?.message ?? `HTTP ${res.status}`}` };
+    }
+    return { ok: true, deleted: id };
+  } catch (err) {
+    return { ok: false, error: err?.message ?? 'WordPress request failed' };
+  }
+}
+
+/**
+ * publish_news_post — resolves sectionSlug to its real Section row
+ * server-side (the agent only ever supplies a slug, never a WordPress
+ * author id directly) and authenticates as THAT section's own WordPress
+ * account to publish — same author-resolution pattern already proven in
+ * services/wordpress.service.js's publishArticleToWordPress, so no account
+ * ever needs permission to impersonate a different one.
+ */
+export async function publishNewsPostTool({ postId, sectionSlug, title, contentHtml } = {}) {
+  const id = Number(postId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: 'postId must be a positive integer' };
+  }
+  if (!sectionSlug || typeof sectionSlug !== 'string') {
+    return { ok: false, error: 'sectionSlug is required (one of the slugs from get_next_private_post\'s sections list)' };
+  }
+  if (!contentHtml || typeof contentHtml !== 'string' || !contentHtml.trim()) {
+    return { ok: false, error: 'contentHtml is required — the full rewritten article body' };
+  }
+
+  const section = await prisma.section.findUnique({ where: { slug: sectionSlug } });
+  if (!section) {
+    return { ok: false, error: `Unknown sectionSlug "${sectionSlug}" — use one of the slugs from get_next_private_post's sections list` };
+  }
+  if (!section.wpSiteUrl || !section.wpUsername || !section.wpAppPassword) {
+    return { ok: false, error: `Section "${sectionSlug}" has no WordPress credentials configured` };
+  }
+  if (!section.wpAuthorId) {
+    return { ok: false, error: `Section "${sectionSlug}" has no wpAuthorId configured — cannot set authorship` };
+  }
+
+  const base = normaliseUrl(section.wpSiteUrl);
+  const creds = { username: section.wpUsername, appPassword: section.wpAppPassword };
+
+  const payload = {
+    content: contentHtml,
+    author: section.wpAuthorId,
+    status: 'publish',
+    tags: [],
+  };
+  if (typeof title === 'string' && title.trim()) {
+    payload.title = title.trim();
+  }
+
+  try {
+    const res = await wpFetch(`${base}/wp-json/wp/v2/posts/${id}`, creds, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: `WordPress publish failed: ${body?.message ?? `HTTP ${res.status}`}` };
+    }
+    const updated = await res.json();
+    return { ok: true, permalink: updated?.link ?? null, section: sectionSlug, author: section.characterName };
+  } catch (err) {
+    return { ok: false, error: err?.message ?? 'WordPress request failed' };
+  }
+}
