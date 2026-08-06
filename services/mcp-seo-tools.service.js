@@ -159,8 +159,11 @@ export async function getKingsgatePostsForFeatureTool({ featureId } = {}) {
 // tracking of this job at all, per the "no audit" decision.
 // ---------------------------------------------------------------------------
 
-/** Regex for the crawler's trailing plain-text citation line, e.g. "source: https://..." */
-const SOURCE_LINE_RE = /source:\s*(https?:\/\/\S+)/i;
+/** Regex for the crawler's trailing plain-text citation line, e.g. "source: https://...".
+ * Stops at `<` as well as whitespace — otherwise, when the crawler emits the
+ * URL with no space before a trailing `<br />`, greedy `\S+` swallows part of
+ * the tag into the captured URL (confirmed live: "...163792<br"). */
+const SOURCE_LINE_RE = /source:\s*(https?:\/\/[^\s<]+)/i;
 // Matches the whole trailing block containing that line (a <p> tag, optionally
 // preceded by whitespace/newlines, with an optional trailing <br>), so it can
 // be stripped from the body handed to the agent.
