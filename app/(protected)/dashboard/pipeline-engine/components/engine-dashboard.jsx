@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, PenLine, Image, Inbox, Search } from 'lucide-react';
+import { BookOpen, PenLine, Image, Inbox, Search, ScanSearch, Link2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Container } from '@/components/common/container';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,7 +61,7 @@ async function updateSettings(type, delayMinutes) {
 // Stage breakdown
 // ---------------------------------------------------------------------------
 
-function StageBreakdown({ byStage, pendingImages }) {
+function StageBreakdown({ byStage, pendingImages, seoQueueCount, linkingQueueCount }) {
   const stages = [
     { key: 'planning', label: 'Need Research', icon: BookOpen, colorClass: 'bg-slate-500/10 text-slate-600 dark:text-slate-400' },
     { key: 'research', label: 'Researching', icon: Search, colorClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', warnIfPositive: true },
@@ -73,12 +73,27 @@ function StageBreakdown({ byStage, pendingImages }) {
       colorClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
       subLabel: pendingImages > 0 ? `${pendingImages} image${pendingImages !== 1 ? 's' : ''} pending` : null,
     },
+    {
+      key: 'seo',
+      label: 'Need SEO',
+      icon: ScanSearch,
+      colorClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+      count: seoQueueCount,
+    },
+    {
+      key: 'kingsgate-linking',
+      label: 'Need Kingsgate review',
+      icon: Link2,
+      colorClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+      count: linkingQueueCount,
+      subLabel: linkingQueueCount > 0 ? `waiting for a full batch of 10` : null,
+    },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {stages.map(({ key, label, icon: Icon, colorClass, warnIfPositive, subLabel }) => {
-        const count = byStage[key] ?? 0;
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {stages.map(({ key, label, icon: Icon, colorClass, warnIfPositive, subLabel, count: overrideCount }) => {
+        const count = overrideCount ?? byStage[key] ?? 0;
         const isWarning = warnIfPositive && count > 0;
         return (
           <div
@@ -245,7 +260,12 @@ export function EngineDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4">
-              <StageBreakdown byStage={byStage} pendingImages={pendingImages} />
+              <StageBreakdown
+                byStage={byStage}
+                pendingImages={pendingImages}
+                seoQueueCount={queueByEngine.seo ?? 0}
+                linkingQueueCount={queueByEngine['kingsgate-linking'] ?? 0}
+              />
             </CardContent>
           </Card>
         </div>
