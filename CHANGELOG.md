@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.1] — Real claude-seo Skill for the SEO Agent — 2026-08-06
+
+### Added
+
+- **`kghub-seo-onpage` custom Skill** — uploaded via the Anthropic Skills API (`scripts/sync-kghub-seo-skill.mjs`), sourced from `skills-src/kghub-seo-onpage/`: a `SKILL.md` plus two reference files, adapted from the actual open-source [claude-seo](https://github.com/AgriciDaniel/claude-seo) project's `seo-page`, `seo-content`, and `seo-geo` skills (MIT licensed) — title/meta quality, heading hierarchy, E-E-A-T content-quality signals, and AI-citability passage structure, stripped of the parts that don't apply to editing one already-written article (DataForSEO/FLOW integrations, live-URL crawling, robots.txt/llms.txt site-level checks).
+- **`seo-agent.yaml`** now references this skill (`skills: [{type: custom, skill_id: ...}]`) and enables the `read` tool on its `agent_toolset` — skills require `read` to be usable or the session fails outright with "Missing required tool: skills require the read tool to be usable." (The initial version of this agent shipped without a real Skill at all, baking a hand-written approximation directly into the system prompt instead — corrected here.)
+- Verified live with a real test session: the agent reads all 3 skill files via the `read` tool, then applies real editorial judgment from them (e.g. catching a title that overpromised relative to what the body actually covered, rather than fabricating content to match).
+
+---
+
 ## [1.4.0] — SEO Pipeline: On-Page Optimization + Selective Kingsgate Linking — 2026-08-06
 
 ### Added
