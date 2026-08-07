@@ -510,11 +510,49 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
 }
 
 // ---------------------------------------------------------------------------
+// ShotText — a frame and its clip are judged on the same two facts: what the
+// shot shows and what is said over it. Showing one without the other is how
+// b-roll described as b-roll but flagged on-camera got through review.
+// ---------------------------------------------------------------------------
+function ShotText({ label, text, quoted = false }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return null;
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+        {label}
+      </p>
+      <p
+        role="button"
+        tabIndex={0}
+        title="Click to show all"
+        onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') setExpanded((v) => !v); }}
+        className={`text-[11px] cursor-pointer ${quoted ? 'italic' : 'text-muted-foreground'} ${expanded ? '' : 'line-clamp-3'}`}
+      >
+        {quoted ? `\u201C${text}\u201D` : text}
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // StillTile — one reviewable start frame. Regenerating a frame is ~$0.40
 // against ~$2.90 for the clip it would have produced, which is the whole
 // reason this screen exists.
 // ---------------------------------------------------------------------------
-function StillTile({ post, invalidate, label, caption, url, target, order, busy }) {
+function StillTile({
+  post,
+  invalidate,
+  label,
+  caption,
+  captionLabel = 'Shot',
+  spoken,
+  url,
+  target,
+  order,
+  busy,
+}) {
   const notify = postToast(post);
   const [note, setNote] = useState('');
   const [showNote, setShowNote] = useState(false);
@@ -555,7 +593,8 @@ function StillTile({ post, invalidate, label, caption, url, target, order, busy 
       </div>
       <div className="p-2.5 space-y-2">
         <p className="text-xs font-medium">{label}</p>
-        {caption && <p className="text-[11px] text-muted-foreground line-clamp-3">{caption}</p>}
+        <ShotText label={captionLabel} text={caption} />
+        <ShotText label="Narration" text={spoken} quoted />
         {showNote && (
           <Textarea
             value={note}
@@ -655,6 +694,7 @@ function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
                 post={post}
                 invalidate={invalidate}
                 label="Character anchor"
+                captionLabel="About this frame"
                 caption="The canonical look. Every on-camera frame is generated from this one, so redoing it means redoing those too."
                 url={post.anchorStillUrl}
                 target="anchor"
@@ -668,6 +708,7 @@ function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
                   invalidate={invalidate}
                   label={`Segment ${seg.order}${seg.hasCharacter ? ' · on camera' : ''}`}
                   caption={seg.visualDescription}
+                  spoken={seg.spokenPortion}
                   url={seg.stillUrl}
                   target="segment"
                   order={seg.order}
@@ -802,7 +843,10 @@ function SegmentBlock({ segment, post, invalidate }) {
         )}
       </div>
       <div className="p-2 space-y-1.5 flex-1 flex flex-col">
-        <p className="text-xs italic line-clamp-3 flex-1">&ldquo;{segment.spokenPortion || '—'}&rdquo;</p>
+        <div className="flex-1 space-y-1.5">
+          <ShotText label="Shot" text={segment.visualDescription} />
+          <ShotText label="Narration" text={segment.spokenPortion || '—'} quoted />
+        </div>
         {segment.errorMessage && <p className="text-[10px] text-destructive bg-destructive/5 border border-destructive/10 rounded p-1 line-clamp-2">{segment.errorMessage}</p>}
         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
           <span className="flex items-center gap-0.5" title="Rate-card estimate — Higgsfield exposes no real cost API">
