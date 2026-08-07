@@ -503,8 +503,8 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
 // and the whole point of the gate, so it stays available for as long as the
 // post sits in stills_review.
 // ---------------------------------------------------------------------------
-export async function regenerateStill(postId, { target, order, note } = {}) {
-  return regenerateVideoStill({ postId, target, order, note });
+export async function regenerateStill(postId, { target, order, key, note } = {}) {
+  return regenerateVideoStill({ postId, target, order, key, note });
 }
 
 // ---------------------------------------------------------------------------

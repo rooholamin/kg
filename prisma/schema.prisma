@@ -1255,13 +1255,15 @@ model VideoPost {
   genre                        String?
   // The canonical character frame every avatar segment's own still is derived
   // from — it fixes identity and wardrobe for the shoot, so it's held on the
-  // post rather than per segment.
+  // post rather than per segment. Deliberately shot against a neutral backdrop
+  // with no set dressing: an image reference carries background as well as
+  // identity, so an anchor shot inside a location would drag that location
+  // into every frame chained off it and the character could never leave it.
   anchorStillUrl               String?
   anchorStillJobId             String?
-  // Canonical description of the recurring physical subject of this video (the
-  // closet, the wall, the fixture). Independently generated frames otherwise
-  // invent a different one each shot; repeating this text in every prompt is
-  // the same trick that keeps wardrobe and environment consistent.
+  // Superseded by VideoAnchor rows (kind: subject). Kept so posts planned
+  // before named anchors existed still read correctly; normalized into an
+  // anchor when such a plan is approved.
   subjectAnchor                String?              @db.Text
   // Pre-music, pre-captions concatenated base render — kept so a music-only
   // regeneration never has to re-download/re-normalize/re-concatenate segments
@@ -1286,6 +1288,7 @@ model VideoPost {
   errorMessage                 String?              @db.Text
   campaign                     VideoCampaign?       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   article                      Article?             @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  anchors                      VideoAnchor[]
   createdAt                    DateTime             @default(now())
   updatedAt                    DateTime             @updatedAt
 
@@ -1293,6 +1296,46 @@ model VideoPost {
   @@index([articleId])
   @@index([customSectionId])
   @@index([status])
+}
+
+enum VideoAnchorKind {
+  /// Somewhere the video is shot: the loft, a garden, a job site.
+  place
+  /// A recurring thing the video is about: the closet, the wall, the fixture.
+  subject
+}
+
+/// A place or thing that recurs across segments, declared once by the planner
+/// and named by the segments that show it.
+///
+/// The character gets both a text description and an anchor frame; anything
+/// else used to get text only, and text alone loses — every frame is generated
+/// independently, so the same closet came back different in every shot. These
+/// rows make the two symmetric: each anchor carries a canonical description
+/// (restated verbatim in every prompt that shows it) and its own start frame
+/// (chained as an image reference), so a place looks like the same place and a
+/// subject like the same subject.
+///
+/// Naming places explicitly is also what lets a video leave home base at all —
+/// the environment is where it opens and closes, not a cage.
+model VideoAnchor {
+  id          String          @id @default(uuid())
+  postId      String
+  /// Stable handle segments refer to, unique within the post, e.g. "loft".
+  key         String
+  kind        VideoAnchorKind @default(place)
+  description String          @db.Text
+  /// The reviewable frame for this anchor, chained into every segment that
+  /// names it. Populated during the stills phase, like the character anchor.
+  stillUrl    String?
+  stillJobId  String?
+  order       Int             @default(0)
+  post        VideoPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([postId, key])
+  @@index([postId])
 }
 
 /// One row per directed segment — materialized during Phase 3 execution from the
@@ -1320,6 +1363,16 @@ model VideoSegment {
   // subject (a before/after pair). Left null normally — chaining every frame
   // makes the model copy composition too and flattens the video.
   stillReferenceOrder   Int?
+  // Which VideoAnchor keys are in this shot — the place it happens in, plus
+  // any recurring subject on screen. Their descriptions get restated verbatim
+  // and their frames chained in, which is what makes segment 4's garden the
+  // same garden as segment 9's.
+  anchorKeys            String[]              @default([])
+  // What the location asks of the wardrobe (gloves, an apron, sleeves rolled
+  // up) — added to the post's characterLook for this segment only. She can't
+  // plant a flower in cream cashmere, but she also can't become a different
+  // person halfway through, so this adds rather than replaces.
+  wardrobeAddition      String?               @db.Text
   // Raw Higgsfield clip (native audio already baked in — dialogue if
   // hasCharacter, off-screen voiceover narration otherwise)
   videoUrl              String?

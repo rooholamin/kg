@@ -217,11 +217,19 @@ function VideoConfigCard({ post, invalidate }) {
 // and hashtags. Re-plan is a targeted edit by default (only what the note
 // asks for changes) unless the note explicitly asks for a full rewrite.
 // ---------------------------------------------------------------------------
+// A plan written before named anchors existed carries one subjectAnchor string;
+// show it as the single subject anchor it always was.
+function planAnchorsOf(plan) {
+  if (Array.isArray(plan?.anchors) && plan.anchors.length) return plan.anchors;
+  if (plan?.subjectAnchor) return [{ key: 'subject', kind: 'subject', description: plan.subjectAnchor }];
+  return [];
+}
+
 function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   const notify = postToast(post);
   const [narration, setNarration] = useState(post.plan?.narration || post.narration || '');
   const [characterLook, setCharacterLook] = useState(post.plan?.characterLook || '');
-  const [subjectAnchor, setSubjectAnchor] = useState(post.plan?.subjectAnchor || '');
+  const [anchors, setAnchors] = useState(() => planAnchorsOf(post.plan));
   const [segments, setSegments] = useState(post.plan?.segments || []);
   const [genre, setGenre] = useState(post.plan?.genre || '');
   const [captionText, setCaptionText] = useState(post.plan?.text || '');
@@ -231,7 +239,7 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   useEffect(() => {
     setNarration(post.plan?.narration || post.narration || '');
     setCharacterLook(post.plan?.characterLook || '');
-    setSubjectAnchor(post.plan?.subjectAnchor || '');
+    setAnchors(planAnchorsOf(post.plan));
     setSegments(post.plan?.segments || []);
     setGenre(post.plan?.genre || '');
     setCaptionText(post.plan?.text || '');
@@ -288,7 +296,9 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
             ...post.plan,
             narration,
             characterLook,
-            subjectAnchor: subjectAnchor.trim() || null,
+            anchors: anchors
+              .filter((a) => a.key?.trim() && a.description?.trim())
+              .map((a) => ({ key: a.key.trim(), kind: a.kind === 'subject' ? 'subject' : 'place', description: a.description.trim() })),
             segments,
             genre,
             text: captionText,
@@ -321,6 +331,36 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
     setSegments((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
   }
 
+  function updateAnchor(index, field, value) {
+    setAnchors((prev) => prev.map((a, i) => (i === index ? { ...a, [field]: value } : a)));
+  }
+
+  function addAnchor(kind) {
+    setAnchors((prev) => [...prev, { key: '', kind, description: '' }]);
+  }
+
+  // Segments keep pointing at a key that no longer exists otherwise, and the
+  // director would look for a frame nobody generated.
+  function removeAnchor(index) {
+    const removedKey = anchors[index]?.key;
+    setAnchors((prev) => prev.filter((_, i) => i !== index));
+    if (removedKey) {
+      setSegments((prev) =>
+        prev.map((s) => ({ ...s, anchorKeys: (s.anchorKeys || []).filter((k) => k !== removedKey) })),
+      );
+    }
+  }
+
+  function toggleSegmentAnchor(index, key) {
+    setSegments((prev) =>
+      prev.map((s, i) => {
+        if (i !== index) return s;
+        const current = s.anchorKeys || [];
+        return { ...s, anchorKeys: current.includes(key) ? current.filter((k) => k !== key) : [...current, key] };
+      }),
+    );
+  }
+
   function renumber(list) {
     return list.map((s, i) => ({ ...s, order: i + 1 }));
   }
@@ -328,7 +368,15 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
   function addSegment() {
     setSegments((prev) => renumber([
       ...prev,
-      { hasCharacter: false, spokenPortion: '', visualDescription: '', estimatedDuration: 6, stillReferenceOrder: null },
+      {
+        hasCharacter: false,
+        spokenPortion: '',
+        visualDescription: '',
+        estimatedDuration: 6,
+        anchorKeys: [],
+        wardrobeAddition: null,
+        stillReferenceOrder: null,
+      },
     ]));
   }
 
@@ -410,18 +458,60 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Subject anchor (the one recurring thing this video is about)</Label>
-              <Textarea
-                value={subjectAnchor}
-                onChange={(e) => setSubjectAnchor(e.target.value)}
-                placeholder="e.g. a six-foot reach-in closet with warm walnut-fronted shelving, one brushed-brass rail, cream canvas bins…"
-                rows={2}
-                className="text-sm"
-              />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Anchors ({anchors.length})</Label>
+                <div className="flex gap-1.5">
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => addAnchor('place')}>
+                    <Plus className="size-3.5" /> Place
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => addAnchor('subject')}>
+                    <Plus className="size-3.5" /> Subject
+                  </Button>
+                </div>
+              </div>
               <p className="text-[11px] text-muted-foreground">
-                Repeated verbatim in every frame that shows it. Without it each shot invents a different version of the subject.
+                Every place this video visits and every recurring thing it returns to. Each one gets its own start frame,
+                chained into every segment that names it — the home environment opens and closes the video, but a segment
+                can be set anywhere you declare here.
               </p>
+              {anchors.length === 0 ? (
+                <p className="text-xs text-muted-foreground border rounded-lg p-3 bg-muted/20">
+                  No anchors — every shot invents its own version of wherever it is.
+                </p>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {anchors.map((anchor, i) => (
+                    <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/20">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={anchor.key || ''}
+                          onChange={(e) => updateAnchor(i, 'key', e.target.value)}
+                          placeholder="key, e.g. garden"
+                          className="h-7 text-xs flex-1"
+                        />
+                        <Select value={anchor.kind || 'place'} onValueChange={(v) => updateAnchor(i, 'kind', v)}>
+                          <SelectTrigger className="h-7 w-24 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="place">Place</SelectItem>
+                            <SelectItem value="subject">Subject</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button size="icon" variant="ghost" className="size-6" onClick={() => removeAnchor(i)} title="Remove anchor">
+                          <Trash2 className="size-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                      <Textarea
+                        value={anchor.description || ''}
+                        onChange={(e) => updateAnchor(i, 'description', e.target.value)}
+                        placeholder="Canonical description — materials, colours, layout, scale. One specific place or object, not a category."
+                        rows={3}
+                        className="text-xs"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -470,6 +560,40 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
                     rows={2}
                     className="text-xs"
                   />
+                  {anchors.length > 0 && (
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground">In this shot</Label>
+                      <div className="flex flex-wrap gap-1">
+                        {anchors.filter((a) => a.key?.trim()).map((a) => {
+                          const active = (seg.anchorKeys || []).includes(a.key);
+                          return (
+                            <button
+                              key={a.key}
+                              type="button"
+                              onClick={() => toggleSegmentAnchor(i, a.key)}
+                              className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+                                active
+                                  ? 'border-primary bg-primary/10 text-primary'
+                                  : 'border-border text-muted-foreground hover:bg-muted'
+                              }`}
+                              title={a.description}
+                            >
+                              {a.key}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {seg.hasCharacter && (
+                    <Input
+                      value={seg.wardrobeAddition || ''}
+                      onChange={(e) => updateSegment(i, 'wardrobeAddition', e.target.value || null)}
+                      placeholder="Wardrobe this location adds — gloves, an apron, boots…"
+                      className="h-7 text-xs"
+                      title="Added to the character look for this segment only, never a replacement."
+                    />
+                  )}
                   <div className="flex items-center gap-2">
                     <Label className="text-[11px] text-muted-foreground shrink-0">Match frame of segment</Label>
                     <Input
@@ -584,9 +708,11 @@ function StillTile({
   caption,
   captionLabel = 'Shot',
   spoken,
+  anchorKeys,
   url,
   target,
   order,
+  anchorKey,
   busy,
 }) {
   const notify = postToast(post);
@@ -598,7 +724,7 @@ function StillTile({
       const res = await apiFetch(`/api/video/posts/${post.id}/stills/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target, order, note: note || undefined }),
+        body: JSON.stringify({ target, order, key: anchorKey, note: note || undefined }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -629,6 +755,13 @@ function StillTile({
       </div>
       <div className="p-2.5 space-y-2">
         <p className="text-xs font-medium">{label}</p>
+        {anchorKeys?.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {anchorKeys.map((k) => (
+              <Badge key={k} variant="secondary" appearance="light" size="sm" className="text-[10px]">{k}</Badge>
+            ))}
+          </div>
+        )}
         <ShotText label={captionLabel} text={caption} />
         <ShotText label="Narration" text={spoken} quoted />
         {showNote && (
@@ -670,10 +803,13 @@ function StillTile({
 function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
   const notify = postToast(post);
   const segments = post.segments || [];
+  const anchors = post.anchors || [];
   const isGenerating = post.status === 'shooting_stills';
   const isShooting = post.status === 'directing' && segments.some((s) => s.status === 'generating');
   // An avatar segment with no frame of its own predates per-segment character
-  // frames and falls back to the anchor, so it isn't "missing".
+  // frames and falls back to the anchor, so it isn't "missing". A missing
+  // anchor frame doesn't block the shoot either — anchors are references for
+  // the segment frames, never start images themselves.
   const missingFrames =
     !post.anchorStillUrl || segments.some((s) => !s.stillUrl && !s.hasCharacter);
 
@@ -714,7 +850,7 @@ function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
         </CardHeading>
         <CardToolbar>
           <Badge variant="secondary" appearance="light" size="sm">
-            ~{formatCost(estimateStillCost(segments.filter((s) => s.stillUrl).length + 1))} spent so far
+            ~{formatCost(estimateStillCost(segments.filter((s) => s.stillUrl).length + anchors.filter((a) => a.stillUrl).length + 1))} spent so far
           </Badge>
         </CardToolbar>
       </CardHeader>
@@ -737,6 +873,20 @@ function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
                 order={null}
                 busy={isGenerating}
               />
+              {anchors.map((anchor) => (
+                <StillTile
+                  key={anchor.id}
+                  post={post}
+                  invalidate={invalidate}
+                  label={`${anchor.kind === 'subject' ? 'Subject' : 'Place'}: ${anchor.key}`}
+                  captionLabel="Canonical description"
+                  caption={anchor.description}
+                  url={anchor.stillUrl}
+                  target="anchorKey"
+                  anchorKey={anchor.key}
+                  busy={isGenerating}
+                />
+              ))}
               {segments.map((seg) => (
                 <StillTile
                   key={seg.id}
@@ -745,6 +895,7 @@ function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
                   label={`Segment ${seg.order}${seg.hasCharacter ? ' · on camera' : ''}`}
                   caption={seg.visualDescription}
                   spoken={seg.spokenPortion}
+                  anchorKeys={seg.anchorKeys}
                   url={seg.stillUrl}
                   target="segment"
                   order={seg.order}

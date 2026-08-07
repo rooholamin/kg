@@ -17,11 +17,15 @@ export async function POST(req, { params }) {
 
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    const target = body.target === 'anchor' ? 'anchor' : 'segment';
+    const target = ['anchor', 'anchorKey'].includes(body.target) ? body.target : 'segment';
     const order = target === 'segment' ? Number(body.order) : null;
+    const key = target === 'anchorKey' ? String(body.key || '').trim() : null;
 
     if (target === 'segment' && !Number.isInteger(order)) {
       return NextResponse.json({ message: 'order is required when regenerating a segment still' }, { status: 400 });
+    }
+    if (target === 'anchorKey' && !key) {
+      return NextResponse.json({ message: 'key is required when regenerating an anchor frame' }, { status: 400 });
     }
 
     const post = await prisma.videoPost.findUnique({ where: { id }, select: { directorSessionId: true } });
@@ -33,8 +37,8 @@ export async function POST(req, { params }) {
       );
     }
 
-    startBackgroundJob(`regenerate-still ${id} ${target}${order ?? ''}`, () =>
-      regenerateStill(id, { target, order, note: body.note?.trim() || null }),
+    startBackgroundJob(`regenerate-still ${id} ${target}${key ?? order ?? ''}`, () =>
+      regenerateStill(id, { target, order, key, note: body.note?.trim() || null }),
     );
 
     return NextResponse.json({ started: true }, { status: 202 });

@@ -21,6 +21,7 @@ export async function GET(_req, { params }) {
           orderBy: { order: 'asc' },
           include: { versions: { orderBy: { version: 'desc' } } },
         },
+        anchors: { orderBy: { order: 'asc' } },
       },
     });
     if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });

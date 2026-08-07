@@ -338,6 +338,30 @@ export async function planVideoPost({ campaignId, postId, title, summary, conten
 }
 
 // ---------------------------------------------------------------------------
+// planAnchors — the plan's declared places and subjects, normalized.
+//
+// Plans written before named anchors existed carry a single `subjectAnchor`
+// string instead; those become one subject anchor so an old plan re-approved
+// today still keeps its closet description.
+// ---------------------------------------------------------------------------
+function planAnchors(plan) {
+  if (Array.isArray(plan?.anchors) && plan.anchors.length) {
+    return plan.anchors
+      .filter((a) => a?.key && a?.description)
+      .map((a, i) => ({
+        key: String(a.key).trim(),
+        kind: a.kind === 'subject' ? 'subject' : 'place',
+        description: String(a.description).trim(),
+        order: i,
+      }));
+  }
+  if (plan?.subjectAnchor) {
+    return [{ key: 'subject', kind: 'subject', description: plan.subjectAnchor, order: 0 }];
+  }
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // generateVideoStills — Phase 3a: the plan was approved, so shoot the START
 // FRAMES only and stop. Always opens a FRESH Director Agent session (a
 // different agent than the Planner, so it can't share the Planner's session)
@@ -381,6 +405,8 @@ export async function generateVideoStills({ campaignId, postId, title, character
   await prisma.videoPost.update({ where: { id: postId }, data: { directorSessionId: sessionId } });
 
   const plannedSegments = plan.segments || [];
+  const anchors = planAnchors(plan);
+  const anchorKeySet = new Set(anchors.map((a) => a.key));
   const startedAt = new Date();
 
   await prisma.videoSegment.deleteMany({ where: { postId } });
@@ -392,16 +418,25 @@ export async function generateVideoStills({ campaignId, postId, title, character
       spokenPortion: s.spokenPortion || null,
       visualDescription: s.visualDescription || null,
       stillReferenceOrder: Number.isInteger(s.stillReferenceOrder) ? s.stillReferenceOrder : null,
+      // A key naming an anchor that doesn't exist would send the director
+      // looking for a frame nobody generated.
+      anchorKeys: (Array.isArray(s.anchorKeys) ? s.anchorKeys : []).filter((k) => anchorKeySet.has(k)),
+      wardrobeAddition: s.wardrobeAddition || null,
       status: 'pending',
       generationStartedAt: startedAt,
     })),
   });
+
+  await prisma.videoAnchor.deleteMany({ where: { postId } });
+  if (anchors.length) {
+    await prisma.videoAnchor.createMany({ data: anchors.map((a) => ({ postId, ...a })) });
+  }
+
   await prisma.videoPost.update({
     where: { id: postId },
     data: {
       anchorStillUrl: null,
       anchorStillJobId: null,
-      subjectAnchor: plan.subjectAnchor || null,
     },
   });
 
@@ -409,13 +444,15 @@ export async function generateVideoStills({ campaignId, postId, title, character
     {
       narration: plan.narration,
       characterLook: plan.characterLook,
-      subjectAnchor: plan.subjectAnchor || null,
+      anchors: anchors.map(({ key, kind, description }) => ({ key, kind, description })),
       segments: plannedSegments.map((s) => ({
         order: s.order,
         hasCharacter: s.hasCharacter,
         spokenPortion: s.spokenPortion,
         visualDescription: s.visualDescription,
         estimatedDuration: s.estimatedDuration,
+        anchorKeys: (Array.isArray(s.anchorKeys) ? s.anchorKeys : []).filter((k) => anchorKeySet.has(k)),
+        wardrobeAddition: s.wardrobeAddition || null,
         stillReferenceOrder: Number.isInteger(s.stillReferenceOrder) ? s.stillReferenceOrder : null,
       })),
     },
@@ -426,9 +463,9 @@ export async function generateVideoStills({ campaignId, postId, title, character
   const briefText = buildExecuteBrief({ character, environment, config, promptLearnings });
 
   const message = `PHASE: stills\n\n${briefText}\n\nAPPROVED PLAN:\n${planText}\n${directorNote ? `\nDIRECTOR NOTE: ${directorNote}\n` : ''}
-Generate the START FRAMES ONLY: the character anchor still, plus one frame for each of the ${plannedSegments.length} segment(s) — avatar segments included, each chained off the anchor. Do NOT call generate_video for anything — a human reviews these frames before the shoot is unlocked. Respond with ONLY the STILLS OUTPUT FORMAT JSON described in your instructions.`;
+Generate the START FRAMES ONLY: the location-free character anchor still, one frame for each of the ${anchors.length} declared anchor(s), then one frame for each of the ${plannedSegments.length} segment(s) — avatar segments included, each chained off the character anchor and its own anchors. Do NOT call generate_video for anything — a human reviews these frames before the shoot is unlocked. Respond with ONLY the STILLS OUTPUT FORMAT JSON described in your instructions.`;
 
-  const aiLogId = await logStart(campaignId, 'director_stills_send', `Generating start frames for "${title}" (anchor + ${plannedSegments.length} segments)`, { message, sessionId }, postId);
+  const aiLogId = await logStart(campaignId, 'director_stills_send', `Generating start frames for "${title}" (character anchor + ${anchors.length} anchor(s) + ${plannedSegments.length} segments)`, { message, sessionId }, postId);
 
   let responseText;
   try {
@@ -456,6 +493,14 @@ Generate the START FRAMES ONLY: the character anchor still, plus one frame for e
     },
   });
 
+  for (const anchorStill of result.anchorStills || []) {
+    if (!anchorStill?.key || !anchorKeySet.has(anchorStill.key)) continue;
+    await prisma.videoAnchor.update({
+      where: { postId_key: { postId, key: anchorStill.key } },
+      data: { stillUrl: anchorStill.url || null, stillJobId: anchorStill.jobId || null },
+    });
+  }
+
   for (const still of result.stills || []) {
     const row = await prisma.videoSegment.findFirst({ where: { postId, order: still.order } });
     if (!row) continue;
@@ -480,7 +525,7 @@ Generate the START FRAMES ONLY: the character anchor still, plus one frame for e
 // frame in the same session so the replacement stays usable as a start_image
 // for the eventual shoot.
 // ---------------------------------------------------------------------------
-export async function regenerateVideoStill({ postId, target, order, note }) {
+export async function regenerateVideoStill({ postId, target, order, key, note }) {
   const post = await prisma.videoPost.findUnique({ where: { id: postId } });
   if (!post?.directorSessionId) {
     const err = new Error('This post has no director session — approve the plan to generate its start frames first.');
@@ -489,12 +534,34 @@ export async function regenerateVideoStill({ postId, target, order, note }) {
   }
 
   const isAnchor = target === 'anchor';
-  const label = isAnchor ? 'the character anchor still' : `the still for segment ${order}`;
+  const isAnchorKey = target === 'anchorKey';
+
+  let anchor = null;
+  if (isAnchorKey) {
+    anchor = await prisma.videoAnchor.findUnique({ where: { postId_key: { postId, key } } });
+    if (!anchor) {
+      const err = new Error(`This post has no anchor named "${key}".`);
+      err.code = 'INVALID_REQUEST';
+      throw err;
+    }
+  }
+
+  const label = isAnchor
+    ? 'the character anchor still'
+    : isAnchorKey
+      ? `the anchor frame for "${key}"`
+      : `the still for segment ${order}`;
+
+  const targetBlock = isAnchor
+    ? 'TARGET: anchor'
+    : isAnchorKey
+      ? `TARGET: anchorKey\nKEY: ${key}\nANCHOR (${anchor.kind}): ${anchor.description}`
+      : `TARGET: segment\nORDER: ${order}`;
 
   const message = `PHASE: regenerate_still
 
 A human rejected ${label}. Generate that ONE still again, addressing the note below, and keep everything else about the frame as it was.
-${isAnchor ? 'TARGET: anchor' : `TARGET: segment\nORDER: ${order}`}
+${targetBlock}
 NOTE: ${note || '(no specific note — the frame just looked wrong; produce a cleaner take)'}
 
 Do not generate video, and do not touch any other still. Respond with ONLY the SINGLE STILL OUTPUT FORMAT JSON described in your instructions.`;
@@ -527,6 +594,11 @@ Do not generate video, and do not touch any other still. Respond with ONLY the S
       where: { id: postId },
       data: { anchorStillUrl: result.url, anchorStillJobId: result.jobId || null },
     });
+  } else if (isAnchorKey) {
+    await prisma.videoAnchor.update({
+      where: { postId_key: { postId, key } },
+      data: { stillUrl: result.url, stillJobId: result.jobId || null },
+    });
   } else {
     const row = await prisma.videoSegment.findFirst({ where: { postId, order } });
     if (row) {
@@ -537,7 +609,7 @@ Do not generate video, and do not touch any other still. Respond with ONLY the S
     }
   }
 
-  await logDone(aiLogId, `${isAnchor ? 'Anchor' : `Segment ${order}`} still regenerated`, { response: responseText, parsed: result });
+  await logDone(aiLogId, `${label.charAt(0).toUpperCase()}${label.slice(1)} regenerated`, { response: responseText, parsed: result });
 
   return result;
 }
