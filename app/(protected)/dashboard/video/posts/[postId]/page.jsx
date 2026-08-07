@@ -255,6 +255,28 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
     onError: (e) => notify.error(`Re-plan failed: ${e.message}`),
   });
 
+  // The planner's session dies with the agent definition it was opened against,
+  // so a replaced or archived planner strands every post that used it.
+  const resetSessionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${post.id}/reset-plan-session`, { method: 'POST' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Could not reset the planner session');
+      }
+      return res.json();
+    },
+    onSuccess: () => { notify.success('Planner session cleared — the next re-plan starts a fresh conversation'); invalidate(); },
+    onError: (e) => notify.error(`Could not reset the planner session: ${e.message}`),
+  });
+
+  function handleResetSessionClick() {
+    const ok = window.confirm(
+      'Discard the planner\u2019s conversation for this post? The plan itself is kept, but the agent loses all memory of it and the next re-plan starts fresh.',
+    );
+    if (ok) resetSessionMutation.mutate();
+  }
+
   const approveMutation = useMutation({
     mutationFn: async () => {
       const hashtags = hashtagsText.split(/\s+/).map((t) => t.trim()).filter(Boolean);
@@ -496,6 +518,20 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
               <Button size="sm" variant="outline" onClick={() => rePlanMutation.mutate()} disabled={rePlanMutation.isPending || isExecuting}>
                 {rePlanMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                 Re-plan
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleResetSessionClick}
+                disabled={resetSessionMutation.isPending || isPlanning || !post.planSessionId}
+                title={
+                  post.planSessionId
+                    ? `Discard planner session ${post.planSessionId}`
+                    : 'No planner session to reset'
+                }
+              >
+                {resetSessionMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+                Reset planner session
               </Button>
               <Button size="sm" onClick={handleApproveClick} disabled={approveMutation.isPending || isExecuting} className="flex-1">
                 {approveMutation.isPending || isExecuting ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
