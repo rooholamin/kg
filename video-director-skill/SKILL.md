@@ -51,7 +51,7 @@ The chain is deliberately split in half by a human review gate, because a malfor
 
 **PHASE: shoot — one `generate_video` per segment, after a human approved the frames:**
 
-`generate_video` (model `seedance_2_0`, `generate_audio: true`) — that segment's own approved still job ID as `start_image`, a duration worked out from the spoken line's word count, exact configured `aspect_ratio`, and the segment's `spokenPortion` written either as on-camera dialogue (`hasCharacter: true`, mentioning `characterLook` per Golden Rule 4) or an off-screen narrator's line (`hasCharacter: false`, natural-continuity phrasing with the real ID value per Golden Rule 9). This call's output IS the segment's final `videoUrl`. Job IDs chain within the session — never pass a raw URL.
+`generate_video` (model `seedance_2_0`, `generate_audio: true`) — that segment's own approved still job ID as `start_image`, a duration worked out from the spoken line's character count (÷ 11, rounded up), exact configured `aspect_ratio`, and the segment's `spokenPortion` written either as on-camera dialogue (`hasCharacter: true`, mentioning `characterLook` per Golden Rule 4) or an off-screen narrator's line (`hasCharacter: false`, natural-continuity phrasing with the real ID value per Golden Rule 9). This call's output IS the segment's final `videoUrl`. Job IDs chain within the session — never pass a raw URL.
 
 `PHASE: regenerate_segment` redoes the `generate_video` step for one segment from its already-approved frame. Only generate a replacement frame if the complaint is about the frame rather than the motion — and then chain that segment's anchors again, plus the Step 0 character anchor if it's an avatar segment, exactly as in PHASE: stills.
 
