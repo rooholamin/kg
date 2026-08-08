@@ -83,6 +83,12 @@ AWS_S3_BUCKET=...
 
 **3. Setup database**
 
+> **Note:** this project no longer uses Supabase. All data lives on the
+> production server's own PostgreSQL 17 instance — see
+> [`.cursor/rules/server-deployment.mdc`](./.cursor/rules/server-deployment.mdc)
+> for connection details/architecture. Point `DATABASE_URL` at your own local
+> Postgres, or a tunnel to the production DB if you have access.
+
 ```bash
 npx prisma db push
 npx prisma generate

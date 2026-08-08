@@ -5,6 +5,15 @@ alwaysApply: true
 
 # KGHub Production Server
 
+> **No more Supabase.** This project has fully migrated off Supabase — there
+> is no hosted Supabase project and no shared dev DB anymore. All data
+> (prod and otherwise) lives on the production server's own PostgreSQL 17
+> instance (see Architecture below). Any `DATABASE_URL`/`DIRECT_URL` you see
+> pointing at a `*.supabase.co`/`*.pooler.supabase.com` host (e.g. in an old
+> local `.env`) is stale and unreachable — do not try to connect to it or
+> spend time debugging a "tenant/user not found" error from it. For local
+> testing against real data, tunnel to the production Postgres instead.
+
 ## Credentials
 
 All secrets live in `.env.server` at the project root (git-ignored). Read it before running any server commands:
