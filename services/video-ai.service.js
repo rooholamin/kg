@@ -737,6 +737,192 @@ async function applyExecuteSegments({ postId, result, directorNote }) {
 }
 
 // ---------------------------------------------------------------------------
+// syncFromAgentSession — recover work the agent finished but we never recorded.
+//
+// The generation calls run in a background job holding an open stream. If that
+// process goes away mid-flight — a restart, a deploy, a crash — the agent
+// carries on server-side and answers into a session nobody is listening to.
+// Our row stays "running" and the segments stay "generating" forever, because
+// the code that would have written the result died with the listener. A real
+// shoot was lost this way seven minutes before the agent replied with all
+// twelve finished clips.
+//
+// The reply is still in the transcript, so this reads it back and applies it.
+// Strictly read-only against the session: retrieve + list events are GETs, so
+// nothing is sent, the agent is never woken, and no generation can be
+// triggered. That makes it the cheap first move whenever a post looks stuck —
+// continueVideoPost is for the genuinely different case where the agent never
+// finished the work at all.
+// ---------------------------------------------------------------------------
+async function lastAgentMessageText(sessionId) {
+  for await (const event of client.beta.sessions.events.list(sessionId, { order: 'desc' })) {
+    if (event.type !== 'agent.message') continue;
+    const text = (event.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text || '')
+      .join('');
+    if (text.trim()) return { text, at: event.processed_at || event.created_at || null };
+  }
+  return null;
+}
+
+export async function syncFromAgentSession({ postId, sessionId: explicitSessionId }) {
+  const post = await prisma.videoPost.findUnique({
+    where: { id: postId },
+    include: { segments: { orderBy: { order: 'asc' } }, anchors: true },
+  });
+  if (!post) throw new Error(`Post not found: ${postId}`);
+
+  const sessionId = explicitSessionId || post.directorSessionId;
+  if (!sessionId) {
+    const err = new Error('This post has no director session to read — approve the plan to start one.');
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  const session = await client.beta.sessions.retrieve(sessionId);
+  // A session mid-turn hasn't written its answer yet, and the newest message
+  // would be from a previous turn — applying it would overwrite good data with
+  // stale data.
+  if (session.status && !['idle', 'completed', 'ended'].includes(session.status)) {
+    const err = new Error(`The agent is still working (session is ${session.status}) — nothing to recover yet.`);
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  const last = await lastAgentMessageText(sessionId);
+  if (!last) {
+    const err = new Error('The agent has not replied in this session yet.');
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  let result;
+  try {
+    result = JSON.parse(extractJson(last.text));
+  } catch {
+    const err = new Error(`The agent's last message isn't a result we can apply: ${last.text.slice(0, 160)}`);
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+
+  const logId = await logStart(post.campaignId, 'agent_sync', `Reading the agent's last reply for "${post.title || postId}"`, { sessionId, repliedAt: last.at }, postId);
+
+  let summary;
+  try {
+    summary = await applyAgentResult({ post, result });
+  } catch (err) {
+    await logError(logId, err.message, { response: last.text });
+    throw err;
+  }
+
+  // The job that was interrupted still shows as running, which is what makes
+  // the UI think work is in flight.
+  await prisma.videoCampaignLog.updateMany({
+    where: { postId, status: 'running' },
+    data: { status: 'error', message: 'Interrupted — the result was recovered by reading the agent session' },
+  });
+
+  await logDone(logId, summary.message, { response: last.text, parsed: result });
+
+  return { ...summary, sessionId, repliedAt: last.at };
+}
+
+// Applies whichever kind of reply the agent last produced. Every phase has a
+// distinct output shape, so the reply identifies itself and no phase has to be
+// guessed from our own status (which is exactly what's unreliable when a job
+// died halfway through).
+async function applyAgentResult({ post, result }) {
+  const postId = post.id;
+
+  if (Array.isArray(result.segments)) {
+    const succeeded = await applyExecuteSegments({ postId, result, directorNote: null });
+    const total = result.segments.length;
+    // Anything the reply didn't cover is not in flight either — the job that
+    // would have finished it is gone.
+    await prisma.videoSegment.updateMany({
+      where: { postId, status: 'generating' },
+      data: { status: 'failed', errorMessage: 'Not covered by the recovered reply', generationCompletedAt: new Date() },
+    });
+    await prisma.videoPost.update({
+      where: { id: postId },
+      data: {
+        status: succeeded > 0 ? 'directing' : 'failed',
+        narration: result.narration || post.narration,
+        generatedText: result.text || post.generatedText,
+        hashtags: result.hashtags || post.hashtags,
+        genre: result.genre || post.genre,
+        errorMessage: succeeded > 0 ? null : 'All segments failed to generate',
+      },
+    });
+    return { phase: 'shoot', applied: succeeded, message: `Recovered the shoot — ${succeeded}/${total} clip(s) written` };
+  }
+
+  if (result.anchorStill || Array.isArray(result.stills) || Array.isArray(result.anchorStills)) {
+    if (result.anchorStill?.url) {
+      await prisma.videoPost.update({
+        where: { id: postId },
+        data: { anchorStillUrl: result.anchorStill.url, anchorStillJobId: result.anchorStill.jobId || null },
+      });
+    }
+    for (const a of result.anchorStills || []) {
+      if (!a?.key || !a.url) continue;
+      await prisma.videoAnchor.updateMany({
+        where: { postId, key: a.key },
+        data: { stillUrl: a.url, stillJobId: a.jobId || null },
+      });
+    }
+    let applied = 0;
+    for (const still of result.stills || []) {
+      if (!still?.url) continue;
+      const row = await prisma.videoSegment.findFirst({ where: { postId, order: still.order } });
+      if (!row) continue;
+      await prisma.videoSegment.update({
+        where: { id: row.id },
+        data: { stillUrl: still.url, stillJobId: still.jobId || null, errorMessage: null },
+      });
+      applied += 1;
+    }
+    await prisma.videoPost.update({ where: { id: postId }, data: { status: 'stills_review', errorMessage: null } });
+    return { phase: 'stills', applied, message: `Recovered the start frames — ${applied} segment frame(s) written` };
+  }
+
+  if (result.target || (result.jobId && result.url && !result.videoUrl)) {
+    if (result.target === 'anchor') {
+      await prisma.videoPost.update({
+        where: { id: postId },
+        data: { anchorStillUrl: result.url, anchorStillJobId: result.jobId || null },
+      });
+      return { phase: 'regenerate_still', applied: 1, message: 'Recovered the character anchor frame' };
+    }
+    if (result.target === 'anchorKey' && result.key) {
+      await prisma.videoAnchor.updateMany({
+        where: { postId, key: result.key },
+        data: { stillUrl: result.url, stillJobId: result.jobId || null },
+      });
+      return { phase: 'regenerate_still', applied: 1, message: `Recovered the "${result.key}" anchor frame` };
+    }
+    const row = await prisma.videoSegment.findFirst({ where: { postId, order: result.order } });
+    if (row) {
+      await prisma.videoSegment.update({
+        where: { id: row.id },
+        data: { stillUrl: result.url, stillJobId: result.jobId || null, errorMessage: null },
+      });
+    }
+    return { phase: 'regenerate_still', applied: row ? 1 : 0, message: `Recovered the frame for segment ${result.order}` };
+  }
+
+  if (Number.isInteger(result.order) && 'videoUrl' in result) {
+    const succeeded = await applyExecuteSegments({ postId, result: { segments: [result] }, directorNote: null });
+    return { phase: 'regenerate_segment', applied: succeeded, message: `Recovered segment ${result.order}` };
+  }
+
+  const err = new Error("The agent's last reply doesn't match any result we know how to apply.");
+  err.code = 'INVALID_REQUEST';
+  throw err;
+}
+
+// ---------------------------------------------------------------------------
 // continueVideoPost — resumes an interrupted shoot in the SAME director
 // session instead of starting over.
 //

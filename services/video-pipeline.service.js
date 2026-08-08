@@ -4,6 +4,7 @@ import {
   planVideoPost,
   generateVideoStills,
   regenerateVideoStill,
+  syncFromAgentSession,
   shootVideoPost,
   continueVideoPost,
   regenerateVideoSegment,
@@ -505,6 +506,15 @@ export async function approvePlan(postId, { editedPlan, directorNote } = {}) {
 // ---------------------------------------------------------------------------
 export async function regenerateStill(postId, { target, order, key, note } = {}) {
   return regenerateVideoStill({ postId, target, order, key, note });
+}
+
+// ---------------------------------------------------------------------------
+// syncFromAgent — read the agent's last reply and record it. Nothing is sent to
+// the agent, so this is always safe to try on a post that looks stuck; the work
+// it recovers was already done and billed.
+// ---------------------------------------------------------------------------
+export async function syncFromAgent(postId) {
+  return syncFromAgentSession({ postId });
 }
 
 // ---------------------------------------------------------------------------

@@ -678,6 +678,46 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
 }
 
 // ---------------------------------------------------------------------------
+// CheckAgentButton — reads the agent's last reply and records whatever it
+// finished. Lives in the header rather than inside a card because the states it
+// rescues are exactly the ones where a card is showing a spinner and offering
+// nothing: a shoot frozen on "generating", start frames that never arrived.
+//
+// It only reads the session, so it can't spend anything or make the agent redo
+// work — safe to press whenever a post looks stuck.
+// ---------------------------------------------------------------------------
+function CheckAgentButton({ post, invalidate }) {
+  const notify = postToast(post);
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/video/posts/${post.id}/sync-from-agent`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message || 'Could not read the agent session');
+      return body;
+    },
+    onSuccess: (data) => { notify.success(data.message || 'Nothing new to recover'); invalidate(); },
+    onError: (e) => notify.error(e.message),
+  });
+
+  if (!post.directorSessionId) return null;
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="shrink-0"
+      onClick={() => syncMutation.mutate()}
+      disabled={syncMutation.isPending}
+      title="Read the agent's last reply and record anything it finished. Only reads — never sends anything to the agent."
+    >
+      {syncMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+      Check agent
+    </Button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ShotText — a frame and its clip are judged on the same two facts: what the
 // shot shows and what is said over it. Showing one without the other is how
 // b-roll described as b-roll but flagged on-camera got through review.
@@ -1643,6 +1683,7 @@ export default function VideoPostDetailPage() {
             {post.genre && <Badge variant="secondary" appearance="light" size="sm">{post.genre}</Badge>}
           </div>
         </div>
+        <CheckAgentButton post={post} invalidate={invalidate} />
       </div>
 
       {post.errorMessage && (
