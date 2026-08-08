@@ -1380,6 +1380,12 @@ model VideoSegment {
   // plant a flower in cream cashmere, but she also can't become a different
   // person halfway through, so this adds rather than replaces.
   wardrobeAddition      String?               @db.Text
+  // Leave this shot out of the cut without deleting it. For the clip that came
+  // back wrong and isn't worth another $2.90 to fix — the video ships without
+  // it. The row, its clip and its version history all stay, so it can be put
+  // back by unticking rather than replanning. Assembly skips it; nothing else
+  // does, so its already-spent cost still counts toward the post's total.
+  excluded              Boolean               @default(false)
   // Raw Higgsfield clip (native audio already baked in — dialogue if
   // hasCharacter, off-screen voiceover narration otherwise)
   videoUrl              String?

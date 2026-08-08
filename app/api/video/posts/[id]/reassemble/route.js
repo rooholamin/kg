@@ -24,11 +24,18 @@ export async function POST(_req, { params }) {
 
     const post = await prisma.videoPost.findUnique({
       where: { id },
-      include: { segments: { select: { status: true, videoUrl: true } } },
+      include: { segments: { select: { status: true, videoUrl: true, excluded: true } } },
     });
     if (!post) return NextResponse.json({ message: 'Post not found' }, { status: 404 });
-    if (!post.segments.some((s) => s.status === 'completed' && s.videoUrl)) {
-      return NextResponse.json({ message: 'No completed segments to assemble yet.' }, { status: 422 });
+    if (!post.segments.some((s) => s.status === 'completed' && s.videoUrl && !s.excluded)) {
+      return NextResponse.json(
+        {
+          message: post.segments.some((s) => s.excluded && s.videoUrl)
+            ? 'Every usable segment is excluded from the cut — put at least one back in to assemble.'
+            : 'No completed segments to assemble yet.',
+        },
+        { status: 422 },
+      );
     }
 
     startBackgroundJob(`reassemble ${id}`, () => reassemblePost(id));

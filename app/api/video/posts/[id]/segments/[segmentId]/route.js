@@ -10,6 +10,7 @@ import { recordSegmentVersion } from '@/lib/video-segment-versions';
 // Higgsfield but the pipeline never recorded it — e.g. a director session that
 // died after requesting the jobs — so a post can be finished without paying to
 // shoot it again. The pasted URL is filed as a new version like any other take.
+// Also takes `{ excluded }` on its own to drop a shot from the cut or put it back.
 export async function PATCH(req, { params }) {
   try {
     const session = await getServerSession(authOptions);
@@ -22,6 +23,17 @@ export async function PATCH(req, { params }) {
     const segment = await prisma.videoSegment.findUnique({ where: { id: segmentId } });
     if (!segment || segment.postId !== id) {
       return NextResponse.json({ message: 'Segment not found on this post' }, { status: 404 });
+    }
+
+    // Dropping a shot from the cut is a separate, free edit from attaching a
+    // clip: it changes nothing about the take, so it records no new version.
+    if (typeof body.excluded === 'boolean' && body.videoUrl === undefined) {
+      const updated = await prisma.videoSegment.update({
+        where: { id: segmentId },
+        data: { excluded: body.excluded },
+        include: { versions: { orderBy: { version: 'desc' } } },
+      });
+      return NextResponse.json({ data: updated });
     }
 
     const videoUrl = body.videoUrl?.trim();

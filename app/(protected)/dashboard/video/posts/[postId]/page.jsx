@@ -20,6 +20,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import { VIDEO_PLATFORM_OPTIONS } from '@/lib/video-platforms';
 import { estimateStillCost } from '@/lib/video-cost';
@@ -55,6 +56,8 @@ import {
   History,
   RotateCcw,
   PlayCircle,
+  EyeOff,
+  Eye,
 } from 'lucide-react';
 
 function toLocalDatetimeInputValue(iso) {
@@ -1013,6 +1016,30 @@ function SegmentBlock({ segment, post, invalidate }) {
     onError: (e) => notify.error(`Segment ${segment.order}: ${e.message}`),
   });
 
+  const excludeMutation = useMutation({
+    mutationFn: async (excluded) => {
+      const res = await apiFetch(`/api/video/posts/${postId}/segments/${segment.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ excluded }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || 'Failed to update the cut');
+      }
+      return res.json();
+    },
+    onSuccess: (_d, excluded) => {
+      notify.success(
+        excluded
+          ? `Segment ${segment.order} dropped from the cut — re-assemble to apply`
+          : `Segment ${segment.order} back in the cut — re-assemble to apply`,
+      );
+      invalidate();
+    },
+    onError: (e) => notify.error(`Segment ${segment.order}: ${e.message}`),
+  });
+
   const restoreMutation = useMutation({
     mutationFn: async (versionId) => {
       const res = await apiFetch(`/api/video/posts/${postId}/segments/${segment.id}/versions/${versionId}/restore`, {
@@ -1054,7 +1081,12 @@ function SegmentBlock({ segment, post, invalidate }) {
     : null;
 
   return (
-    <div className="border rounded-lg overflow-hidden shrink-0 w-56 flex flex-col bg-card">
+    <div
+      className={cn(
+        'border rounded-lg overflow-hidden shrink-0 w-56 flex flex-col bg-card',
+        segment.excluded && 'border-dashed opacity-60',
+      )}
+    >
       <div className="bg-black aspect-[9/16] flex items-center justify-center relative">
         {segment.videoUrl ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
@@ -1070,11 +1102,15 @@ function SegmentBlock({ segment, post, invalidate }) {
         <Badge variant={badgeCfg.variant} appearance={badgeCfg.appearance} size="sm" className="absolute top-1.5 left-8 shadow-sm">
           {segment.status}
         </Badge>
-        {segment.hasCharacter && (
+        {segment.excluded ? (
+          <Badge variant="warning" appearance="solid" size="sm" className="absolute top-1.5 right-1.5 shadow-sm">
+            not in cut
+          </Badge>
+        ) : segment.hasCharacter ? (
           <Badge variant="secondary" appearance="outline" size="sm" className="absolute top-1.5 right-1.5 bg-black/40! text-white! border-white/20!">
             on camera
           </Badge>
-        )}
+        ) : null}
         {segment.duration && (
           <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm text-white text-[10px] font-mono">
             {segment.duration.toFixed?.(1) ?? segment.duration}s
@@ -1130,6 +1166,28 @@ function SegmentBlock({ segment, post, invalidate }) {
             {versions.length ? `Versions (${versions.length})` : 'No versions'}
           </Button>
         </div>
+
+        <Button
+          size="sm"
+          variant="ghost"
+          className={cn('w-full h-7 text-[11px]', segment.excluded && 'text-amber-600 hover:text-amber-600')}
+          onClick={() => excludeMutation.mutate(!segment.excluded)}
+          disabled={excludeMutation.isPending}
+          title={
+            segment.excluded
+              ? 'Put this shot back into the assembled video'
+              : 'Leave this shot out of the assembled video — the clip and its history are kept'
+          }
+        >
+          {excludeMutation.isPending ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : segment.excluded ? (
+            <Eye className="size-3" />
+          ) : (
+            <EyeOff className="size-3" />
+          )}
+          {segment.excluded ? 'Put back in cut' : 'Exclude from cut'}
+        </Button>
 
         {showUrlForm && (
           <div className="space-y-1.5 border rounded p-1.5 bg-muted/30">
@@ -1329,10 +1387,18 @@ function SegmentTimeline({ post, invalidate }) {
 
   const segments = post.segments || [];
   const completedCount = segments.filter((s) => s.status === 'completed').length;
-  const canAssemble = completedCount > 0;
+  const excludedCount = segments.filter((s) => s.excluded).length;
+  // The narration is one continuous read sliced across shots, so dropping a
+  // shot that speaks takes a sentence out of the voiceover with it.
+  const droppedNarration = segments.filter((s) => s.excluded && s.spokenPortion?.trim()).length;
+  // Only the shots actually going into the cut can be assembled.
+  const inCutCount = segments.filter((s) => s.status === 'completed' && s.videoUrl && !s.excluded).length;
+  const canAssemble = inCutCount > 0;
   // An interrupted shoot leaves gaps. Continuing reuses the clips Higgsfield
   // already billed for; re-approving the plan would pay to shoot them again.
-  const missingCount = segments.filter((s) => !s.videoUrl).length;
+  // A shot that's been dropped from the cut isn't a gap — nobody wants to pay
+  // to fill in a clip they've already decided not to use.
+  const missingCount = segments.filter((s) => !s.videoUrl && !s.excluded).length;
   const canContinue = Boolean(post.directorSessionId) && missingCount > 0
     && !segments.some((s) => s.status === 'generating');
 
@@ -1345,7 +1411,8 @@ function SegmentTimeline({ post, invalidate }) {
             Segment Timeline
           </CardTitle>
           <CardDescription className="text-xs">
-            {completedCount}/{segments.length} segments generated — regenerate any segment, then re-assemble when ready.
+            {completedCount}/{segments.length} segments generated
+            {excludedCount > 0 && `, ${excludedCount} left out of the cut`} — regenerate any segment, then re-assemble when ready.
           </CardDescription>
         </CardHeading>
         <CardToolbar>
@@ -1371,6 +1438,16 @@ function SegmentTimeline({ post, invalidate }) {
                 Continue
               </Button>
             </div>
+          </Alert>
+        )}
+
+        {droppedNarration > 0 && (
+          <Alert variant="warning" appearance="light">
+            <AlertIcon><AlertCircle /></AlertIcon>
+            <AlertTitle className="text-xs">
+              {droppedNarration === 1 ? 'A dropped shot carries' : `${droppedNarration} dropped shots carry`} narration, so
+              the voiceover will jump at that point. Listen to the assembled video before scheduling it.
+            </AlertTitle>
           </Alert>
         )}
 
@@ -1469,7 +1546,7 @@ function SegmentTimeline({ post, invalidate }) {
 
         <Button className="w-full" onClick={() => reassembleMutation.mutate()} disabled={!canAssemble || reassembleMutation.isPending}>
           {reassembleMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-          Re-assemble
+          {excludedCount > 0 ? `Re-assemble ${inCutCount} shot${inCutCount !== 1 ? 's' : ''}` : 'Re-assemble'}
         </Button>
 
         {post.videoUrl && (

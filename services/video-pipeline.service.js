@@ -627,9 +627,13 @@ export async function reassemblePost(postId) {
   const config = resolveVideoConfig({ post, campaign, settings });
   const content = resolvePostContent(post);
 
-  const completedSegments = post.segments.filter((s) => s.status === 'completed' && s.videoUrl);
+  const completedSegments = post.segments.filter((s) => s.status === 'completed' && s.videoUrl && !s.excluded);
   if (!completedSegments.length) {
-    throw new Error('No completed segments to assemble yet.');
+    throw new Error(
+      post.segments.some((s) => s.excluded && s.videoUrl)
+        ? 'Every usable segment is excluded from the cut — put at least one back in to assemble.'
+        : 'No completed segments to assemble yet.',
+    );
   }
 
   const staleUrls = [post.videoUrl, post.musicUrl, post.narrationVideoUrl].filter(Boolean);

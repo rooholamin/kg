@@ -235,7 +235,9 @@ async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orienta
  *
  * @param {Object} params
  * @param {Object} params.post - VideoPost row (needs id, orientation/campaign orientation, musicVolume, captionsEnabled)
- * @param {Array}  params.segments - ordered VideoSegment rows (status completed, videoUrl set)
+ * @param {Array}  params.segments - VideoSegment rows; ones that are unfinished
+ *   or flagged `excluded` are dropped here, the rest are cut in `order`
+
  * @param {string} params.orientation - resolved effective orientation ("9:16" etc.)
  * @param {Object} params.musicConfig - { enabled, volume, prompt, modelId }
  * @param {Object} params.captionsConfig - { enabled, templateId }
@@ -244,11 +246,16 @@ async function finalizeVideo({ post, basePath, workDir, totalDurationMs, orienta
  */
 export async function assembleVideo({ post, segments, orientation, musicConfig, captionsConfig, outroConfig }) {
   const completedSegments = segments
-    .filter((s) => s.status === 'completed' && s.videoUrl)
+    .filter((s) => s.status === 'completed' && s.videoUrl && !s.excluded)
     .sort((a, b) => a.order - b.order);
 
   if (!completedSegments.length) {
-    throw new Error('No completed segments to assemble — generate/regenerate segments first.');
+    const excludedCount = segments.filter((s) => s.excluded && s.videoUrl).length;
+    throw new Error(
+      excludedCount
+        ? `Every usable segment is excluded from the cut — put at least one back in to assemble.`
+        : 'No completed segments to assemble — generate/regenerate segments first.',
+    );
   }
 
   const workDir = path.join(os.tmpdir(), `video-assembly-${post.id}-${randomUUID()}`);
