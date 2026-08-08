@@ -11,7 +11,7 @@ export default function MainDashboardPage() {
     <>
       <PageHeader
         title="Automation Magazine Dashboard"
-        description="AI-assisted content operations — executive overview. Real data connects from Milestone 2."
+        description="AI-assisted content operations — live executive overview."
       />
       <DashboardHomeContent />
     </>
