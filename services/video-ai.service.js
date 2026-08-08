@@ -754,16 +754,50 @@ async function applyExecuteSegments({ postId, result, directorNote }) {
 // continueVideoPost is for the genuinely different case where the agent never
 // finished the work at all.
 // ---------------------------------------------------------------------------
-async function lastAgentMessageText(sessionId) {
+// Which phase a reply answers, decided by its own shape rather than by our
+// status — our status is exactly what's unreliable after a job dies mid-flight.
+function resultPhase(result) {
+  if (!result || typeof result !== 'object') return null;
+  if (Array.isArray(result.segments)) return 'shoot';
+  if (result.anchorStill || Array.isArray(result.stills) || Array.isArray(result.anchorStills)) return 'stills';
+  if (result.target || (result.jobId && result.url && !result.videoUrl)) return 'regenerate_still';
+  if (Number.isInteger(result.order) && 'videoUrl' in result) return 'regenerate_segment';
+  return null;
+}
+
+// Walks back through the agent's messages for the most recent one that is
+// actually a result. Agents narrate as they work ("Now retrying segment 1's
+// video generation"), so the newest message is often just chatter — and if a
+// turn dies straight after such a line, that chatter is what sits at the top of
+// the transcript forever. Stopping at the newest message therefore reports
+// nothing to recover when the real result is a few messages further back.
+async function findAgentResult(sessionId, { maxMessages = 60 } = {}) {
+  let newest = null;
+  let seen = 0;
+
   for await (const event of client.beta.sessions.events.list(sessionId, { order: 'desc' })) {
     if (event.type !== 'agent.message') continue;
     const text = (event.content || [])
       .filter((b) => b.type === 'text')
       .map((b) => b.text || '')
       .join('');
-    if (text.trim()) return { text, at: event.processed_at || event.created_at || null };
+    if (!text.trim()) continue;
+
+    const at = event.processed_at || event.created_at || null;
+    if (!newest) newest = { text, at };
+    if (++seen > maxMessages) break;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(extractJson(text));
+    } catch {
+      continue;
+    }
+    const phase = resultPhase(parsed);
+    if (phase) return { result: parsed, phase, at, newest };
   }
-  return null;
+
+  return { result: null, phase: null, at: null, newest };
 }
 
 export async function syncFromAgentSession({ postId, sessionId: explicitSessionId }) {
@@ -790,29 +824,30 @@ export async function syncFromAgentSession({ postId, sessionId: explicitSessionI
     throw err;
   }
 
-  const last = await lastAgentMessageText(sessionId);
-  if (!last) {
-    const err = new Error('The agent has not replied in this session yet.');
+  const { result, phase, at, newest } = await findAgentResult(sessionId);
+  if (!newest) {
+    const err = new Error('Nothing was run. The agent has never replied in this session, so there is nothing to recover.');
+    err.code = 'INVALID_REQUEST';
+    throw err;
+  }
+  if (!result) {
+    // Quote the agent's own words with their date, so a progress line it wrote
+    // days ago can't be mistaken for something happening now.
+    const when = newest.at ? new Date(newest.at).toISOString().slice(0, 16).replace('T', ' ') : 'an unknown time';
+    const err = new Error(
+      `Nothing was run — this only reads. The agent never reported a result in this session, so there is nothing to recover. Its last words, written at ${when}, were: "${newest.text.slice(0, 140)}"`,
+    );
     err.code = 'INVALID_REQUEST';
     throw err;
   }
 
-  let result;
-  try {
-    result = JSON.parse(extractJson(last.text));
-  } catch {
-    const err = new Error(`The agent's last message isn't a result we can apply: ${last.text.slice(0, 160)}`);
-    err.code = 'INVALID_REQUEST';
-    throw err;
-  }
-
-  const logId = await logStart(post.campaignId, 'agent_sync', `Reading the agent's last reply for "${post.title || postId}"`, { sessionId, repliedAt: last.at }, postId);
+  const logId = await logStart(post.campaignId, 'agent_sync', `Reading the agent's last ${phase} reply for "${post.title || postId}"`, { sessionId, repliedAt: at, phase }, postId);
 
   let summary;
   try {
-    summary = await applyAgentResult({ post, result });
+    summary = await applyAgentResult({ post, result, phase });
   } catch (err) {
-    await logError(logId, err.message, { response: last.text });
+    await logError(logId, err.message, { response: JSON.stringify(result).slice(0, 4000) });
     throw err;
   }
 
@@ -823,19 +858,19 @@ export async function syncFromAgentSession({ postId, sessionId: explicitSessionI
     data: { status: 'error', message: 'Interrupted — the result was recovered by reading the agent session' },
   });
 
-  await logDone(logId, summary.message, { response: last.text, parsed: result });
+  await logDone(logId, summary.message, { parsed: result });
 
-  return { ...summary, sessionId, repliedAt: last.at };
+  return { ...summary, sessionId, repliedAt: at };
 }
 
 // Applies whichever kind of reply the agent last produced. Every phase has a
 // distinct output shape, so the reply identifies itself and no phase has to be
 // guessed from our own status (which is exactly what's unreliable when a job
 // died halfway through).
-async function applyAgentResult({ post, result }) {
+async function applyAgentResult({ post, result, phase }) {
   const postId = post.id;
 
-  if (Array.isArray(result.segments)) {
+  if (phase === 'shoot') {
     const succeeded = await applyExecuteSegments({ postId, result, directorNote: null });
     const total = result.segments.length;
     // Anything the reply didn't cover is not in flight either — the job that
@@ -858,7 +893,7 @@ async function applyAgentResult({ post, result }) {
     return { phase: 'shoot', applied: succeeded, message: `Recovered the shoot — ${succeeded}/${total} clip(s) written` };
   }
 
-  if (result.anchorStill || Array.isArray(result.stills) || Array.isArray(result.anchorStills)) {
+  if (phase === 'stills') {
     if (result.anchorStill?.url) {
       await prisma.videoPost.update({
         where: { id: postId },
@@ -887,7 +922,7 @@ async function applyAgentResult({ post, result }) {
     return { phase: 'stills', applied, message: `Recovered the start frames — ${applied} segment frame(s) written` };
   }
 
-  if (result.target || (result.jobId && result.url && !result.videoUrl)) {
+  if (phase === 'regenerate_still') {
     if (result.target === 'anchor') {
       await prisma.videoPost.update({
         where: { id: postId },
@@ -912,7 +947,7 @@ async function applyAgentResult({ post, result }) {
     return { phase: 'regenerate_still', applied: row ? 1 : 0, message: `Recovered the frame for segment ${result.order}` };
   }
 
-  if (Number.isInteger(result.order) && 'videoUrl' in result) {
+  if (phase === 'regenerate_segment') {
     const succeeded = await applyExecuteSegments({ postId, result: { segments: [result] }, directorNote: null });
     return { phase: 'regenerate_segment', applied: succeeded, message: `Recovered segment ${result.order}` };
   }
