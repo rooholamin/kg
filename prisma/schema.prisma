@@ -1363,6 +1363,13 @@ model VideoSegment {
   // subject (a before/after pair). Left null normally — chaining every frame
   // makes the model copy composition too and flattens the video.
   stillReferenceOrder   Int?
+  // The single frozen instant the clip opens on, written for a still image —
+  // separate from visualDescription, which describes motion across the clip.
+  // One text can't do both jobs: an image model handed "rehanging a garment,
+  // refolding a stack, and returning a pair of shoes" can't render a sequence,
+  // so it renders a four-panel collage, and two simultaneous actions come back
+  // as a frame with spare arms in it. Both shipped.
+  startFrame            String?               @db.Text
   // Which VideoAnchor keys are in this shot — the place it happens in, plus
   // any recurring subject on screen. Their descriptions get restated verbatim
   // and their frames chained in, which is what makes segment 4's garden the

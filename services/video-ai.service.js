@@ -417,6 +417,7 @@ export async function generateVideoStills({ campaignId, postId, title, character
       hasCharacter: !!s.hasCharacter,
       spokenPortion: s.spokenPortion || null,
       visualDescription: s.visualDescription || null,
+      startFrame: s.startFrame || null,
       stillReferenceOrder: Number.isInteger(s.stillReferenceOrder) ? s.stillReferenceOrder : null,
       // A key naming an anchor that doesn't exist would send the director
       // looking for a frame nobody generated.
@@ -450,6 +451,7 @@ export async function generateVideoStills({ campaignId, postId, title, character
         hasCharacter: s.hasCharacter,
         spokenPortion: s.spokenPortion,
         visualDescription: s.visualDescription,
+        startFrame: s.startFrame || null,
         estimatedDuration: s.estimatedDuration,
         anchorKeys: (Array.isArray(s.anchorKeys) ? s.anchorKeys : []).filter((k) => anchorKeySet.has(k)),
         wardrobeAddition: s.wardrobeAddition || null,
@@ -853,7 +855,8 @@ SEGMENT TO REGENERATE:
   "order": ${segment.order},
   "hasCharacter": ${segment.hasCharacter},
   "spokenPortion": ${JSON.stringify(segment.spokenPortion || '')},
-  "visualDescription": ${JSON.stringify(segment.visualDescription || '')}
+  "visualDescription": ${JSON.stringify(segment.visualDescription || '')},
+  "startFrame": ${JSON.stringify(segment.startFrame || '')}
 }
 ${note ? `\nHUMAN NOTE: ${note}` : ''}
 

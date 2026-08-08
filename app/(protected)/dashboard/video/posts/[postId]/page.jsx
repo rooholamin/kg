@@ -372,6 +372,7 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
         hasCharacter: false,
         spokenPortion: '',
         visualDescription: '',
+        startFrame: '',
         estimatedDuration: 6,
         anchorKeys: [],
         wardrobeAddition: null,
@@ -556,7 +557,14 @@ function PlanReviewCard({ post, invalidate, alreadyExecuted }) {
                   <Textarea
                     value={seg.visualDescription || ''}
                     onChange={(e) => updateSegment(i, 'visualDescription', e.target.value)}
-                    placeholder="Visual description…"
+                    placeholder="Motion — what happens across the clip…"
+                    rows={2}
+                    className="text-xs"
+                  />
+                  <Textarea
+                    value={seg.startFrame || ''}
+                    onChange={(e) => updateSegment(i, 'startFrame', e.target.value)}
+                    placeholder="Start frame — the one frozen moment it opens on. No lists of actions, or the image comes back as a collage."
                     rows={2}
                     className="text-xs"
                   />
@@ -707,6 +715,7 @@ function StillTile({
   label,
   caption,
   captionLabel = 'Shot',
+  motion,
   spoken,
   anchorKeys,
   url,
@@ -763,6 +772,7 @@ function StillTile({
           </div>
         )}
         <ShotText label={captionLabel} text={caption} />
+        <ShotText label="Motion" text={motion} />
         <ShotText label="Narration" text={spoken} quoted />
         {showNote && (
           <Textarea
@@ -893,7 +903,9 @@ function StillsReviewCard({ post, invalidate, alreadyExecuted }) {
                   post={post}
                   invalidate={invalidate}
                   label={`Segment ${seg.order}${seg.hasCharacter ? ' · on camera' : ''}`}
-                  caption={seg.visualDescription}
+                  captionLabel={seg.startFrame ? 'Frame' : 'Shot'}
+                  caption={seg.startFrame || seg.visualDescription}
+                  motion={seg.startFrame ? seg.visualDescription : null}
                   spoken={seg.spokenPortion}
                   anchorKeys={seg.anchorKeys}
                   url={seg.stillUrl}
