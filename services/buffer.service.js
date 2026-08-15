@@ -140,18 +140,6 @@ export async function schedulePost({ postId, settings }) {
 
   if (!post) throw new Error(`SocialPost not found: ${postId}`);
 
-  // Guard against a social post going out before its article is actually
-  // live on WordPress (e.g. a manually-edited scheduledAt, or a post created
-  // before this check existed) — Buffer would otherwise happily publish a
-  // caption/CTA linking to content that doesn't exist yet.
-  if (post.scheduledAt && post.article?.publishDate && new Date(post.scheduledAt) < new Date(post.article.publishDate)) {
-    throw new Error(
-      `Refusing to schedule: post is set for ${new Date(post.scheduledAt).toISOString()}, ` +
-      `which is before the article publishes on ${new Date(post.article.publishDate).toISOString()}. ` +
-      `Move the scheduled time to after the article's publish date.`,
-    );
-  }
-
   await prisma.socialPost.update({
     where: { id: postId },
     data: { status: 'scheduling' },
@@ -427,13 +415,6 @@ export async function scheduleVideoPost({ postId }) {
   if (!post) throw new Error(`VideoPost not found: ${postId}`);
   if (!post.videoUrl) throw new Error('Post has no uploaded video to schedule');
   if (!post.platforms?.length) throw new Error('Post has no target platforms configured');
-
-  if (post.scheduledAt && post.article?.publishDate && new Date(post.scheduledAt) < new Date(post.article.publishDate)) {
-    throw new Error(
-      `Refusing to schedule: post is set for ${new Date(post.scheduledAt).toISOString()}, ` +
-      `which is before the article publishes on ${new Date(post.article.publishDate).toISOString()}.`,
-    );
-  }
 
   const settings = await prisma.socialSettings.upsert({ where: { id: 'singleton' }, update: {}, create: { id: 'singleton' } });
   const section = post.article?.category?.section;
